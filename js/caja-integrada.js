@@ -1,18 +1,18 @@
 // ============================================
 // MÓDULO DE CAJA INTEGRADA
 // ============================================
-// Integrar saldos de pacientes, microfacturas
+// Integrar saldos de clientes, microfacturas
 // Sistema de movimientos de caja
 
 const CajaIntegradaModule = {
     state: {
         movimientosCaja: [],
-        pacientes: [],
-        saldosPacientes: [],
+        clientes: [],
+        saldosClientes: [],
         tiposMovimiento: ['Ingreso por Cobro', 'Egreso', 'Devolución', 'Transferencia', 'Microfactura'],
         searchTerm: '',
         filterTipo: 'todos',
-        selectedPaciente: null,
+        selectedCliente: null,
         resumenCaja: {
             ingresos: 0,
             egresos: 0,
@@ -81,18 +81,15 @@ const CajaIntegradaModule = {
 
     // Cargar datos
     loadData() {
-        // Cargar pacientes desde PacientesModule
-        if (PacientesModule && PacientesModule.state && PacientesModule.state.pacientes) {
-            this.state.pacientes = JSON.parse(JSON.stringify(PacientesModule.state.pacientes));
-        } else {
-            console.error('❌ ERROR: PacientesModule no disponible');
-            this.showNotification('❌ Error: No se puede acceder a la base de datos de pacientes', 'error');
-        }
+        authManager.fetchWithAuth('/api/clientes?activo=true')
+            .then((response) => (response && response.ok ? response.json() : { clientes: [] }))
+            .then((data) => { this.state.clientes = data.clientes || []; })
+            .catch((error) => console.warn('No se pudieron cargar los clientes:', error));
 
         // Restaurar desde localStorage
-        const saldosFromStorage = localStorage.getItem('saldosPacientes');
+        const saldosFromStorage = localStorage.getItem('saldosClientes');
         if (saldosFromStorage) {
-            this.state.saldosPacientes = JSON.parse(saldosFromStorage);
+            this.state.saldosClientes = JSON.parse(saldosFromStorage);
         }
 
         const movFromStorage = localStorage.getItem('movimientosCaja');
@@ -223,7 +220,7 @@ const CajaIntegradaModule = {
         if (this.searchTerm) {
             filtered = filtered.filter(m =>
                 m.descripcion.toLowerCase().includes(this.searchTerm) ||
-                (m.pacienteId && this.getPacienteName(m.pacienteId).toLowerCase().includes(this.searchTerm)) ||
+                (m.clienteId && this.getClienteName(m.clienteId).toLowerCase().includes(this.searchTerm)) ||
                 m.referencia.toLowerCase().includes(this.searchTerm)
             );
         }
@@ -243,7 +240,7 @@ const CajaIntegradaModule = {
                         <tr>
                             <th>Fecha</th>
                             <th>Tipo</th>
-                            <th>Paciente/Referencia</th>
+                            <th>Cliente/Referencia</th>
                             <th>Descripción</th>
                             <th>Monto</th>
                             <th>Usuario</th>
@@ -261,14 +258,14 @@ const CajaIntegradaModule = {
     // Renderizar fila de movimiento
     renderMovimientoRow(movimiento) {
         const tipoBadge = this.getTipoBadge(movimiento.tipo);
-        const pacienteName = movimiento.pacienteId ? this.getPacienteName(movimiento.pacienteId) : movimiento.referencia;
+        const clienteName = movimiento.clienteId ? this.getClienteName(movimiento.clienteId) : movimiento.referencia;
         const montoClass = (movimiento.tipo === 'Ingreso por Cobro' || movimiento.tipo === 'Microfactura') ? 'positive' : 'negative';
 
         return `
             <tr>
                 <td>${movimiento.fecha}</td>
                 <td>${tipoBadge}</td>
-                <td>${pacienteName}</td>
+                <td>${clienteName}</td>
                 <td>${movimiento.descripcion}</td>
                 <td><span class="amount ${montoClass}">$${movimiento.monto.toFixed(2)}</span></td>
                 <td>${movimiento.usuario}</td>
@@ -293,10 +290,10 @@ const CajaIntegradaModule = {
         return badges[tipo] || `<span class="badge badge-secondary">${tipo}</span>`;
     },
 
-    // Obtener nombre del paciente
-    getPacienteName(pacienteId) {
-        const pacient = this.state.pacientes.find(p => p.id === pacienteId);
-        return pacient ? `${pacient.nombre} ${pacient.apellidoPaterno} ${pacient.apellidoMaterno || ''}`.trim() : 'Desconocido';
+    // Obtener nombre del cliente
+    getClienteName(clienteId) {
+        const client = this.state.clientes.find(p => p.id === clienteId);
+        return client ? client.nombre : 'Desconocido';
     },
 
     // Ver detalles de movimiento
@@ -335,10 +332,10 @@ const CajaIntegradaModule = {
                     <p>${movimiento.descripcion}</p>
                 </div>
 
-                ${movimiento.pacienteId ? `
+                ${movimiento.clienteId ? `
                     <div class="detail-section">
-                        <label>Paciente</label>
-                        <p>${this.getPacienteName(movimiento.pacienteId)}</p>
+                        <label>Cliente</label>
+                        <p>${this.getClienteName(movimiento.clienteId)}</p>
                     </div>
                 ` : ''}
 
@@ -405,7 +402,7 @@ const CajaIntegradaModule = {
 
         form.reset();
         document.getElementById('movimientoCajaFecha').valueAsDate = new Date();
-        this.updatePacientesSelectCaja();
+        this.updateClientesSelectCaja();
 
         modal.style.display = 'flex';
         document.body.style.overflow = 'hidden';
@@ -420,22 +417,21 @@ const CajaIntegradaModule = {
         }
     },
 
-    // Actualizar select de pacientes
-    updatePacientesSelectCaja() {
-        const select = document.getElementById('movimientoPacienteId');
+    // Actualizar select de clientes
+    updateClientesSelectCaja() {
+        const select = document.getElementById('movimientoClienteId');
         if (!select) return;
 
-        select.innerHTML = '<option value="">-- Paciente (opcional) --</option>' +
-            this.state.pacientes
-                .filter(p => p.estado === 'activo')
-                .map(p => `<option value="${p.id}">${p.nombre} ${p.apellido}</option>`)
+        select.innerHTML = '<option value="">-- Cliente (opcional) --</option>' +
+            this.state.clientes
+                .map(p => `<option value="${p.id}">${p.nombre}</option>`)
                 .join('');
     },
 
     // Guardar movimiento
     saveMovimiento() {
         const tipo = document.getElementById('movimientoCajaType').value;
-        const pacienteId = document.getElementById('movimientoPacienteId').value;
+        const clienteId = document.getElementById('movimientoClienteId').value;
         const monto = parseFloat(document.getElementById('movimientoCajaMonto').value) || 0;
         const descripcion = document.getElementById('movimientoCajaDesc').value.trim();
         const fecha = document.getElementById('movimientoCajaFecha').value;
@@ -449,7 +445,7 @@ const CajaIntegradaModule = {
         const movimiento = {
             id: this.generateId('MOV'),
             tipo,
-            pacienteId: pacienteId || null,
+            clienteId: clienteId || null,
             monto,
             descripcion,
             fecha,
@@ -460,9 +456,9 @@ const CajaIntegradaModule = {
 
         this.state.movimientosCaja.push(movimiento);
 
-        // Si es cobro a paciente, actualizar saldo
-        if (tipo === 'Ingreso por Cobro' && pacienteId) {
-            const saldo = this.state.saldosPacientes.find(s => s.pacienteId === pacienteId);
+        // Si es cobro a cliente, actualizar saldo
+        if (tipo === 'Ingreso por Cobro' && clienteId) {
+            const saldo = this.state.saldosClientes.find(s => s.clienteId === clienteId);
             if (saldo) {
                 saldo.saldoPendiente -= monto;
                 saldo.totalAbonos += monto;
@@ -484,10 +480,9 @@ const CajaIntegradaModule = {
         if (!modal || !form) return;
 
         form.reset();
-        document.getElementById('microfacturaPacienteSelect').innerHTML = '<option value="">-- Selecciona paciente --</option>' +
-            this.state.pacientes
-                .filter(p => p.estado === 'activo')
-                .map(p => `<option value="${p.id}">${p.nombre} ${p.apellido}</option>`)
+        document.getElementById('microfacturaClienteSelect').innerHTML = '<option value="">-- Selecciona cliente --</option>' +
+            this.state.clientes
+                .map(p => `<option value="${p.id}">${p.nombre}</option>`)
                 .join('');
 
         document.getElementById('microfacturaFecha').valueAsDate = new Date();
@@ -506,25 +501,25 @@ const CajaIntegradaModule = {
 
     // Guardar microfactura
     saveMicrofactura() {
-        const pacienteId = document.getElementById('microfacturaPacienteSelect').value;
+        const clienteId = document.getElementById('microfacturaClienteSelect').value;
         const monto = parseFloat(document.getElementById('microfacturaMonto').value) || 0;
         const descripcion = document.getElementById('microfacturaDesc').value.trim();
         const fecha = document.getElementById('microfacturaFecha').value;
 
-        if (!pacienteId || !monto || monto <= 0 || !fecha) {
+        if (!clienteId || !monto || monto <= 0 || !fecha) {
             this.showNotification('⚠️ Por favor completa todos los campos', 'warning');
             return;
         }
 
-        const pacient = this.state.pacientes.find(p => p.id === pacienteId);
-        if (!pacient) return;
+        const client = this.state.clientes.find(p => p.id === clienteId);
+        if (!client) return;
 
         const microfactura = {
             id: this.generateId('MF'),
             tipo: 'Microfactura',
-            pacienteId,
+            clienteId,
             monto,
-            descripcion: descripcion || `Microfactura - ${pacient.nombre}`,
+            descripcion: descripcion || `Microfactura - ${client.nombre}`,
             fecha,
             referencia: `MF-${Date.now().toString(36).toUpperCase()}`,
             usuario: 'Usuario Actual',
@@ -533,8 +528,8 @@ const CajaIntegradaModule = {
 
         this.state.movimientosCaja.push(microfactura);
 
-        // Actualizar saldo del paciente
-        const saldo = this.state.saldosPacientes.find(s => s.pacienteId === pacienteId);
+        // Actualizar saldo del cliente
+        const saldo = this.state.saldosClientes.find(s => s.clienteId === clienteId);
         if (saldo) {
             saldo.saldoPendiente -= monto;
             saldo.totalAbonos += monto;
@@ -557,7 +552,7 @@ const CajaIntegradaModule = {
     // Guardar en DB
     saveToDB(movimiento = null) {
         localStorage.setItem('movimientosCaja', JSON.stringify(this.state.movimientosCaja));
-        localStorage.setItem('saldosPacientes', JSON.stringify(this.state.saldosPacientes));
+        localStorage.setItem('saldosClientes', JSON.stringify(this.state.saldosClientes));
         if (movimiento) this.saveMovimientoToAPI(movimiento);
     },
 

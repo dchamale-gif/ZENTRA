@@ -377,5 +377,6 @@ module.exports = {
   updateArticulo,
   deleteArticulo,
   actualizarCantidad,
-  getArticulosStockBajo
+  getArticulosStockBajo,
+  getNextCodigo
 };

@@ -1,12 +1,11 @@
 const pool = require('../db/connection');
 
 const VENTA_SELECT = `
-  SELECT v.id, v.numero_venta, v.paciente_id, v.cliente_id, v.user_id,
+  SELECT v.id, v.numero_venta, v.cliente_id, v.user_id,
          v.fecha, v.hora, v.subtotal, v.descuento, v.impuesto, v.total,
          v.metodo_pago, v.estado, v.observaciones, v.created_at, v.updated_at,
-         COALESCE(c.nombre, CONCAT_WS(' ', p.nombre, p.apellido_paterno, p.apellido_materno), 'Consumidor final') AS receptor_nombre,
-         CASE WHEN v.paciente_id IS NOT NULL THEN 'paciente'
-              WHEN v.cliente_id IS NOT NULL THEN 'cliente' ELSE 'consumidor' END AS receptor_tipo,
+         COALESCE(c.nombre, 'Consumidor final') AS receptor_nombre,
+         CASE WHEN v.cliente_id IS NOT NULL THEN 'cliente' ELSE 'consumidor' END AS receptor_tipo,
          COALESCE(
            json_agg(
              json_build_object(
@@ -24,7 +23,6 @@ const VENTA_SELECT = `
          ) AS items
   FROM ventas v
   LEFT JOIN clientes c ON c.id = v.cliente_id
-  LEFT JOIN pacientes p ON p.id = v.paciente_id
   LEFT JOIN venta_items vi ON vi.venta_id = v.id
   LEFT JOIN medicinas m ON m.id = vi.medicina_id
   LEFT JOIN codigos_articulos a ON a.id = vi.articulo_id
@@ -131,13 +129,11 @@ const insertItems = async (client, ventaId, items) => {
   }
 };
 
-const validateReceiver = async (client, patientId, customerId) => {
-  if (!patientId && !customerId) return;
-  const table = patientId ? 'pacientes' : 'clientes';
-  const id = patientId || customerId;
+const validateReceiver = async (client, customerId) => {
+  if (!customerId) return;
   const receiver = await client.query(
-    `SELECT id FROM ${table} WHERE id = $1`,
-    [id]
+    'SELECT id FROM clientes WHERE id = $1',
+    [customerId]
   );
   if (receiver.rows.length === 0) {
     const error = new Error('El receptor seleccionado no existe');
@@ -149,7 +145,7 @@ const validateReceiver = async (client, patientId, customerId) => {
 const getVentas = async (req, res) => {
   try {
     const result = await pool.query(
-      `${VENTA_SELECT} GROUP BY v.id, c.nombre, p.nombre, p.apellido_paterno, p.apellido_materno
+      `${VENTA_SELECT} GROUP BY v.id, c.nombre
        ORDER BY v.fecha DESC, v.created_at DESC`
     );
     res.status(200).json({ success: true, total: result.rows.length, ventas: result.rows });
@@ -161,47 +157,39 @@ const getVentas = async (req, res) => {
 
 const getReceptores = async (req, res) => {
   try {
-    const [clientesResult, pacientesResult] = await Promise.all([
-      pool.query('SELECT id, nombre, nit, telefono FROM clientes WHERE activo = true ORDER BY nombre'),
-      pool.query(`SELECT id, CONCAT_WS(' ', nombre, apellido_paterno, apellido_materno) AS nombre,
-                         dpi AS nit, telefono
-                  FROM pacientes WHERE estado = 'activo'
-                  ORDER BY apellido_paterno, nombre`)
-    ]);
-    const receptores = [
-      ...pacientesResult.rows.map(row => ({ ...row, tipo: 'paciente' })),
-      ...clientesResult.rows.map(row => ({ ...row, tipo: 'cliente' }))
-    ];
+    const result = await pool.query(
+      'SELECT id, nombre, nit, telefono FROM clientes WHERE activo = true ORDER BY nombre'
+    );
+    const receptores = result.rows.map(row => ({ ...row, tipo: 'cliente' }));
     res.status(200).json({ success: true, total: receptores.length, receptores });
   } catch (error) {
     console.error('Error en getReceptores:', error);
-    res.status(500).json({ error: 'Error obteniendo receptores' });
+    res.status(500).json({ error: 'Error obteniendo clientes' });
   }
 };
 
 const createVenta = async (req, res) => {
   let client;
   try {
-    const { paciente_id, cliente_id, fecha, metodo_pago = 'efectivo', observaciones } = req.body;
+    const { cliente_id, fecha, metodo_pago = 'efectivo', observaciones } = req.body;
     if (!fecha) return res.status(400).json({ error: 'Fecha es requerida' });
-    if (paciente_id && cliente_id) return res.status(400).json({ error: 'Selecciona paciente o cliente, no ambos' });
     const items = normalizeItems(req.body.items);
     const subtotal = Number(items.reduce((sum, item) => sum + item.subtotal, 0).toFixed(2));
 
     client = await pool.connect();
     await client.query('BEGIN');
-    await validateReceiver(client, paciente_id, cliente_id);
+    await validateReceiver(client, cliente_id);
     await client.query("SELECT pg_advisory_xact_lock(hashtext('ventas_numero_correlativo'))");
     await validateAndDiscountStock(client, items);
     const numeroVenta = await getNextNumeroVenta(client);
     const ventaId = `VTA-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
     const result = await client.query(
       `INSERT INTO ventas
-       (id, numero_venta, paciente_id, cliente_id, user_id, fecha, hora, subtotal,
+       (id, numero_venta, cliente_id, user_id, fecha, hora, subtotal,
         descuento, impuesto, total, metodo_pago, estado, observaciones)
-       VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIME, $7, 0, 0, $7, $8, 'completada', $9)
+       VALUES ($1, $2, $3, $4, $5, CURRENT_TIME, $6, 0, 0, $6, $7, 'completada', $8)
        RETURNING *`,
-      [ventaId, numeroVenta, paciente_id || null, cliente_id || null, req.user.id,
+      [ventaId, numeroVenta, cliente_id || null, req.user.id,
         fecha, subtotal, metodo_pago, observaciones || null]
     );
     await insertItems(client, ventaId, items);
@@ -219,15 +207,14 @@ const createVenta = async (req, res) => {
 const updateVenta = async (req, res) => {
   let client;
   try {
-    const { paciente_id, cliente_id, fecha, metodo_pago = 'efectivo', observaciones } = req.body;
+    const { cliente_id, fecha, metodo_pago = 'efectivo', observaciones } = req.body;
     if (!fecha) return res.status(400).json({ error: 'Fecha es requerida' });
-    if (paciente_id && cliente_id) return res.status(400).json({ error: 'Selecciona paciente o cliente, no ambos' });
     const items = normalizeItems(req.body.items);
     const subtotal = Number(items.reduce((sum, item) => sum + item.subtotal, 0).toFixed(2));
 
     client = await pool.connect();
     await client.query('BEGIN');
-    await validateReceiver(client, paciente_id, cliente_id);
+    await validateReceiver(client, cliente_id);
     const existing = await client.query('SELECT id FROM ventas WHERE id = $1 FOR UPDATE', [req.params.id]);
     if (existing.rows.length === 0) {
       const error = new Error('Venta no encontrada');
@@ -237,10 +224,10 @@ const updateVenta = async (req, res) => {
     await restoreStock(client, req.params.id);
     await validateAndDiscountStock(client, items);
     const result = await client.query(
-      `UPDATE ventas SET paciente_id = $1, cliente_id = $2, fecha = $3, subtotal = $4,
-       descuento = 0, impuesto = 0, total = $4, metodo_pago = $5, observaciones = $6,
-       updated_at = NOW() WHERE id = $7 RETURNING *`,
-      [paciente_id || null, cliente_id || null, fecha, subtotal, metodo_pago,
+      `UPDATE ventas SET cliente_id = $1, fecha = $2, subtotal = $3,
+       descuento = 0, impuesto = 0, total = $3, metodo_pago = $4, observaciones = $5,
+       updated_at = NOW() WHERE id = $6 RETURNING *`,
+      [cliente_id || null, fecha, subtotal, metodo_pago,
         observaciones || null, req.params.id]
     );
     await client.query('DELETE FROM venta_items WHERE venta_id = $1', [req.params.id]);

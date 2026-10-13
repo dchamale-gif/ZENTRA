@@ -1,11 +1,15 @@
 const express = require('express');
 const proveedoresController = require('../controllers/proveedoresController');
+const importController = require('../controllers/importController');
 const { authMiddleware, rolePermissionMiddleware } = require('../middleware/auth');
 
 const router = express.Router();
 
 // Todas las rutas requieren autenticación
 router.use(authMiddleware);
+
+// POST - Importación masiva (filas JSON desde Excel)
+router.post('/import', rolePermissionMiddleware(['proveedores_create']), importController.importProveedores);
 
 // GET - Listar proveedores
 router.get('/', rolePermissionMiddleware(['proveedores_view']), proveedoresController.getProveedores);

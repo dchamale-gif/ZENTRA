@@ -128,8 +128,8 @@ const VentasModule = {
         document.getElementById('saleObservations').value = venta?.observaciones || '';
         document.getElementById('saleRecipientSearch').value = venta?.receptor_nombre === 'Consumidor final' ? '' : (venta?.receptor_nombre || '');
         document.getElementById('saleRecipientResults').hidden = true;
-        this.state.receptorId = venta ? String(venta.paciente_id || venta.cliente_id || '') : '';
-        this.state.receptorTipo = venta?.paciente_id ? 'paciente' : (venta?.cliente_id ? 'cliente' : '');
+        this.state.receptorId = venta ? String(venta.cliente_id || '') : '';
+        this.state.receptorTipo = venta?.cliente_id ? 'cliente' : '';
         this.state.items = venta?.items?.length ? venta.items.map(item => ({
             tipo: item.tipo,
             concepto_id: String(item.concepto_id),
@@ -164,7 +164,7 @@ const VentasModule = {
             <button class="concept-search-result" type="button" data-id="${this.escapeHtml(receptor.id)}" data-type="${receptor.tipo}"
                 onclick="VentasModule.selectRecipient(this.dataset.id, this.dataset.type)">
                 <strong>${this.escapeHtml(receptor.nombre)}</strong>
-                <small>${receptor.tipo === 'paciente' ? 'Paciente' : 'Cliente'}${receptor.nit ? ` · ${this.escapeHtml(receptor.nit)}` : ''}</small>
+                <small>Cliente${receptor.nit ? ` · ${this.escapeHtml(receptor.nit)}` : ''}</small>
             </button>`).join('') : '<div class="concept-search-empty">Sin coincidencias</div>';
         results.hidden = false;
     },

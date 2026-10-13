@@ -63,13 +63,14 @@ class ReportsController {
                 SELECT
                     COALESCE(SUM(monto), 0) as total_cobros,
                     COUNT(*) as numero_pagos
-                FROM movimientos_paciente
-                ${whereCondition ? `${whereCondition} AND tipo = 'pago'` : "WHERE tipo = 'pago'"}
+                FROM caja
+                ${whereCondition ? `${whereCondition} AND tipo = 'entrada'` : "WHERE tipo = 'entrada'"}
+                    AND COALESCE(estado, 'activo') = 'activo'
             `;
 
             const saldosQuery = `
-                SELECT COALESCE(SUM(saldo_pendiente), 0) as saldo_por_cobrar
-                FROM pacientes_saldo
+                SELECT COALESCE(SUM(monto_pendiente), 0) as saldo_por_cobrar
+                FROM cuentas_por_cobrar
             `;
 
             const [ingresoResult, egresoResult, pagosResult, saldosResult] = await Promise.all([
@@ -147,8 +148,9 @@ class ReportsController {
                         DATE_TRUNC('month', fecha)::date as mes,
                         COALESCE(SUM(monto), 0) as cobros,
                         COUNT(*) as numero_pagos
-                    FROM movimientos_paciente
-                    WHERE tipo = 'pago'
+                    FROM caja
+                    WHERE tipo = 'entrada'
+                      AND COALESCE(estado, 'activo') = 'activo'
                       AND fecha >= CURRENT_DATE - ($1 * INTERVAL '1 month')
                     GROUP BY DATE_TRUNC('month', fecha)
                 ),
@@ -445,126 +447,6 @@ class ReportsController {
             res.status(500).json({
                 success: false,
                 message: 'Error al obtener reporte consolidado',
-                error: error.message
-            });
-        }
-    }
-
-    /**
-     * Obtener indicadores operativos para el dashboard ejecutivo
-     */
-    async getExecutiveSummary(req, res) {
-        try {
-            const tableResult = await db.query(`
-                SELECT
-                    to_regclass('public.pacientes') IS NOT NULL AS pacientes,
-                    to_regclass('public.historia_clinica') IS NOT NULL AS historia_clinica,
-                    to_regclass('public.ordenes') IS NOT NULL AS ordenes,
-                    to_regclass('public.camas') IS NOT NULL AS camas,
-                    to_regclass('public.hospitalizaciones') IS NOT NULL AS hospitalizaciones,
-                    to_regclass('public.personal_medico') IS NOT NULL AS personal_medico,
-                    to_regclass('public.alertas') IS NOT NULL AS alertas
-            `);
-            const tables = tableResult.rows[0];
-
-            const count = async (enabled, query) => {
-                if (!enabled) return 0;
-                const result = await db.query(query);
-                return Number(result.rows[0]?.total || 0);
-            };
-
-            const [
-                pacientesRegistrados,
-                pacientesActivos,
-                citasHoy,
-                ordenesPendientes,
-                camasTotales,
-                camasOcupadas,
-                hospitalizacionesActivas,
-                personalActivo,
-                alertasClinicas
-            ] = await Promise.all([
-                count(tables.pacientes, 'SELECT COUNT(*) AS total FROM pacientes'),
-                count(tables.pacientes, "SELECT COUNT(*) AS total FROM pacientes WHERE LOWER(COALESCE(estado, 'activo')) = 'activo'"),
-                count(tables.historia_clinica, "SELECT COUNT(*) AS total FROM historia_clinica WHERE fecha = CURRENT_DATE AND LOWER(COALESCE(estado, 'activo')) NOT IN ('cancelada', 'eliminada')"),
-                count(tables.ordenes, "SELECT COUNT(*) AS total FROM ordenes WHERE LOWER(COALESCE(estado, 'pendiente')) IN ('pendiente', 'en_progreso')"),
-                count(tables.camas, "SELECT COUNT(*) AS total FROM camas WHERE LOWER(COALESCE(estado, 'libre')) <> 'mantenimiento'"),
-                count(tables.camas, "SELECT COUNT(*) AS total FROM camas WHERE LOWER(estado) = 'ocupada'"),
-                count(tables.hospitalizaciones, "SELECT COUNT(*) AS total FROM hospitalizaciones WHERE LOWER(estado) = 'activa'"),
-                count(tables.personal_medico, "SELECT COUNT(*) AS total FROM personal_medico WHERE LOWER(estado) = 'activo'"),
-                count(tables.alertas, "SELECT COUNT(*) AS total FROM alertas WHERE created_at >= CURRENT_DATE - INTERVAL '30 days'")
-            ]);
-
-            const ocupacionHospitalaria = camasTotales > 0
-                ? Number(((camasOcupadas / camasTotales) * 100).toFixed(1))
-                : 0;
-            const [ordersResult, appointmentsResult] = await Promise.all([
-                tables.ordenes
-                    ? db.query(`
-                        SELECT LOWER(COALESCE(estado, 'pendiente')) AS estado, COUNT(*) AS total
-                        FROM ordenes
-                        GROUP BY LOWER(COALESCE(estado, 'pendiente'))
-                        ORDER BY total DESC
-                    `)
-                    : Promise.resolve({ rows: [] }),
-                tables.historia_clinica
-                    ? db.query(`
-                        SELECT TO_CHAR(hora, 'HH24:00') AS hora, COUNT(*) AS total
-                        FROM historia_clinica
-                        WHERE fecha >= CURRENT_DATE - INTERVAL '30 days'
-                            AND LOWER(COALESCE(estado, 'activo')) NOT IN ('cancelada', 'eliminada')
-                        GROUP BY TO_CHAR(hora, 'HH24:00')
-                        ORDER BY hora
-                    `)
-                    : Promise.resolve({ rows: [] })
-            ]);
-            const alertas = [];
-
-            if (ocupacionHospitalaria >= 90) {
-                alertas.push({ tipo: 'critica', mensaje: `Ocupación hospitalaria al ${ocupacionHospitalaria}%` });
-            } else if (ocupacionHospitalaria >= 75) {
-                alertas.push({ tipo: 'advertencia', mensaje: `Ocupación hospitalaria al ${ocupacionHospitalaria}%` });
-            }
-            if (ordenesPendientes > 0) {
-                alertas.push({ tipo: 'advertencia', mensaje: `${ordenesPendientes} órdenes médicas requieren seguimiento` });
-            }
-            if (tables.personal_medico && personalActivo === 0) {
-                alertas.push({ tipo: 'critica', mensaje: 'No hay personal médico marcado como activo' });
-            }
-            if (alertasClinicas > 0) {
-                alertas.push({ tipo: 'informativa', mensaje: `${alertasClinicas} alertas clínicas registradas en los últimos 30 días` });
-            }
-
-            res.json({
-                success: true,
-                data: {
-                    pacientesRegistrados,
-                    pacientesActivos,
-                    citasHoy,
-                    ordenesPendientes,
-                    camasTotales,
-                    camasOcupadas,
-                    camasDisponibles: Math.max(camasTotales - camasOcupadas, 0),
-                    ocupacionHospitalaria,
-                    hospitalizacionesActivas,
-                    personalActivo,
-                    alertasClinicas,
-                    ordenesPorEstado: ordersResult.rows.map(row => ({
-                        estado: row.estado,
-                        total: Number(row.total)
-                    })),
-                    citasPorHora: appointmentsResult.rows.map(row => ({
-                        hora: row.hora,
-                        total: Number(row.total)
-                    })),
-                    alertas
-                }
-            });
-        } catch (error) {
-            console.error('Error en getExecutiveSummary:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Error al obtener el resumen ejecutivo',
                 error: error.message
             });
         }

@@ -1,11 +1,15 @@
 const express = require('express');
 const codigosArticulosController = require('../controllers/codigosArticulosController');
+const importController = require('../controllers/importController');
 const { authMiddleware, rolePermissionMiddleware } = require('../middleware/auth');
 
 const router = express.Router();
 
 // Todas las rutas requieren autenticación
 router.use(authMiddleware);
+
+// POST - Importación masiva (filas JSON desde Excel)
+router.post('/import', rolePermissionMiddleware(['inventario_create']), importController.importArticulos);
 
 // GET - Stock bajo (PRIMERO - evitar conflicto con :id)
 router.get('/stock/bajo', rolePermissionMiddleware(['inventario_view']), codigosArticulosController.getArticulosStockBajo);

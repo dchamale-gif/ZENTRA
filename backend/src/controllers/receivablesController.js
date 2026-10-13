@@ -17,9 +17,9 @@ class ReceivablesController {
                 SELECT 
                     v.id,
                     v.numero_venta,
-                    v.paciente_id,
-                    p.nombre as paciente_nombre,
-                    p.telefono,
+                    v.cliente_id,
+                    cl.nombre as cliente_nombre,
+                    cl.telefono,
                     v.total,
                     COALESCE(SUM(pa.monto), 0) as pagado,
                     v.total - COALESCE(SUM(pa.monto), 0) as pendiente,
@@ -27,9 +27,9 @@ class ReceivablesController {
                     v.estado,
                     MAX(pa.fecha) as ultima_transaccion
                 FROM ventas v
-                LEFT JOIN pacientes p ON v.paciente_id = p.id
+                LEFT JOIN clientes cl ON v.cliente_id = cl.id
                 LEFT JOIN pagos_factura pa ON v.id = pa.venta_id
-                WHERE v.total > COALESCE(SUM(pa.monto), 0)
+                WHERE 1=1
             `;
 
             const params = [];
@@ -40,7 +40,8 @@ class ReceivablesController {
                 query += ` AND v.fecha < CURRENT_DATE - INTERVAL '60 days'`;
             }
 
-            query += ` GROUP BY v.id, v.numero_venta, v.paciente_id, p.nombre, p.telefono, v.total, v.fecha, v.estado
+            query += ` GROUP BY v.id, v.numero_venta, v.cliente_id, cl.nombre, cl.telefono, v.total, v.fecha, v.estado
+                       HAVING v.total > COALESCE(SUM(pa.monto), 0)
                        ORDER BY v.fecha DESC
                        LIMIT 100`;
 
@@ -51,9 +52,9 @@ class ReceivablesController {
                 data: result.rows.map(cuenta => ({
                     id: cuenta.id,
                     numeroVenta: cuenta.numero_venta,
-                    pacienteId: cuenta.paciente_id,
-                    pacienteNombre: cuenta.paciente_nombre,
-                    telefonoPaciente: cuenta.telefono,
+                    clienteId: cuenta.cliente_id,
+                    clienteNombre: cuenta.cliente_nombre,
+                    telefonoCliente: cuenta.telefono,
                     total: parseFloat(cuenta.total),
                     pagado: parseFloat(cuenta.pagado),
                     pendiente: parseFloat(cuenta.pendiente),
@@ -78,16 +79,19 @@ class ReceivablesController {
     async getReceivablesSummary(req, res) {
         try {
             const query = `
-                SELECT 
-                    COUNT(DISTINCT v.id) as cantidad_facturas,
-                    SUM(v.total) as total_facturas,
-                    COALESCE(SUM(pa.monto), 0) as total_pagado,
-                    SUM(v.total) - COALESCE(SUM(pa.monto), 0) as total_pendiente,
-                    COUNT(CASE WHEN v.fecha < CURRENT_DATE - INTERVAL '30 days' 
-                              THEN 1 END) as facturas_atrasadas
-                FROM ventas v
-                LEFT JOIN pagos_factura pa ON v.id = pa.venta_id
-                WHERE v.total > COALESCE(SUM(pa.monto), 0)
+                SELECT
+                    COUNT(*) as cantidad_facturas,
+                    COALESCE(SUM(t.total), 0) as total_facturas,
+                    COALESCE(SUM(t.pagado), 0) as total_pagado,
+                    COALESCE(SUM(t.total - t.pagado), 0) as total_pendiente,
+                    COUNT(CASE WHEN t.fecha < CURRENT_DATE - INTERVAL '30 days' THEN 1 END) as facturas_atrasadas
+                FROM (
+                    SELECT v.id, v.total, v.fecha, COALESCE(SUM(pa.monto), 0) as pagado
+                    FROM ventas v
+                    LEFT JOIN pagos_factura pa ON v.id = pa.venta_id
+                    GROUP BY v.id, v.total, v.fecha
+                    HAVING v.total > COALESCE(SUM(pa.monto), 0)
+                ) t
             `;
 
             const result = await db.query(query);

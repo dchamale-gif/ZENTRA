@@ -12,10 +12,8 @@ function mapMovimiento(row) {
     return {
         id: row.id,
         tipo: row.tipo_movimiento || row.categoria || legacyTypes[row.tipo] || row.tipo,
-        pacienteId: row.paciente_id,
-        paciente: row.paciente_nombre
-            ? `${row.paciente_nombre} ${row.apellido_paterno || ''}`.trim()
-            : null,
+        clienteId: row.cliente_id,
+        cliente: row.cliente_nombre || null,
         monto: Number(row.monto),
         descripcion: row.descripcion || row.concepto,
         fecha: row.fecha,
@@ -31,7 +29,7 @@ function mapMovimiento(row) {
 class CajaController {
     async getMovimientos(req, res) {
         try {
-            const { tipo, desde, hasta, paciente_id, q } = req.query;
+            const { tipo, desde, hasta, cliente_id, q } = req.query;
             const values = [];
             const conditions = ["COALESCE(c.estado, 'activo') = 'activo'"];
             const addCondition = (sql, value) => {
@@ -42,7 +40,7 @@ class CajaController {
             if (tipo && tipo !== 'todos') addCondition('c.tipo_movimiento = ?', tipo);
             if (desde) addCondition('c.fecha >= ?', desde);
             if (hasta) addCondition('c.fecha <= ?', hasta);
-            if (paciente_id) addCondition('c.paciente_id = ?', paciente_id);
+            if (cliente_id) addCondition('c.cliente_id = ?', cliente_id);
             if (q) {
                 values.push(q);
                 const placeholder = `$${values.length}`;
@@ -50,16 +48,15 @@ class CajaController {
                     c.descripcion ILIKE '%' || ${placeholder} || '%'
                     OR c.concepto ILIKE '%' || ${placeholder} || '%'
                     OR c.referencia ILIKE '%' || ${placeholder} || '%'
-                    OR p.nombre ILIKE '%' || ${placeholder} || '%'
-                    OR p.apellido_paterno ILIKE '%' || ${placeholder} || '%'
+                    OR cl.nombre ILIKE '%' || ${placeholder} || '%'
                 )`);
             }
 
             const result = await db.query(`
-                SELECT c.*, p.nombre AS paciente_nombre, p.apellido_paterno,
+                SELECT c.*, cl.nombre AS cliente_nombre,
                     u.nombre AS usuario_nombre
                 FROM caja c
-                LEFT JOIN pacientes p ON p.id = c.paciente_id
+                LEFT JOIN clientes cl ON cl.id = c.cliente_id
                 LEFT JOIN users u ON u.id = c.user_id
                 WHERE ${conditions.join(' AND ')}
                 ORDER BY c.fecha DESC, c.hora DESC, c.created_at DESC
@@ -104,7 +101,7 @@ class CajaController {
     async createMovimiento(req, res) {
         const client = await db.connect();
         try {
-            const { tipo, pacienteId, paciente_id, monto, descripcion, fecha, hora, referencia } = req.body;
+            const { tipo, clienteId, cliente_id, monto, descripcion, fecha, hora, referencia } = req.body;
             const amount = Number(monto);
             if (!tipo || !descripcion?.trim() || !fecha || !Number.isFinite(amount) || amount <= 0) {
                 return res.status(400).json({ success: false, message: 'Tipo, descripción, fecha y monto positivo son obligatorios' });
@@ -112,12 +109,12 @@ class CajaController {
 
             await client.query('BEGIN');
             await client.query('LOCK TABLE caja IN SHARE ROW EXCLUSIVE MODE');
-            const patientId = pacienteId || paciente_id || null;
-            if (patientId) {
-                const patient = await client.query('SELECT id FROM pacientes WHERE id = $1', [patientId]);
-                if (patient.rows.length === 0) {
+            const customerId = clienteId || cliente_id || null;
+            if (customerId) {
+                const customer = await client.query('SELECT id FROM clientes WHERE id = $1', [customerId]);
+                if (customer.rows.length === 0) {
                     await client.query('ROLLBACK');
-                    return res.status(400).json({ success: false, message: 'El paciente seleccionado no existe' });
+                    return res.status(400).json({ success: false, message: 'El cliente seleccionado no existe' });
                 }
             }
             const balanceResult = await client.query(`
@@ -134,13 +131,13 @@ class CajaController {
             const result = await client.query(`
                 INSERT INTO caja (
                     id, tipo, tipo_movimiento, concepto, categoria, monto, descripcion,
-                    paciente_id, referencia, user_id, fecha, hora,
+                    cliente_id, referencia, user_id, fecha, hora,
                     saldo_anterior, saldo_posterior, estado
                 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, COALESCE($12::time, CURRENT_TIME), $13, $14, 'activo')
                 RETURNING *
             `, [
                 id, direction, tipo, descripcion.trim().slice(0, 150), tipo, amount,
-                descripcion.trim(), patientId, referencia || null,
+                descripcion.trim(), customerId, referencia || null,
                 userId, fecha, hora || null, previousBalance, previousBalance + delta
             ]);
             await client.query('COMMIT');

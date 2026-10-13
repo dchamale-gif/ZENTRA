@@ -112,32 +112,9 @@ async function initializeApp() {
     setupMobileListTables();
     updateCurrentDate();
     
-    // PASO 1: Inicializar PacientesModule primero (es crítico)
-    console.log('🔄 Inicializando PacientesModule...');
-    try { 
-        if (typeof PacientesModule !== 'undefined') {
-            PacientesModule.init();
-            // Esperar a que cargue datos (máx 5 segundos)
-            await waitForPacientesData(5000);
-            console.log('✅ PacientesModule datos cargados');
-        }
-    } catch(e) { 
-        console.warn('⚠️ PacientesModule error:', e); 
-    }
-    
-    // PASO 2: Inicializar MedicinasModule
-    console.log('🔄 Inicializando MedicinasModule...');
-    try { if (typeof MedicinasModule !== 'undefined') MedicinasModule.init(); } catch(e) { console.warn('MedicinasModule error:', e); }
-    
-    // PASO 3: Inicializar módulos que dependen de PacientesModule
-    console.log('🔄 Inicializando módulos dependientes...');
-    try { if (typeof HistoriaClinicaModule !== 'undefined') HistoriaClinicaModule.init(); } catch(e) { console.warn('HistoriaClinicaModule error:', e); }
-    try { if (typeof SaldoPacienteModule !== 'undefined') SaldoPacienteModule.init(); } catch(e) { console.warn('SaldoPacienteModule error:', e); }
-    try { if (typeof SaldoPacienteFacturacion !== 'undefined') SaldoPacienteFacturacion.init(); } catch(e) { console.warn('SaldoPacienteFacturacion error:', e); }
-    try { if (typeof HospitalizacionesModule !== 'undefined') HospitalizacionesModule.init(); } catch(e) { console.warn('HospitalizacionesModule error:', e); }
-    
-    // PASO 4: Inicializar otros módulos
-    console.log('🔄 Inicializando módulos adicionales...');
+    try { if (typeof ClientesModule !== 'undefined') ClientesModule.init(); } catch(e) { console.warn('ClientesModule error:', e); }
+    try { if (typeof ProveedoresModule !== 'undefined') ProveedoresModule.init(); } catch(e) { console.warn('ProveedoresModule error:', e); }
+    try { if (typeof NotificationsModule !== 'undefined') NotificationsModule.init(); } catch(e) { console.warn('NotificationsModule error:', e); }
     try { if (typeof CodigosArticulosModule !== 'undefined') CodigosArticulosModule.init(); } catch(e) { console.warn('CodigosArticulosModule error:', e); }
     try { if (typeof CajaIntegradaModule !== 'undefined') CajaIntegradaModule.init(); } catch(e) { console.warn('CajaIntegradaModule error:', e); }
     try { if (typeof ComprasModule !== 'undefined') ComprasModule.init(); } catch(e) { console.warn('ComprasModule error:', e); }
@@ -153,77 +130,8 @@ async function initializeApp() {
         try { ReportsModule.init(); } catch(e) { console.warn('ReportsModule init error:', e); }
     }
     
-    // Initialize Agenda Modules (with checks)
-    if (typeof AgendaAvanzadaModule !== 'undefined' && AgendaAvanzadaModule.init) {
-        try { AgendaAvanzadaModule.init(); } catch(e) { console.warn('AgendaAvanzadaModule init error:', e); }
-    }
-    if (typeof ReservasWebModule !== 'undefined' && ReservasWebModule.init) {
-        try { ReservasWebModule.init(); } catch(e) { console.warn('ReservasWebModule init error:', e); }
-    }
-    if (typeof ConfirmacionesModule !== 'undefined' && ConfirmacionesModule.init) {
-        try { ConfirmacionesModule.init(); } catch(e) { console.warn('ConfirmacionesModule init error:', e); }
-    }
-    if (typeof GoogleCalendarModule !== 'undefined' && GoogleCalendarModule.init) {
-        try { GoogleCalendarModule.init(); } catch(e) { console.warn('GoogleCalendarModule init error:', e); }
-    }
-    if (typeof AgendaAPIModule !== 'undefined' && AgendaAPIModule.init) {
-        try { AgendaAPIModule.init(); } catch(e) { console.warn('AgendaAPIModule init error:', e); }
-    }
-    
     
     console.log('✅ Sistema inicializado correctamente');
-}
-
-// ============================================
-// FUNCIÓN AUXILIAR: Esperar a que se carguen los pacientes
-// ============================================
-async function waitForPacientesData(maxWaitTime = 5000) {
-    return new Promise((resolve) => {
-        const startTime = Date.now();
-        const checkInterval = setInterval(() => {
-            // Verificar si PacientesModule tiene datos
-            if (typeof PacientesModule !== 'undefined' && 
-                PacientesModule.state && 
-                PacientesModule.state.pacientes &&
-                PacientesModule.state.pacientes.length > 0) {
-                clearInterval(checkInterval);
-                console.log(`✅ PacientesModule datos disponibles: ${PacientesModule.state.pacientes.length} pacientes`);
-                resolve(true);
-            }
-            // Timeout después de maxWaitTime ms
-            else if (Date.now() - startTime > maxWaitTime) {
-                clearInterval(checkInterval);
-                console.warn(`⚠️ Timeout esperando PacientesModule (${maxWaitTime}ms), continuando con inicialización...`);
-                resolve(false);
-            }
-        }, 100); // Verificar cada 100ms
-    });
-}
-
-// ============================================
-// SWITCH TAB - PARA SALDO PACIENTE
-// ============================================
-function switchTab(tabName) {
-    // Intentar usar SaldoPacienteFacturacion si está disponible
-    if (typeof SaldoPacienteFacturacion !== 'undefined' && SaldoPacienteFacturacion.switchTab) {
-        SaldoPacienteFacturacion.switchTab(tabName);
-        return;
-    }
-    
-    // Fallback: implementación simple de switch de tabs
-    const allTabs = document.querySelectorAll('.tab-content');
-    const allButtons = document.querySelectorAll('.tab-btn');
-    
-    allTabs.forEach(tab => tab.classList.remove('active'));
-    allButtons.forEach(btn => btn.classList.remove('active'));
-    
-    const targetTab = document.getElementById(tabName);
-    if (targetTab) {
-        targetTab.classList.add('active');
-    }
-    
-    // Marcar el botón activo
-    document.querySelector(`[onclick="switchTab('${tabName}')"]`)?.classList.add('active');
 }
 
 // ============================================
@@ -278,18 +186,10 @@ function navigateToPage(pageId) {
         'dashboard-financiero': 'Dashboard Ejecutivo',
         'transactions': 'Transacciones',
         'reports': 'Reportes',
-        'pacientes': 'Pacientes',
-        'medicinas': 'Medicinas',
-        'historia-clinica': 'Historia Clínica',
-        'saldo-paciente': 'Saldo del Paciente',
-        'hospitalizaciones': 'Hospitalizaciones',
-        'ordenes-medicas': 'Órdenes Médicas',
+        'clientes': 'Gestión de Clientes',
+        'proveedores': 'Gestión de Proveedores',
         'codigos-articulos': 'Códigos de Artículos',
         'caja-integrada': 'Caja Integrada',
-        'agenda': 'Agenda Médica',
-        'reservas-web': 'Reservas desde Web',
-        'confirmaciones': 'Confirmaciones Automáticas',
-        'google-calendar': 'Integración Google Calendar',
         'settings': 'Configuración'
     };
     document.getElementById('pageTitle').textContent = titleMap[pageId];
@@ -324,153 +224,18 @@ function navigateToPage(pageId) {
     if (pageId === 'cuentas-por-cobrar') {
         CuentasPorCobrarModule.refreshTable();
     }
-    if (pageId === 'historia-clinica') {
-        if (typeof HistoriaClinicaModule !== 'undefined') {
-            HistoriaClinicaModule.loadData();
-        }
+    if (pageId === 'clientes') {
+        ClientesModule.load();
     }
-    if (pageId === 'saldo-paciente') {
-        SaldoPacienteModule.renderSaldosPacientes();
-    }
-    if (pageId === 'hospitalizaciones') {
-        HospitalizacionesModule.loadData();
+    if (pageId === 'proveedores') {
+        ProveedoresModule.load();
     }
     if (pageId === 'estados-de-cuenta') {
         EstadosDeCuentaModule.loadStatement();
     }
-    if (pageId === 'agenda') {
-        setTimeout(() => {
-            if (typeof AgendaAvanzadaModule !== 'undefined' && AgendaAvanzadaModule.renderCalendar) {
-                AgendaAvanzadaModule.renderCalendar();
-            } else {
-                console.warn('⚠️ AgendaAvanzadaModule no disponible');
-            }
-        }, 100);
-    }
     
     if (pageId === 'alertas') {
         AlertasModule.renderAlertas();
-    }
-}
-
-// ============================================
-// SUBTABS DEL HISTORIAL MÉDICO
-// ============================================
-
-// ============================================
-// FUNCIONES AUXILIARES PARA AGENDA
-// ============================================
-
-function openAgendaManagementPanel() {
-    if (typeof AgendaAvanzadaModule !== 'undefined' && AgendaAvanzadaModule.openManagementPanel) {
-        AgendaAvanzadaModule.openManagementPanel();
-    } else {
-        console.warn('⚠️ AgendaAvanzadaModule no disponible');
-        alert('El módulo de Agenda no está disponible. Por favor, recarga la página.');
-    }
-}
-
-function showManagementTab(tab) {
-    if (typeof AgendaAvanzadaModule !== 'undefined' && AgendaAvanzadaModule.showManagementTab) {
-        AgendaAvanzadaModule.showManagementTab(tab);
-    } else {
-        console.warn('⚠️ AgendaAvanzadaModule no disponible');
-    }
-}
-
-function openAddDoctorForm() {
-    if (typeof AgendaAvanzadaModule !== 'undefined' && AgendaAvanzadaModule.openAddDoctorForm) {
-        AgendaAvanzadaModule.openAddDoctorForm();
-    } else {
-        console.warn('⚠️ AgendaAvanzadaModule no disponible');
-    }
-}
-
-function saveRestrictions() {
-    if (typeof AgendaAvanzadaModule !== 'undefined' && AgendaAvanzadaModule.saveRestrictions) {
-        AgendaAvanzadaModule.saveRestrictions();
-    } else {
-        console.warn('⚠️ AgendaAvanzadaModule no disponible');
-    }
-}
-
-function saveBloqueo() {
-    if (typeof AgendaAvanzadaModule !== 'undefined' && AgendaAvanzadaModule.saveBloqueo) {
-        AgendaAvanzadaModule.saveBloqueo();
-    } else {
-        console.warn('⚠️ AgendaAvanzadaModule no disponible');
-    }
-}
-
-function saveDoctorForm() {
-    if (typeof AgendaAvanzadaModule !== 'undefined' && AgendaAvanzadaModule.saveDoctorForm) {
-        AgendaAvanzadaModule.saveDoctorForm();
-    } else {
-        console.warn('⚠️ AgendaAvanzadaModule no disponible');
-    }
-}
-
-function saveAppointment() {
-    if (typeof AgendaAvanzadaModule !== 'undefined' && AgendaAvanzadaModule.saveAppointment) {
-        AgendaAvanzadaModule.saveAppointment();
-    } else {
-        console.warn('⚠️ AgendaAvanzadaModule no disponible');
-    }
-}
-
-function selectPatientFromAgenda(patientId, patientName, patientEmail, patientPhone) {
-    if (typeof AgendaAvanzadaModule !== 'undefined' && AgendaAvanzadaModule.selectPatient) {
-        AgendaAvanzadaModule.selectPatient(patientId, patientName, patientEmail, patientPhone);
-    } else {
-        console.warn('⚠️ AgendaAvanzadaModule no disponible');
-    }
-}
-
-function confirmAppointmentAction(appointmentId) {
-    if (typeof AgendaAvanzadaModule !== 'undefined' && AgendaAvanzadaModule.confirmAppointment) {
-        AgendaAvanzadaModule.confirmAppointment(appointmentId);
-    } else {
-        console.warn('⚠️ AgendaAvanzadaModule no disponible');
-    }
-}
-
-function editAppointmentAction(appointmentId) {
-    if (typeof AgendaAvanzadaModule !== 'undefined' && AgendaAvanzadaModule.editAppointment) {
-        AgendaAvanzadaModule.editAppointment(appointmentId);
-    } else {
-        console.warn('⚠️ AgendaAvanzadaModule no disponible');
-    }
-}
-
-function cancelAppointmentAction(appointmentId) {
-    if (typeof AgendaAvanzadaModule !== 'undefined' && AgendaAvanzadaModule.cancelAppointment) {
-        AgendaAvanzadaModule.cancelAppointment(appointmentId);
-    } else {
-        console.warn('⚠️ AgendaAvanzadaModule no disponible');
-    }
-}
-
-function editDoctorFormAction(doctorId) {
-    if (typeof AgendaAvanzadaModule !== 'undefined' && AgendaAvanzadaModule.editDoctorForm) {
-        AgendaAvanzadaModule.editDoctorForm(doctorId);
-    } else {
-        console.warn('⚠️ AgendaAvanzadaModule no disponible');
-    }
-}
-
-function removeDoctorAction(doctorId) {
-    if (typeof AgendaAvanzadaModule !== 'undefined' && AgendaAvanzadaModule.removeDoctor) {
-        AgendaAvanzadaModule.removeDoctor(doctorId);
-    } else {
-        console.warn('⚠️ AgendaAvanzadaModule no disponible');
-    }
-}
-
-function removeBloqueoAction(bloqueoId) {
-    if (typeof AgendaAvanzadaModule !== 'undefined' && AgendaAvanzadaModule.removeBloqueo) {
-        AgendaAvanzadaModule.removeBloqueo(bloqueoId);
-    } else {
-        console.warn('⚠️ AgendaAvanzadaModule no disponible');
     }
 }
 
@@ -1916,131 +1681,6 @@ styleElement.textContent = `
     }
 `;
 document.head.appendChild(styleElement);
-
-// ============================================
-// FUNCIONES PARA GESTIÓN DE PACIENTES
-// ============================================
-
-function switchPacientTab(tabName) {
-    // Ocultar todos los tabs
-    document.querySelectorAll('#pacientModal .tab-content').forEach(tab => {
-        tab.classList.remove('active');
-    });
-    document.querySelectorAll('#pacientModal .tab-button').forEach(btn => {
-        btn.classList.remove('active');
-    });
-
-    // Mostrar el tab seleccionado
-    const tabElement = document.getElementById('tab-' + tabName);
-    const button = event.target;
-    
-    if (tabElement) {
-        tabElement.classList.add('active');
-        button.classList.add('active');
-    }
-}
-
-function toggleClasificacionPaciente() {
-    const tipoServicio = document.getElementById('pacientTipoServicio').value;
-    const clasificacionGroup = document.getElementById('clasificacionAguoCronicoGroup');
-    const coexGroup = document.getElementById('coexSegmentoGroup');
-    const clasificacionSelect = document.getElementById('pacientClasificacion');
-    const coexSegmento = document.getElementById('pacientCOEXSegmento');
-    
-    // Elementos condicionales del historial médico
-    const seccionAguoCronico = document.getElementById('seccionAguoCronico');
-    const seccionCOEX = document.getElementById('seccionCOEX');
-
-    // Mostrar u ocultar campo de clasificación para Agudo/Crónico
-    if (['agudo', 'cronico'].includes(tipoServicio)) {
-        clasificacionGroup.style.display = 'block';
-        clasificacionSelect.required = true;
-        coexGroup.style.display = 'none';
-        coexSegmento.required = false;
-        coexSegmento.value = '';
-        
-        // Mostrar sección de Agudo/Crónico, ocultar COEX
-        if (seccionAguoCronico) seccionAguoCronico.style.display = 'block';
-        if (seccionCOEX) seccionCOEX.style.display = 'none';
-    }
-    // Mostrar u ocultar campo de segmento para COEX
-    else if (tipoServicio === 'coex') {
-        coexGroup.style.display = 'block';
-        coexSegmento.required = true;
-        clasificacionGroup.style.display = 'none';
-        clasificacionSelect.required = false;
-        clasificacionSelect.value = '';
-        
-        // Mostrar sección de COEX, ocultar Agudo/Crónico
-        if (seccionAguoCronico) seccionAguoCronico.style.display = 'none';
-        if (seccionCOEX) seccionCOEX.style.display = 'block';
-    }
-    // Ocultar ambos si no hay selección
-    else {
-        clasificacionGroup.style.display = 'none';
-        coexGroup.style.display = 'none';
-        clasificacionSelect.required = false;
-        coexSegmento.required = false;
-        clasificacionSelect.value = '';
-        coexSegmento.value = '';
-        
-        // Ocultar ambas secciones
-        if (seccionAguoCronico) seccionAguoCronico.style.display = 'none';
-        if (seccionCOEX) seccionCOEX.style.display = 'none';
-    }
-}
-
-// Mostrar/ocultar campos condicionales en historial médico
-document.addEventListener('DOMContentLoaded', function() {
-    // Padece enfermedad crónica
-    if (document.getElementById('padeceCronica')) {
-        document.getElementById('padeceCronica').addEventListener('change', function() {
-            document.getElementById('especificacionCronica').style.display = this.checked ? 'block' : 'none';
-        });
-    }
-    
-    // Toma medicamentos
-    if (document.getElementById('tomaMedicamento')) {
-        document.getElementById('tomaMedicamento').addEventListener('change', function() {
-            document.getElementById('especificacionMedicamento').style.display = this.checked ? 'block' : 'none';
-        });
-    }
-    
-    // Padece alergias
-    if (document.getElementById('padaceAlergia')) {
-        document.getElementById('padaceAlergia').addEventListener('change', function() {
-            document.getElementById('especificacionAlergia').style.display = this.checked ? 'block' : 'none';
-        });
-    }
-    
-    // Utiliza prótesis
-    if (document.getElementById('utilizaProtesis')) {
-        document.getElementById('utilizaProtesis').addEventListener('change', function() {
-            document.getElementById('especificacionProtesis').style.display = this.checked ? 'block' : 'none';
-        });
-    }
-    
-    // Ha convulsionado
-    if (document.getElementById('haConvulsionado')) {
-        document.getElementById('haConvulsionado').addEventListener('change', function() {
-            document.getElementById('especificacionConvulsion').style.display = this.checked ? 'block' : 'none';
-        });
-    }
-    
-    // Comorbilidad (COEX)
-    if (document.getElementById('comorbilidad')) {
-        document.getElementById('comorbilidad').addEventListener('change', function() {
-            document.getElementById('especificacionComorbilidad').style.display = this.checked ? 'block' : 'none';
-        });
-    }
-    
-    // Antecedentes legales (COEX)
-    if (document.getElementById('antecedentesLegales')) {
-        document.getElementById('antecedentesLegales').addEventListener('change', function() {
-            document.getElementById('especificacionLegales').style.display = this.checked ? 'block' : 'none';
-        });
-    }
-});
 
 // ============================================
 // FUNCIONES PARA GASTOS Y SERVICIOS

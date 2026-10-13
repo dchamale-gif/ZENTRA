@@ -52,6 +52,28 @@ const CodigosArticulosModule = {
         }
 
         const addArticuloBtn = document.getElementById('addArticuloBtn');
+        document.getElementById('importArticulosBtn')?.addEventListener('click', () => {
+            BulkImport.open({
+                title: 'Importar artículos desde Excel',
+                endpoint: '/api/codigos-articulos/import',
+                templateName: 'plantilla_articulos',
+                columns: [
+                    { key: 'nombre_articulo', label: 'Nombre', required: true, example: 'Cuaderno profesional', aliases: ['nombre', 'articulo', 'producto'] },
+                    { key: 'codigo', label: 'Código', example: 'ART-001' },
+                    { key: 'descripcion', label: 'Descripción', example: '100 hojas' },
+                    { key: 'categoria', label: 'Categoría', example: 'Papelería' },
+                    { key: 'familia', label: 'Familia', example: 'Escolar' },
+                    { key: 'subfamilia', label: 'Subfamilia', example: '' },
+                    { key: 'precio_unitario', label: 'Precio venta', example: 25.5, aliases: ['precio'] },
+                    { key: 'precio_costo', label: 'Precio costo', example: 15, aliases: ['costo'] },
+                    { key: 'cantidad_disponible', label: 'Cantidad', example: 100, aliases: ['stock', 'existencia'] },
+                    { key: 'unidad_medida', label: 'Unidad de medida', example: 'unidad' },
+                    { key: 'codigo_barras', label: 'Código de barras', example: '' },
+                    { key: 'tipo', label: 'Tipo', example: 'producto' }
+                ],
+                onDone: () => this.loadData()
+            });
+        });
         if (addArticuloBtn) {
             addArticuloBtn.addEventListener('click', () => this.openArticuloModal());
         }

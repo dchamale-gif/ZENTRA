@@ -12,21 +12,6 @@ const DashboardFinancieroModule = {
             saldoPorCobrar: 0,
             flujoCaja: 0
         },
-        operativo: {
-            pacientesRegistrados: 0,
-            pacientesActivos: 0,
-            citasHoy: 0,
-            ordenesPendientes: 0,
-            camasTotales: 0,
-            camasOcupadas: 0,
-            camasDisponibles: 0,
-            ocupacionHospitalaria: 0,
-            hospitalizacionesActivas: 0,
-            personalActivo: 0,
-            ordenesPorEstado: [],
-            citasPorHora: [],
-            alertas: []
-        },
         historico: []
     },
 
@@ -74,21 +59,6 @@ const DashboardFinancieroModule = {
         this.state.historico = [];
         this.state.categoriaGastos = [];
         this.state.categoriaIngresos = [];
-        this.state.operativo = {
-            pacientesRegistrados: 0,
-            pacientesActivos: 0,
-            citasHoy: 0,
-            ordenesPendientes: 0,
-            camasTotales: 0,
-            camasOcupadas: 0,
-            camasDisponibles: 0,
-            ocupacionHospitalaria: 0,
-            hospitalizacionesActivas: 0,
-            personalActivo: 0,
-            ordenesPorEstado: [],
-            citasPorHora: [],
-            alertas: []
-        };
 
         try {
             // Obtener resumen financiero usando APIHelper
@@ -205,131 +175,6 @@ const DashboardFinancieroModule = {
         this.renderExpenseCategoryChart();
         this.renderIncomeCategoryChart();
         this.updateKPIs();
-    },
-
-    renderExecutiveSummary() {
-        const kpiContainer = document.getElementById('executiveKPIs');
-        const alertsContainer = document.getElementById('executiveAlerts');
-        if (!kpiContainer || !alertsContainer) return;
-
-        const data = this.state.operativo;
-        const occupancyTone = data.ocupacionHospitalaria >= 90
-            ? 'critical'
-            : (data.ocupacionHospitalaria >= 75 ? 'warning' : 'healthy');
-
-        kpiContainer.innerHTML = `
-            <div class="kpi-card executive-kpi patients">
-                <div class="kpi-header"><h3>Pacientes activos</h3><i class="fas fa-user-check"></i></div>
-                <div class="kpi-value">${data.pacientesActivos}</div>
-                <div class="kpi-change">de ${data.pacientesRegistrados} registrados</div>
-            </div>
-            <div class="kpi-card executive-kpi appointments">
-                <div class="kpi-header"><h3>Citas de hoy</h3><i class="fas fa-calendar-day"></i></div>
-                <div class="kpi-value">${data.citasHoy}</div>
-                <div class="kpi-change">agenda clínica del día</div>
-            </div>
-            <div class="kpi-card executive-kpi orders">
-                <div class="kpi-header"><h3>Órdenes pendientes</h3><i class="fas fa-file-medical"></i></div>
-                <div class="kpi-value">${data.ordenesPendientes}</div>
-                <div class="kpi-change ${data.ordenesPendientes > 0 ? 'negative' : 'positive'}">requieren seguimiento</div>
-            </div>
-            <div class="kpi-card executive-kpi occupancy ${occupancyTone}">
-                <div class="kpi-header"><h3>Ocupación hospitalaria</h3><i class="fas fa-bed"></i></div>
-                <div class="kpi-value">${data.ocupacionHospitalaria}%</div>
-                <div class="kpi-change">${data.camasOcupadas} ocupadas · ${data.camasDisponibles} disponibles</div>
-            </div>
-            <div class="kpi-card executive-kpi admissions">
-                <div class="kpi-header"><h3>Hospitalizados</h3><i class="fas fa-hospital-user"></i></div>
-                <div class="kpi-value">${data.hospitalizacionesActivas}</div>
-                <div class="kpi-change">ingresos activos</div>
-            </div>
-            <div class="kpi-card executive-kpi staff">
-                <div class="kpi-header"><h3>Personal disponible</h3><i class="fas fa-user-md"></i></div>
-                <div class="kpi-value">${data.personalActivo}</div>
-                <div class="kpi-change">profesionales activos</div>
-            </div>
-        `;
-
-        const alerts = Array.isArray(data.alertas) ? data.alertas : [];
-        if (alerts.length === 0) {
-            alertsContainer.innerHTML = `
-                <div class="executive-alert empty">
-                    <i class="fas fa-check-circle"></i>
-                    <span>Sin alertas operativas críticas en este momento.</span>
-                </div>
-            `;
-            return;
-        }
-
-        alertsContainer.innerHTML = alerts.map(alert => `
-            <div class="executive-alert ${alert.tipo}">
-                <i class="fas ${alert.tipo === 'critica' ? 'fa-exclamation-circle' : (alert.tipo === 'advertencia' ? 'fa-exclamation-triangle' : 'fa-info-circle')}"></i>
-                <span>${alert.mensaje}</span>
-            </div>
-        `).join('');
-    },
-
-    renderOperationalCharts() {
-        this.renderDynamicChart('ordersStatusChart', 'executiveOrdersChart', {
-            type: 'doughnut',
-            labels: this.state.operativo.ordenesPorEstado.map(item => this.formatStatus(item.estado)),
-            values: this.state.operativo.ordenesPorEstado.map(item => item.total),
-            colors: ['#eab308', '#22c55e', '#ef4444', '#0891b2'],
-            title: 'Órdenes por estado'
-        });
-
-        this.renderDynamicChart('appointmentsHourChart', 'executiveAppointmentsChart', {
-            type: 'bar',
-            labels: this.state.operativo.citasPorHora.map(item => item.hora),
-            values: this.state.operativo.citasPorHora.map(item => item.total),
-            colors: ['#0891b2'],
-            title: 'Citas por hora · últimos 30 días'
-        });
-    },
-
-    renderDynamicChart(containerId, chartKey, config) {
-        const container = document.getElementById(containerId);
-        if (!container) return;
-
-        if (!config.values.length) {
-            container.innerHTML = '<p class="chart-empty">Sin datos para este período</p>';
-            return;
-        }
-
-        container.innerHTML = '<canvas></canvas>';
-        const canvas = container.querySelector('canvas');
-        if (window[chartKey]?.destroy) window[chartKey].destroy();
-
-        window[chartKey] = new Chart(canvas.getContext('2d'), {
-            type: config.type,
-            data: {
-                labels: config.labels,
-                datasets: [{
-                    data: config.values,
-                    backgroundColor: config.colors,
-                    borderColor: config.type === 'bar' ? '#0e7490' : '#ffffff',
-                    borderWidth: config.type === 'bar' ? 0 : 2,
-                    borderRadius: config.type === 'bar' ? 5 : 0
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: { display: config.type === 'doughnut', position: 'right' },
-                    title: { display: false }
-                },
-                scales: config.type === 'bar' ? {
-                    y: { beginAtZero: true, ticks: { precision: 0 } }
-                } : undefined
-            }
-        });
-    },
-
-    formatStatus(status) {
-        return String(status || '')
-            .replace(/_/g, ' ')
-            .replace(/^./, character => character.toUpperCase());
     },
 
     // Gráfico de ingresos vs egresos

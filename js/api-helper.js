@@ -13,22 +13,6 @@ const APIHelper = {
     },
 
     /**
-     * PACIENTES
-     */
-    async fetchPacientes() {
-        try {
-            const res = await fetch(`${this.baseURL}/pacientes`, {
-                headers: this.getHeaders()
-            });
-            const data = await res.json();
-            return data.success ? data.data : [];
-        } catch (error) {
-            console.error('Error fetching pacientes:', error);
-            return [];
-        }
-    },
-
-    /**
      * MEDICINAS
      */
     async fetchMedicinas() {
@@ -104,19 +88,6 @@ const APIHelper = {
             return data.success ? data.data : [];
         } catch (error) {
             console.error('Error fetching appointments:', error);
-            return [];
-        }
-    },
-
-    async fetchPatientAppointments(paciente_id) {
-        try {
-            const res = await fetch(`${this.baseURL}/appointments/patient/${paciente_id}`, {
-                headers: this.getHeaders()
-            });
-            const data = await res.json();
-            return data.success ? data.data : [];
-        } catch (error) {
-            console.error('Error fetching patient appointments:', error);
             return [];
         }
     },
