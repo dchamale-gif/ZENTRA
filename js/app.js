@@ -419,7 +419,7 @@ function getTransactionTypeIcon(type) {
 }
 const legacyMoney = v => 'Q. ' + (Number(v) || 0).toLocaleString('es-GT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const legacyEsc = v => BulkImport.escapeHtml(v);
-const getStatusBadgeClass = status => {
+const legacyStatusClass = status => {
     const s = String(status || '').toLowerCase();
     if (['completada', 'pagada', 'recibida', 'completed'].includes(s)) return 'status-completed';
     if (['anulada', 'cancelada', 'failed'].includes(s)) return 'status-failed';
@@ -530,7 +530,7 @@ async function loadTransactions() {
                 <td>${legacyEsc(t.description)}</td>
                 <td>${Number(t.quantity) || 0}</td>
                 <td style="color:${t.type === 'Compra' ? '#ef4444' : '#22c55e'}">${t.type === 'Compra' ? '-' : '+'}${legacyMoney(t.amount)}</td>
-                <td><span class="status-badge ${getStatusBadgeClass(status)}">${legacyEsc(status)}</span></td>
+                <td><span class="status-badge ${legacyStatusClass(status)}">${legacyEsc(status)}</span></td>
                 <td></td>
             </tr>`;
     }).join('');

@@ -37,7 +37,6 @@ class GastosServiciosModule {
 
     loadDemoData() {
         console.error('❌ ERROR: No hay datos de gastos disponibles en localStorage');
-        showNotification('❌ Error: No se puede acceder a los datos de gastos. Verifica la base de datos.', 'error');
         this.state.conceptos = [];
         this.state.proveedores = [];
         this.state.pagos = [];
