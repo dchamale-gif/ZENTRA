@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Soporte - Zentra</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root { font-family: Arial, sans-serif; color: #1f2937; background: #f3f4f6; }
+        * { box-sizing: border-box; }
+        body { margin: 0; }
+        header { align-items: center; background: #fff; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; padding: 18px 28px; }
+        header h1 { color: #4f46e5; font-size: 22px; margin: 0; }
+        header button, .primary, .secondary, .danger { border: 0; border-radius: 6px; cursor: pointer; font-weight: 600; padding: 10px 14px; }
+        header button { background: #f3f4f6; color: #374151; }
+        main { margin: 0 auto; max-width: 1300px; padding: 28px; }
+        .toolbar, .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 18px; }
+        .toolbar { align-items: end; display: flex; gap: 12px; justify-content: space-between; margin-bottom: 18px; }
+        label { color: #4b5563; display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+        input, select { border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; padding: 10px; }
+        .primary { background: #4f46e5; color: #fff; }
+        .secondary { background: #e0e7ff; color: #3730a3; }
+        .danger { background: #fee2e2; color: #991b1b; }
+        .table-wrap { overflow-x: auto; }
+        table { border-collapse: collapse; min-width: 1000px; width: 100%; }
+        th, td { border-bottom: 1px solid #e5e7eb; padding: 13px 10px; text-align: left; vertical-align: top; }
+        th { color: #6b7280; font-size: 12px; text-transform: uppercase; }
+        .key { color: #111827; font-family: monospace; font-weight: 700; white-space: nowrap; }
+        .status { border-radius: 999px; display: inline-block; font-size: 12px; font-weight: 700; padding: 4px 8px; }
+        .active { background: #dcfce7; color: #166534; }
+        .trial { background: #fef3c7; color: #92400e; }
+        .suspended, .cancelled { background: #fee2e2; color: #991b1b; }
+        .actions { display: flex; flex-wrap: wrap; gap: 6px; }
+        .modal { background: rgba(17, 24, 39, .45); inset: 0; position: fixed; }
+        .modal-content { background: #fff; border-radius: 10px; margin: 7vh auto; max-width: 520px; padding: 24px; width: calc(100% - 32px); }
+        .modal-content h2 { margin-top: 0; }
+        .form-group { margin-bottom: 14px; }
+        .form-group input, .form-group select { width: 100%; }
+        .modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
+        .message { margin-bottom: 14px; }
+        .hidden { display: none; }
+        @media (max-width: 700px) { main { padding: 16px; } .toolbar { align-items: stretch; flex-direction: column; } }
+    </style>
+</head>
+<body>
+    <header>
+        <h1><i class="fas fa-shield-halved"></i> Zentra Soporte</h1>
+        <button id="logoutButton" type="button">Cerrar sesión</button>
+    </header>
+    <main>
+        <div id="message" class="message"></div>
+        <section class="toolbar">
+            <div>
+                <label for="expiringDays">Mostrar próximas a vencer en</label>
+                <select id="expiringDays">
+                    <option value="30">30 días</option>
+                    <option value="60">60 días</option>
+                    <option value="90">90 días</option>
+                    <option value="365">1 año</option>
+                </select>
+            </div>
+            <button id="refreshButton" class="secondary" type="button"><i class="fas fa-rotate"></i> Actualizar</button>
+            <button id="addCompanyButton" class="primary" type="button"><i class="fas fa-plus"></i> Agregar empresa</button>
+        </section>
+        <section class="card table-wrap">
+            <table>
+                <thead><tr><th>Empresa</th><th>Contacto</th><th>Estado</th><th>Licencia</th><th>Vencimiento</th><th>Acciones</th></tr></thead>
+                <tbody id="organizationsBody"><tr><td colspan="6">Cargando empresas...</td></tr></tbody>
+            </table>
+        </section>
+    </main>
+
+    <div id="companyModal" class="modal hidden">
+        <div class="modal-content">
+            <h2>Agregar empresa</h2>
+            <form id="companyForm">
+                <div class="form-group"><label for="companyName">Nombre</label><input id="companyName" required maxlength="150"></div>
+                <div class="form-group"><label for="companySector">Sector comercial</label><input id="companySector" required maxlength="150"></div>
+                <div class="form-group"><label for="companyEmail">Correo</label><input id="companyEmail" type="email" required maxlength="150"></div>
+                <div class="form-group"><label for="companyNit">NIT (opcional)</label><input id="companyNit" maxlength="30"></div>
+                <div class="form-group"><label for="companyPlan">Plan</label><input id="companyPlan" value="Demo" maxlength="50"></div>
+                <div class="form-group"><label for="companyDays">Días de prueba</label><input id="companyDays" type="number" min="1" max="3650" value="30" required></div>
+                <div class="modal-actions"><button class="secondary" id="cancelCompanyButton" type="button">Cancelar</button><button class="primary" type="submit">Guardar empresa</button></div>
+            </form>
+        </div>
+    </div>
+    <script src="js/auth-utils.js"></script>
+    <script src="js/support.js"></script>
+</body>
+</html>

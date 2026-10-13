@@ -1,0 +1,157 @@
+const jwt = require('jsonwebtoken');
+const pool = require('../db/authConnection');
+const { runWithTenant } = require('../db/tenantContext');
+const { getSessionToken } = require('../utils/sessionCookie');
+
+const hasOrganizationAccess = (organization) => {
+  if (organization.subscription_status === 'active') {
+    return !organization.subscription_ends_at ||
+      new Date(organization.subscription_ends_at).getTime() > Date.now();
+  }
+  return organization.subscription_status === 'trial' &&
+    new Date(organization.trial_ends_at).getTime() > Date.now();
+};
+
+// Middleware: Verificar JWT Token
+const authMiddleware = async (req, res, next) => {
+  try {
+    const token = getSessionToken(req);
+
+    if (!token) {
+      console.log('❌ Sin token');
+      return res.status(401).json({ error: 'Token no proporcionado' });
+    }
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    console.log('✅ Token verificado:', decoded);
+    
+    // Obtener usuario de la BD para verificar que siga activo
+    const result = await pool.query(
+      `SELECT u.id, u.email, u.nombre, u.apellido, u.activo, u.organization_id,
+              o.nombre AS organization_name, o.slug AS organization_slug,
+              o.sector_comercial AS organization_sector,
+              o.email AS organization_email,
+              o.license_key AS organization_license_key,
+              o.license_plan AS organization_license_plan,
+              o.license_issued_at AS organization_license_issued_at,
+              o.subscription_status, o.trial_ends_at, o.subscription_ends_at
+       FROM users u
+       JOIN organizations o ON o.id = u.organization_id
+       WHERE u.id = $1`,
+      [decoded.userId]
+    );
+
+    if (!result.rows[0]) {
+      console.log('❌ Usuario no encontrado:', decoded.userId);
+      return res.status(401).json({ error: 'Usuario no encontrado' });
+    }
+    
+    if (!result.rows[0].activo) {
+      console.log('❌ Usuario inactivo:', decoded.userId);
+      return res.status(401).json({ error: 'Usuario inactivo' });
+    }
+
+    const user = result.rows[0];
+    if (!hasOrganizationAccess(user)) {
+      return res.status(403).json({
+        error: user.subscription_status === 'trial'
+          ? 'El período de prueba de tu empresa ha finalizado'
+          : 'El acceso de tu empresa está suspendido',
+        code: user.subscription_status === 'trial' ? 'TRIAL_EXPIRED' : 'ORGANIZATION_BLOCKED',
+        organization: {
+          id: user.organization_id,
+          name: user.organization_name,
+          status: user.subscription_status,
+          trialEndsAt: user.trial_ends_at
+        }
+      });
+    }
+
+    console.log('✅ Usuario autenticado:', user.email);
+    req.user = user;
+    req.organization = {
+      id: user.organization_id,
+      name: user.organization_name,
+      slug: user.organization_slug,
+      sector: user.organization_sector,
+      email: user.organization_email,
+      licenseKey: user.organization_license_key,
+      plan: user.organization_license_plan,
+      subscriptionEndsAt: user.subscription_ends_at,
+      status: user.subscription_status,
+      trialEndsAt: user.trial_ends_at
+    };
+    runWithTenant(user.organization_id, next);
+  } catch (error) {
+    console.error('❌ Error en authMiddleware:', error.message);
+    if (error.name === 'TokenExpiredError') {
+      return res.status(401).json({ error: 'Token expirado' });
+    }
+    return res.status(401).json({ error: 'Token inválido' });
+  }
+};
+
+// Middleware: Verificar Rol y Permisos
+const rolePermissionMiddleware = (requiredPermissions = []) => {
+  return async (req, res, next) => {
+    try {
+      const userId = req.user.id;
+
+      // Obtener roles del usuario
+      const rolesResult = await pool.query(
+        `SELECT r.id, r.nombre FROM roles r
+         JOIN user_roles ur ON r.id = ur.role_id
+         WHERE ur.user_id = $1`,
+        [userId]
+      );
+
+      if (rolesResult.rows.length === 0) {
+        return res.status(403).json({ error: 'Usuario sin roles asignados' });
+      }
+
+      const userRoles = rolesResult.rows.map(r => r.nombre);
+
+      // Si no hay permisos requeridos, solo verificar que tenga rol
+      if (requiredPermissions.length === 0) {
+        req.userRoles = userRoles;
+        return next();
+      }
+
+      // Obtener permisos del usuario
+      const permissionsResult = await pool.query(
+        `SELECT p.nombre FROM permissions p
+         JOIN role_permissions rp ON p.id = rp.permission_id
+         JOIN user_roles ur ON rp.role_id = ur.role_id
+         WHERE ur.user_id = $1`,
+        [userId]
+      );
+
+      const userPermissions = permissionsResult.rows.map(p => p.nombre);
+
+      // Verificar si tiene al menos uno de los permisos requeridos
+      const hasPermission = requiredPermissions.some(perm => 
+        userPermissions.includes(perm)
+      );
+
+      if (!hasPermission) {
+        return res.status(403).json({ 
+          error: 'Permiso denegado',
+          required: requiredPermissions,
+          userPermissions: userPermissions
+        });
+      }
+
+      req.userRoles = userRoles;
+      req.userPermissions = userPermissions;
+      next();
+    } catch (error) {
+      console.error('Error en rolePermissionMiddleware:', error);
+      res.status(500).json({ error: 'Error verificando permisos' });
+    }
+  };
+};
+
+module.exports = {
+  authMiddleware,
+  rolePermissionMiddleware
+};

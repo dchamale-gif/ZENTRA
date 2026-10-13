@@ -1,0 +1,167 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: zentra
+      POSTGRES_USER: zentra_owner
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      ZENTRA_TENANT_PASSWORD_FILE: /run/secrets/tenant_db_password
+      ZENTRA_AUTH_PASSWORD_FILE: /run/secrets/auth_db_password
+      ZENTRA_PLATFORM_PASSWORD_FILE: /run/secrets/platform_db_password
+    secrets:
+      - postgres_password
+      - tenant_db_password
+      - auth_db_password
+      - platform_db_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./database/multitenancy-trial-migration.sql:/docker-entrypoint-initdb.d/02-multitenancy.sql:ro
+      - ./database/estado-de-cuenta-migration.sql:/docker-entrypoint-initdb.d/03-estado-cuenta.sql:ro
+      - ./database/verify-tenant-isolation.sql:/docker-entrypoint-initdb.d/04-verify.sql:ro
+      - ./database/docker-init-roles.sh:/docker-entrypoint-initdb.d/05-roles.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U zentra_owner -d zentra"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [backend]
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3011
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: zentra
+      DB_USER: zentra_tenant
+      DB_PASSWORD_FILE: /run/secrets/tenant_db_password
+      AUTH_DB_USER: zentra_auth
+      AUTH_DB_PASSWORD_FILE: /run/secrets/auth_db_password
+      PLATFORM_DB_USER: zentra_platform
+      PLATFORM_DB_PASSWORD_FILE: /run/secrets/platform_db_password
+      JWT_SECRET_FILE: /run/secrets/jwt_secret
+      JWT_EXPIRATION: ${JWT_EXPIRATION:-8h}
+      CORS_ORIGIN: https://${DOMAIN}
+      DB_SSL: disable
+    secrets:
+      - tenant_db_password
+      - auth_db_password
+      - platform_db_password
+      - jwt_secret
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3011/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m,noexec,nosuid,nodev
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    networks: [backend]
+
+  migrate:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: "no"
+    command: ["node", "run-multitenancy-migration.js"]
+    environment:
+      NODE_ENV: production
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: zentra
+      DB_USER: zentra_owner
+      DB_PASSWORD_FILE: /run/secrets/postgres_password
+      DB_SSL: disable
+    secrets:
+      - postgres_password
+    depends_on:
+      db:
+        condition: service_healthy
+    networks: [backend]
+
+  bootstrap-admin:
+    profiles: [setup]
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: "no"
+    command: ["node", "create-platform-admin.js"]
+    environment:
+      NODE_ENV: production
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: zentra
+      PLATFORM_DB_USER: zentra_platform
+      PLATFORM_DB_PASSWORD_FILE: /run/secrets/platform_db_password
+      PLATFORM_ADMIN_EMAIL: ${PLATFORM_ADMIN_EMAIL}
+      PLATFORM_ADMIN_NAME: ${PLATFORM_ADMIN_NAME:-Soporte Zentra}
+      PLATFORM_ADMIN_PASSWORD_FILE: /run/secrets/platform_admin_password
+      DB_SSL: disable
+    secrets:
+      - platform_db_password
+      - platform_admin_password
+    depends_on:
+      db:
+        condition: service_healthy
+    networks: [backend]
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN}
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - caddy_data:/data
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m,noexec,nosuid,nodev
+      - /config:size=16m,nosuid,nodev
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    cap_add:
+      - NET_BIND_SERVICE
+    networks: [frontend, backend]
+
+volumes:
+  postgres_data:
+  caddy_data:
+
+networks:
+  frontend:
+  backend:
+    internal: true
+
+secrets:
+  postgres_password:
+    file: ./secrets/postgres_password.txt
+  tenant_db_password:
+    file: ./secrets/tenant_db_password.txt
+  auth_db_password:
+    file: ./secrets/auth_db_password.txt
+  platform_db_password:
+    file: ./secrets/platform_db_password.txt
+  jwt_secret:
+    file: ./secrets/jwt_secret.txt
+  platform_admin_password:
+    file: ./secrets/platform_admin_password.txt

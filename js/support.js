@@ -1,0 +1,161 @@
+const platformApi = '/api/platform';
+
+document.addEventListener('DOMContentLoaded', () => {
+    const user = authManager.getUser();
+    if (!authManager.isAuthenticated() || authManager.isTokenExpired() || !user?.platformAdmin) {
+        window.location.href = '/login.html';
+        return;
+    }
+
+    document.getElementById('refreshButton').addEventListener('click', loadOrganizations);
+    document.getElementById('expiringDays').addEventListener('change', loadOrganizations);
+    document.getElementById('addCompanyButton').addEventListener('click', () => {
+        document.getElementById('companyModal').classList.remove('hidden');
+    });
+    document.getElementById('cancelCompanyButton').addEventListener('click', closeCompanyModal);
+    document.getElementById('companyForm').addEventListener('submit', createCompany);
+    document.getElementById('logoutButton').addEventListener('click', async () => {
+        await authManager.logout();
+        window.location.href = '/login.html';
+    });
+    loadOrganizations();
+});
+
+const showMessage = (message, type = 'success') => {
+    const container = document.getElementById('message');
+    container.textContent = message;
+    container.style.color = type === 'error' ? '#b91c1c' : '#166534';
+};
+
+const apiRequest = async (url, options = {}) => {
+    const response = await authManager.fetchWithAuth(`${platformApi}${url}`, {
+        ...options,
+        headers: { 'Content-Type': 'application/json', ...(options.headers || {}) }
+    });
+    if (!response) return null;
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Error en el panel');
+    return data;
+};
+
+const formatDate = (value) => value ? new Date(value).toLocaleDateString('es-GT') : 'Sin fecha';
+
+async function loadOrganizations() {
+    try {
+        const days = document.getElementById('expiringDays').value;
+        const data = await apiRequest(`/organizations?expiringIn=${days}`);
+        if (!data) return;
+        const body = document.getElementById('organizationsBody');
+        if (!data.organizations.length) {
+            body.innerHTML = '<tr><td colspan="6">No hay empresas registradas.</td></tr>';
+            return;
+        }
+        body.innerHTML = data.organizations.map((organization) => `
+            <tr>
+                <td><strong>${escapeHtml(organization.name)}</strong><br><small>${escapeHtml(organization.sector || 'Sin sector')}</small></td>
+                <td>${escapeHtml(organization.email || 'Sin correo')}<br><small>${escapeHtml(organization.nit || 'Sin NIT')}</small></td>
+                <td><span class="status ${organization.status}">${escapeHtml(organization.status)}</span><br><small>${organization.daysRemaining} días</small></td>
+                <td class="key">${escapeHtml(organization.licenseKey || 'Sin licencia')}</td>
+                <td>${formatDate(organization.status === 'trial' ? organization.trialEndsAt : organization.subscriptionEndsAt)}</td>
+                <td class="actions">
+                    <button class="primary" type="button" data-action="activate" data-id="${organization.id}">Habilitar</button>
+                    <button class="secondary" type="button" data-action="generate" data-id="${organization.id}">Generar clave</button>
+                    <button class="danger" type="button" data-action="suspend" data-id="${organization.id}">Suspender</button>
+                </td>
+            </tr>
+        `).join('');
+        body.querySelectorAll('button[data-action]').forEach(button => {
+            button.addEventListener('click', () => updateLicense(button.dataset.id, button.dataset.action));
+        });
+    } catch (error) {
+        showMessage(error.message, 'error');
+    }
+}
+
+async function updateLicense(id, action) {
+    if (action === 'generate') {
+        const confirmGen = window.confirm('¿Deseas generar una nueva clave de licencia XXXX-XXXX-XXXX para esta empresa?');
+        if (!confirmGen) return;
+        const plan = window.prompt('Plan de la licencia:', 'Pro') || 'Pro';
+        const duration = Number(window.prompt('Duración en días:', '365') || 365);
+        try {
+            const data = await apiRequest(`/organizations/${id}/license`, {
+                method: 'POST',
+                body: JSON.stringify({
+                    status: 'active',
+                    plan,
+                    durationDays: duration,
+                    generateNewKey: true
+                })
+            });
+            showMessage(data.message);
+            await loadOrganizations();
+        } catch (error) {
+            showMessage(error.message, 'error');
+        }
+        return;
+    }
+
+    const plan = action === 'activate' ? (window.prompt('Plan de la licencia:', 'Pro') || 'Pro') : 'Suspendida';
+    if (action === 'activate' && !plan.trim()) return;
+    const duration = action === 'activate'
+        ? Number(window.prompt('Duración en días:', '365') || 365)
+        : 1;
+    try {
+        const data = await apiRequest(`/organizations/${id}/license`, {
+            method: 'POST',
+            body: JSON.stringify({
+                status: action === 'activate' ? 'active' : 'suspended',
+                plan,
+                durationDays: duration,
+                generateNewKey: false
+            })
+        });
+        showMessage(data.message);
+        await loadOrganizations();
+    } catch (error) {
+        showMessage(error.message, 'error');
+    }
+}
+                durationDays: duration
+            })
+        });
+        showMessage(data.message);
+        await loadOrganizations();
+    } catch (error) {
+        showMessage(error.message, 'error');
+    }
+}
+
+async function createCompany(event) {
+    event.preventDefault();
+    try {
+        const data = await apiRequest('/organizations', {
+            method: 'POST',
+            body: JSON.stringify({
+                name: document.getElementById('companyName').value.trim(),
+                sector: document.getElementById('companySector').value.trim(),
+                email: document.getElementById('companyEmail').value.trim(),
+                nit: document.getElementById('companyNit').value.trim(),
+                plan: document.getElementById('companyPlan').value.trim(),
+                durationDays: Number(document.getElementById('companyDays').value)
+            })
+        });
+        closeCompanyModal();
+        document.getElementById('companyForm').reset();
+        showMessage(`${data.message}. Licencia: ${data.organization.licenseKey}`);
+        await loadOrganizations();
+    } catch (error) {
+        showMessage(error.message, 'error');
+    }
+}
+
+function closeCompanyModal() {
+    document.getElementById('companyModal').classList.add('hidden');
+}
+
+function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, char => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'
+    }[char]));
+}

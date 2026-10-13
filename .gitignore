@@ -1,0 +1,62 @@
+# Dependency directories
+node_modules/
+npm-debug.log
+yarn-error.log
+package-lock.json
+yarn.lock
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+secrets/
+certs/
+!.env.docker.example
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# OS
+Thumbs.db
+desktop.ini
+
+# Build
+dist/
+build/
+/ediciones/
+*.min.js
+*.min.css
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+*.log
+
+# Backups
+*.bak
+*.backup
+*.tmp
+
+# Cache
+.cache/
+*.cache
+
+# Testing
+coverage/
+.nyc_output/
+
+# Config files (keep examples)
+!.env.example
+
+# Keep the project files
+!index.html
+!css/
+!js/
+!data/
+!*.md

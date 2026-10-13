@@ -1,0 +1,13 @@
+const express = require('express');
+const platformController = require('../controllers/platformController');
+const { platformAuthMiddleware } = require('../middleware/platformAuth');
+
+const router = express.Router();
+
+router.use(platformAuthMiddleware);
+router.post('/organizations', platformController.createOrganization);
+router.get('/organizations', platformController.listOrganizations);
+router.get('/organizations/:id', platformController.getOrganization);
+router.post('/organizations/:id/license', platformController.updateLicense);
+
+module.exports = router;
