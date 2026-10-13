@@ -45,7 +45,7 @@ const ComprasModule = {
             const [comprasData, proveedoresData, medicinasData, articulosData] = await Promise.all([
                 this.apiRequest('/api/compras'),
                 this.apiRequest('/api/proveedores'),
-                this.apiRequest('/api/medicinas'),
+                this.apiRequest('/api/medicinas').catch(() => ({ medicinas: [] })),
                 this.apiRequest('/api/codigos-articulos')
             ]);
             this.state.compras = comprasData.compras || [];
