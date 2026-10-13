@@ -18,6 +18,7 @@ const ventasRoutes = require('./src/routes/ventas');
 const cajaRoutes = require('./src/routes/caja');
 const clientesRoutes = require('./src/routes/clientes');
 const notificationsRoutes = require('./src/routes/notifications');
+const dashboardRoutes = require('./src/routes/dashboard');
 
 // Importar middleware
 const { auditMiddleware } = require('./src/middleware/audit');
@@ -127,6 +128,7 @@ app.use('/api/clientes', clientesRoutes);
 
 // Notificaciones
 app.use('/api/notifications', notificationsRoutes);
+app.use('/api/dashboard', dashboardRoutes);
 
 
 // Lugar de Trabajo

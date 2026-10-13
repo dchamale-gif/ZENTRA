@@ -204,7 +204,7 @@ function navigateToPage(pageId) {
     // Re-initialize charts if on dashboard or financial dashboard
     if (pageId === 'dashboard') {
         setTimeout(() => {
-            initializeDashboardCharts();
+            setupDashboard();
         }, 100);
     }
     
@@ -296,9 +296,43 @@ function setupSubtabs() {
 // DASHBOARD
 // ============================================
 
-function setupDashboard() {
+let dashboardData = { salesByDay: [], inventoryByCategory: [], recent: [] };
+
+async function setupDashboard() {
+    try {
+        const response = await authManager.fetchWithAuth('/api/dashboard');
+        const result = await response.json();
+        if (result.success) {
+            dashboardData = result.data;
+            renderDashboardKpis(result.data.kpis);
+        }
+    } catch (error) {
+        console.error('Error cargando dashboard:', error);
+    }
     populateRecentTransactions();
     initializeDashboardCharts();
+}
+
+function renderDashboardKpis(k) {
+    const money = v => 'Q. ' + (Number(v) || 0).toLocaleString('es-GT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const set = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
+    const change = (id, value, goodWhenUp, suffix) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        if (value === null) { el.innerHTML = ''; return; }
+        const up = value >= 0;
+        const good = goodWhenUp ? up : !up;
+        el.className = 'kpi-change ' + (good ? 'positive' : 'negative');
+        el.innerHTML = `<i class="fas fa-arrow-${up ? 'up' : 'down'}"></i> ${Math.abs(value).toFixed(1)}${suffix}`;
+    };
+    set('kpiIngresos', money(k.ingresos));
+    set('kpiGastos', money(k.gastos));
+    set('kpiInventario', money(k.inventario));
+    set('kpiMargen', (Number(k.margen) || 0).toFixed(1) + '%');
+    change('kpiIngresosChange', k.ingresosChange, true, '% vs mes anterior');
+    change('kpiGastosChange', k.gastosChange, false, '% vs mes anterior');
+    change('kpiInventarioChange', null);
+    change('kpiMargenChange', k.margenChange, true, ' pts vs mes anterior');
 }
 
 function initializeDashboardCharts() {
@@ -308,13 +342,13 @@ function initializeDashboardCharts() {
     // Sales Chart
     const salesCtx = document.getElementById('salesChart');
     if (salesCtx) {
-        const salesData = getSalesChartData();
+        const salesData = dashboardData.salesByDay;
         charts.sales = new Chart(salesCtx, {
             type: 'line',
             data: {
                 labels: salesData.map(d => d.day),
                 datasets: [{
-                    label: 'Ventas ($)',
+                    label: 'Ventas (Q)',
                     data: salesData.map(d => d.sales),
                     borderColor: '#1e3a8a',
                     backgroundColor: 'rgba(30, 58, 138, 0.1)',
@@ -355,7 +389,7 @@ function initializeDashboardCharts() {
     // Inventory Distribution Chart
     const inventoryCtx = document.getElementById('inventoryChart');
     if (inventoryCtx) {
-        const inventoryData = getInventoryChartData();
+        const inventoryData = dashboardData.inventoryByCategory;
         charts.inventory = new Chart(inventoryCtx, {
             type: 'doughnut',
             data: {
@@ -390,7 +424,12 @@ function populateRecentTransactions() {
     if (!tbody) return;
 
     tbody.innerHTML = '';
-    const recentTransactions = getTransactionsData().slice(0, 5);
+    const recentTransactions = (dashboardData.recent || []).map(t => ({ ...t, date: t.fecha, status: String(t.status || '').replace(/^./, c => c.toUpperCase()) }));
+
+    if (recentTransactions.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 20px;">Sin transacciones registradas</td></tr>';
+        return;
+    }
 
     recentTransactions.forEach(transaction => {
         const row = document.createElement('tr');
