@@ -158,7 +158,7 @@ const VentasModule = {
             return;
         }
         const matches = this.state.receptores.filter(receptor =>
-            this.normalizeSearch(`${receptor.nombre} ${receptor.nit || ''} ${receptor.telefono || ''}`).includes(normalized)
+            this.normalizeSearch(`${receptor.nombre} ${receptor.nit || ''} ${receptor.dpi || ''} ${receptor.telefono || ''}`).includes(normalized)
         ).slice(0, 8);
         results.innerHTML = matches.length ? matches.map(receptor => `
             <button class="concept-search-result" type="button" data-id="${this.escapeHtml(receptor.id)}" data-type="${receptor.tipo}"
@@ -167,6 +167,36 @@ const VentasModule = {
                 <small>Cliente${receptor.nit ? ` · ${this.escapeHtml(receptor.nit)}` : ''}</small>
             </button>`).join('') : '<div class="concept-search-empty">Sin coincidencias</div>';
         results.hidden = false;
+    },
+
+    toggleQuickClient(show) {
+        const box = document.getElementById('quickClientBox');
+        box.hidden = !show;
+        if (!show) return;
+        document.getElementById('quickClientName').value = document.getElementById('saleRecipientSearch').value.trim();
+        document.getElementById('quickClientNit').value = 'CF';
+        document.getElementById('quickClientDpi').value = '';
+        document.getElementById('quickClientName').focus();
+    },
+
+    async saveQuickClient() {
+        const nombre = document.getElementById('quickClientName').value.trim();
+        const nit = document.getElementById('quickClientNit').value.trim() || 'CF';
+        const dpi = document.getElementById('quickClientDpi').value.trim();
+        if (!nombre) return this.notify('El nombre del cliente es requerido', 'error');
+        try {
+            const result = await this.apiRequest('/api/ventas/receptores', {
+                method: 'POST',
+                body: JSON.stringify({ nombre, nit, dpi, activo: true })
+            });
+            const cliente = result.cliente;
+            this.state.receptores.push({ id: cliente.id, nombre: cliente.nombre, nit: cliente.nit, dpi: cliente.dpi, telefono: cliente.telefono, tipo: 'cliente' });
+            this.selectRecipient(cliente.id, 'cliente');
+            this.toggleQuickClient(false);
+            this.notify('Cliente creado y seleccionado', 'success');
+        } catch (error) {
+            this.notify(error.message, 'error');
+        }
     },
 
     selectRecipient(id, type) {

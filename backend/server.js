@@ -9,6 +9,7 @@ const { rateLimit } = require('express-rate-limit');
 const authRoutes = require('./src/routes/auth');
 const platformRoutes = require('./src/routes/platform');
 const proveedoresRoutes = require('./src/routes/proveedores');
+const clasificacionesRoutes = require('./src/routes/clasificaciones');
 const codigosArticulosRoutes = require('./src/routes/codigos-articulos');
 const reportsRoutes = require('./src/routes/reports');
 const expensesRoutes = require('./src/routes/expenses');
@@ -99,6 +100,7 @@ app.use('/api/platform', platformRoutes);
 
 // Códigos/Artículos
 app.use('/api/codigos-articulos', codigosArticulosRoutes);
+app.use('/api/clasificaciones', clasificacionesRoutes);
 
 // Proveedores
 app.use('/api/proveedores', proveedoresRoutes);

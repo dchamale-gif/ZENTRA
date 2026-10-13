@@ -158,7 +158,7 @@ const getVentas = async (req, res) => {
 const getReceptores = async (req, res) => {
   try {
     const result = await pool.query(
-      'SELECT id, nombre, nit, telefono FROM clientes WHERE activo = true ORDER BY nombre'
+      'SELECT id, nombre, nit, dpi, telefono FROM clientes WHERE activo = true ORDER BY nombre'
     );
     const receptores = result.rows.map(row => ({ ...row, tipo: 'cliente' }));
     res.status(200).json({ success: true, total: receptores.length, receptores });

@@ -31,6 +31,13 @@ CREATE POLICY tenant_isolation ON pagos_factura FOR ALL
     USING (organization_id = app_current_organization_id())
     WITH CHECK (organization_id = app_current_organization_id());
 
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'zentra_tenant') THEN
+        GRANT SELECT, INSERT, UPDATE, DELETE ON pagos_factura TO zentra_tenant;
+    END IF;
+END $$;
+
 -- 2. Conservar el vínculo histórico paciente -> cliente cuando exista
 DO $$
 BEGIN

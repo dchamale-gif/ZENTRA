@@ -163,7 +163,8 @@ const ClientesModule = createDirectoryModule({
     plural: 'clientes',
     fields: [
         { key: 'nombre', label: 'Nombre', required: true, example: 'Juan Pérez' },
-        { key: 'nit', label: 'NIT', example: '1234567-8' },
+        { key: 'nit', label: 'NIT (o CF)', example: 'CF' },
+        { key: 'dpi', label: 'DPI', column: false, example: '2456789010101' },
         { key: 'telefono', label: 'Teléfono', example: '5555-1234' },
         { key: 'email', label: 'Email', type: 'email', example: 'juan@correo.com' },
         { key: 'razon_social', label: 'Razón social', column: false, example: 'Comercial Pérez, S.A.' },

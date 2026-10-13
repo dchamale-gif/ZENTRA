@@ -172,6 +172,9 @@ function navigateToPage(pageId) {
     if (pageId === 'proveedores') {
         ProveedoresModule.load();
     }
+    if (pageId === 'settings') {
+        ClasificacionesConfig.load();
+    }
     if (pageId === 'inventory') {
         loadInventory();
     }

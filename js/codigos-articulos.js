@@ -10,6 +10,7 @@ const CodigosArticulosModule = {
         secciones: [],
         familias: [],
         subfamilias: [],
+        catalogo: [],
         searchTerm: '',
         filterSeccion: 'todos',
         filterFamilia: 'todos',
@@ -187,6 +188,7 @@ const CodigosArticulosModule = {
             }
 
             const data = await response.json();
+            await this.loadCatalogo();
             this.state.articulos = (data.articulos || []).map(articulo => this.normalizeArticulo(articulo));
             this.buildClasificaciones();
             this.renderSecciones();
@@ -202,35 +204,36 @@ const CodigosArticulosModule = {
         }
     },
 
-    // Secciones por defecto
+    // Catálogo configurado en Configuración (el nombre se guarda en el artículo)
     getDefaultSecciones() {
-        return [
-            { id: 'SEC-001', nombre: 'Medicamentos', descripcion: 'Fármacos y medicinas' },
-            { id: 'SEC-002', nombre: 'Instrumental', descripcion: 'Equipos e instrumental médico' },
-            { id: 'SEC-003', nombre: 'Consumibles', descripcion: 'Suministros y consumibles' },
-            { id: 'SEC-004', nombre: 'Servicios', descripcion: 'Servicios profesionales' }
-        ];
+        return this.state.catalogo
+            .filter(c => c.nivel === 'seccion')
+            .map(c => ({ id: c.nombre, nombre: c.nombre }));
     },
 
-    // Familias por defecto
     getDefaultFamilias() {
-        return [
-            { id: 'FAM-001', seccionId: 'SEC-001', nombre: 'Analgésicos', descripcion: 'Medicamentos para dolor' },
-            { id: 'FAM-002', seccionId: 'SEC-001', nombre: 'Antibióticos', descripcion: 'Medicamentos antibacterianos' },
-            { id: 'FAM-003', seccionId: 'SEC-001', nombre: 'Antiinflamatorios', descripcion: 'Medicamentos antiinflamatorios' },
-            { id: 'FAM-004', seccionId: 'SEC-002', nombre: 'Equipos Diagnóstico', descripcion: 'Equipos para diagnóstico' },
-            { id: 'FAM-005', seccionId: 'SEC-003', nombre: 'Insumos Hospital', descripcion: 'Insumos hospitalarios' }
-        ];
+        const byId = new Map(this.state.catalogo.map(c => [c.id, c]));
+        return this.state.catalogo
+            .filter(c => c.nivel === 'familia' && byId.has(c.padre_id))
+            .map(c => ({ id: c.nombre, seccionId: byId.get(c.padre_id).nombre, nombre: c.nombre }));
     },
 
-    // Subfamilias por defecto
     getDefaultSubfamilias() {
-        return [
-            { id: 'SUBFAM-001', familiaId: 'FAM-001', nombre: 'Acetaminofén', descripcion: 'Paracetamol' },
-            { id: 'SUBFAM-002', familiaId: 'FAM-001', nombre: 'Ibuprofeno', descripcion: 'Anti-inflamatorio' },
-            { id: 'SUBFAM-003', familiaId: 'FAM-002', nombre: 'Penicilinas', descripcion: 'Beta-lactámicos' },
-            { id: 'SUBFAM-004', familiaId: 'FAM-002', nombre: 'Cefalosporinas', descripcion: 'Antibióticos' }
-        ];
+        const byId = new Map(this.state.catalogo.map(c => [c.id, c]));
+        return this.state.catalogo
+            .filter(c => c.nivel === 'subfamilia' && byId.has(c.padre_id))
+            .map(c => ({ id: c.nombre, familiaId: byId.get(c.padre_id).nombre, nombre: c.nombre }));
+    },
+
+    async loadCatalogo() {
+        try {
+            const response = await authManager.fetchWithAuth('/api/clasificaciones');
+            const data = await response.json();
+            this.state.catalogo = response.ok ? (data.clasificaciones || []) : [];
+        } catch (error) {
+            console.warn('No se pudo cargar el catálogo de clasificaciones:', error);
+            this.state.catalogo = [];
+        }
     },
 
     // Renderizar secciones en filtro
