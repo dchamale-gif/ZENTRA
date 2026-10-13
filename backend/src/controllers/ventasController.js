@@ -13,7 +13,7 @@ const VENTA_SELECT = `
                'tipo', CASE WHEN vi.medicina_id IS NOT NULL THEN 'medicina'
                             WHEN vi.articulo_id IS NOT NULL THEN 'articulo' ELSE 'general' END,
                'concepto_id', COALESCE(vi.medicina_id, vi.articulo_id),
-               'concepto_nombre', COALESCE(m.nombre, a.nombre_articulo, vi.descripcion),
+               'concepto_nombre', COALESCE(m.nombre, a.nombre_articulo, 'Concepto general'),
                'cantidad', vi.cantidad,
                'precio_unitario', vi.precio_unitario,
                'subtotal', vi.subtotal
