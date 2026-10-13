@@ -134,7 +134,7 @@ const ReportsModule = {
         if (typeof ComprasModule !== 'undefined' && ComprasModule.state && ComprasModule.state.compras) {
             compras = ComprasModule.state.compras;
         } else {
-            // Datos de demo si el módulo no está disponible
+            // Sin datos si el módulo no está cargado
             compras = this.getDemoCompras();
         }
 
@@ -167,7 +167,7 @@ const ReportsModule = {
 
     // Obtener datos de servicios
     getServiciosData() {
-        // Datos de demo para servicios (citas, consultas, etc.)
+        // No hay módulo de servicios con datos reales
         return this.getDemoServicios();
     },
 
@@ -747,52 +747,24 @@ const ReportsModule = {
         }).format(valor);
     },
 
-    // Datos de demo - Compras
+    // Sin datos de ejemplo - Compras
     getDemoCompras() {
-        const today = new Date();
-        return [
-            { id: 'COM-001', fecha: new Date(today.getTime()), descripcion: 'Compra medicinas', montoTotal: 32000, proveedor: 'Farmacéutica A' },
-            { id: 'COM-002', fecha: new Date(today.getTime() - 1*24*60*60*1000), descripcion: 'Compra equipos médicos', montoTotal: 64000, proveedor: 'Distribuidor B' },
-            { id: 'COM-003', fecha: new Date(today.getTime() - 2*24*60*60*1000), descripcion: 'Compra insumos', montoTotal: 24960, proveedor: 'Proveedor C' },
-            { id: 'COM-004', fecha: new Date(today.getTime() - 3*24*60*60*1000), descripcion: 'Compra medicinas (lote 2)', montoTotal: 48000, proveedor: 'Farmacéutica A' },
-            { id: 'COM-005', fecha: new Date(today.getTime() - 4*24*60*60*1000), descripcion: 'Compra suministros generales', montoTotal: 15600, proveedor: 'Distribuidor B' }
-        ];
+        return [];
     },
 
-    // Datos de demo - Ventas
+    // Sin datos de ejemplo - Ventas
     getDemoVentas() {
-        const today = new Date();
-        return [
-            { id: 'VEN-001', fecha: new Date(today.getTime()), descripcion: 'Venta medicinas', montoTotal: 15360, cliente: 'Cliente A' },
-            { id: 'VEN-002', fecha: new Date(today.getTime() - 1*24*60*60*1000), descripcion: 'Venta servicios', montoTotal: 10240, cliente: 'Cliente B' },
-            { id: 'VEN-003', fecha: new Date(today.getTime() - 2*24*60*60*1000), descripcion: 'Venta equipos', montoTotal: 23400, cliente: 'Cliente C' },
-            { id: 'VEN-004', fecha: new Date(today.getTime() - 3*24*60*60*1000), descripcion: 'Venta medicinas (minorista)', montoTotal: 7800, cliente: 'Farmacia X' },
-            { id: 'VEN-005', fecha: new Date(today.getTime() - 4*24*60*60*1000), descripcion: 'Venta consultorías', montoTotal: 19500, cliente: 'Institución Y' }
-        ];
+        return [];
     },
 
-    // Datos de demo - Medicinas
+    // Sin datos de ejemplo - Medicinas
     getDemoMedicinas() {
-        const today = new Date();
-        return [
-            { nombre: 'Paracetamol 500mg', costoPorUnidad: 6.40, cantidadDisponible: 100, fechaCompra: new Date(today.getTime()) },
-            { nombre: 'Ibuprofeno 400mg', costoPorUnidad: 10.24, cantidadDisponible: 50, fechaCompra: new Date(today.getTime()) },
-            { nombre: 'Amoxicilina 500mg', costoPorUnidad: 15.60, cantidadDisponible: 75, fechaCompra: new Date(today.getTime() - 1*24*60*60*1000) },
-            { nombre: 'Omeprazol 20mg', costoPorUnidad: 12.48, cantidadDisponible: 60, fechaCompra: new Date(today.getTime() - 2*24*60*60*1000) },
-            { nombre: 'Lisinopril 10mg', costoPorUnidad: 18.72, cantidadDisponible: 40, fechaCompra: new Date(today.getTime() - 3*24*60*60*1000) },
-            { nombre: 'Metformina 850mg', costoPorUnidad: 7.80, cantidadDisponible: 120, fechaCompra: new Date(today.getTime() - 4*24*60*60*1000) }
-        ];
+        return [];
     },
 
-    // Datos de demo - Servicios
+    // Sin datos de ejemplo - Servicios
     getDemoServicios() {
-        const today = new Date();
-        return [
-            { id: 'SRV-001', fecha: new Date(today.getTime()), descripcion: 'Consulta médica', monto: 1920 },
-            { id: 'SRV-002', fecha: new Date(today.getTime() - 1*24*60*60*1000), descripcion: 'Procedimiento', monto: 6400 },
-            { id: 'SRV-003', fecha: new Date(today.getTime() - 2*24*60*60*1000), descripcion: 'Ultrasonido', monto: 3900 },
-            { id: 'SRV-004', fecha: new Date(today.getTime() - 3*24*60*60*1000), descripcion: 'Laboratorio', monto: 1560 }
-        ];
+        return [];
     }
 };
 

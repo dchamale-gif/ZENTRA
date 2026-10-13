@@ -43,7 +43,7 @@ class ReceivablesController {
             query += ` GROUP BY v.id, v.numero_venta, v.cliente_id, cl.nombre, cl.telefono, v.total, v.fecha, v.estado
                        HAVING v.total > COALESCE(SUM(pa.monto), 0)
                        ORDER BY v.fecha DESC
-                       LIMIT 100`;
+                       LIMIT 500`;
 
             const result = await db.query(query, params);
             
@@ -118,6 +118,68 @@ class ReceivablesController {
     }
 
     /**
+     * Estado de cuenta de un cliente: cargos (ventas) y abonos (pagos) con saldo acumulado
+     */
+    async getClientStatement(req, res) {
+        try {
+            const { cliente_id } = req.params;
+            const { from, to } = req.query;
+
+            const cliente = await db.query(
+                'SELECT id, nombre, nit, telefono, email FROM clientes WHERE id = $1',
+                [cliente_id]
+            );
+            if (cliente.rows.length === 0) {
+                return res.status(404).json({ success: false, message: 'Cliente no encontrado' });
+            }
+
+            const movimientos = await db.query(
+                `SELECT * FROM (
+                    SELECT v.fecha, v.created_at, 'Cargo' AS tipo,
+                           'Factura ' || v.numero_venta AS descripcion, v.total::float AS monto
+                    FROM ventas v
+                    WHERE v.cliente_id = $1 AND v.estado <> 'anulada'
+                    UNION ALL
+                    SELECT p.fecha, p.created_at, 'Abono',
+                           'Pago factura ' || v.numero_venta, p.monto::float
+                    FROM pagos_factura p
+                    JOIN ventas v ON v.id = p.venta_id
+                    WHERE v.cliente_id = $1 AND v.estado <> 'anulada'
+                 ) m
+                 ORDER BY fecha, created_at`,
+                [cliente_id]
+            );
+
+            let saldo = 0;
+            let saldoInicial = 0;
+            const lines = [];
+            for (const m of movimientos.rows) {
+                const fecha = new Date(m.fecha).toISOString().slice(0, 10);
+                saldo += m.tipo === 'Cargo' ? m.monto : -m.monto;
+                if (from && fecha < from) {
+                    saldoInicial = saldo;
+                    continue;
+                }
+                if (to && fecha > to) continue;
+                lines.push({ fecha, descripcion: m.descripcion, tipo: m.tipo, monto: m.monto, saldo });
+            }
+
+            res.json({
+                success: true,
+                data: {
+                    cliente: cliente.rows[0],
+                    saldoInicial,
+                    saldoFinal: lines.length ? lines[lines.length - 1].saldo : saldoInicial,
+                    movimientos: lines
+                }
+            });
+        } catch (error) {
+            console.error('Error en getClientStatement:', error);
+            res.status(500).json({ success: false, message: 'Error al obtener estado de cuenta' });
+        }
+    }
+
+    /**
      * Obtener movimientos de una cuenta por cobrar
      */
     async getReceivableMovements(req, res) {
@@ -165,34 +227,39 @@ class ReceivablesController {
      */
     async recordPayment(req, res) {
         try {
-            const { venta_id, monto, metodo_pago, observaciones } = req.body;
+            const venta_id = req.params.venta_id || req.body.venta_id;
+            const { metodo_pago, observaciones } = req.body;
+            const monto = Number(req.body.monto);
             const user_id = req.user.id;
 
-            const pago_id = generateId('PAG');
+            if (!(monto > 0)) {
+                return res.status(400).json({ success: false, message: 'El monto debe ser mayor a cero' });
+            }
 
-            // Verificar que la venta exista
-            const ventaCheck = await db.query(
-                'SELECT id, total FROM ventas WHERE id = $1',
+            const saldo = await db.query(
+                `SELECT v.total - COALESCE((SELECT SUM(monto) FROM pagos_factura WHERE venta_id = v.id), 0) AS pendiente
+                 FROM ventas v WHERE v.id = $1`,
                 [venta_id]
             );
 
-            if (ventaCheck.rows.length === 0) {
-                return res.status(404).json({
+            if (saldo.rows.length === 0) {
+                return res.status(404).json({ success: false, message: 'Factura no encontrada' });
+            }
+
+            const pendiente = parseFloat(saldo.rows[0].pendiente);
+            if (monto > pendiente + 0.005) {
+                return res.status(400).json({
                     success: false,
-                    message: 'Factura no encontrada'
+                    message: `El pago excede el saldo pendiente (${pendiente.toFixed(2)})`
                 });
             }
 
-            // Insertar pago
-            const query = `
-                INSERT INTO pagos_factura (id, venta_id, monto, fecha, metodo_pago, observaciones, usuario_id)
-                VALUES ($1, $2, $3, CURRENT_DATE, $4, $5, $6)
-                RETURNING *
-            `;
-
-            const result = await db.query(query, [
-                pago_id, venta_id, monto, metodo_pago, observaciones, user_id
-            ]);
+            const result = await db.query(
+                `INSERT INTO pagos_factura (id, venta_id, monto, fecha, metodo_pago, observaciones, usuario_id)
+                 VALUES ($1, $2, $3, CURRENT_DATE, $4, $5, $6)
+                 RETURNING *`,
+                [generateId('PAG'), venta_id, monto, metodo_pago || 'efectivo', observaciones || null, user_id]
+            );
 
             res.status(201).json({
                 success: true,

@@ -10,6 +10,27 @@ ALTER TABLE caja ADD COLUMN IF NOT EXISTS cliente_id VARCHAR(50) REFERENCES clie
 ALTER TABLE ventas ADD COLUMN IF NOT EXISTS cliente_id VARCHAR(50) REFERENCES clientes(id);
 ALTER TABLE cuentas_por_cobrar ADD COLUMN IF NOT EXISTS cliente_id VARCHAR(50) REFERENCES clientes(id);
 
+-- 1b. Tabla de pagos de facturas (cuentas por cobrar), aislada por organización
+CREATE TABLE IF NOT EXISTS pagos_factura (
+    id VARCHAR(50) PRIMARY KEY,
+    venta_id VARCHAR(50) NOT NULL REFERENCES ventas(id) ON DELETE CASCADE,
+    monto DECIMAL(12, 2) NOT NULL CHECK (monto > 0),
+    fecha DATE NOT NULL DEFAULT CURRENT_DATE,
+    metodo_pago VARCHAR(50),
+    observaciones TEXT,
+    usuario_id INTEGER REFERENCES users(id),
+    organization_id INTEGER NOT NULL DEFAULT app_current_organization_id() REFERENCES organizations(id),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_pagos_factura_venta ON pagos_factura (venta_id);
+CREATE INDEX IF NOT EXISTS idx_pagos_factura_organization_id ON pagos_factura (organization_id);
+ALTER TABLE pagos_factura ENABLE ROW LEVEL SECURITY;
+ALTER TABLE pagos_factura FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON pagos_factura;
+CREATE POLICY tenant_isolation ON pagos_factura FOR ALL
+    USING (organization_id = app_current_organization_id())
+    WITH CHECK (organization_id = app_current_organization_id());
+
 -- 2. Conservar el vínculo histórico paciente -> cliente cuando exista
 DO $$
 BEGIN

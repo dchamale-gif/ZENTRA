@@ -7,64 +7,6 @@ let currentPage = 'dashboard';
 let charts = {};
 
 // ============================================
-// FUNCIONES AUXILIARES PARA CARGA DE DATOS
-// ============================================
-
-function getProductsData() {
-    const stored = localStorage.getItem('products');
-    if (stored) {
-        try {
-            return JSON.parse(stored);
-        } catch (e) {
-            console.error('Error loading products from localStorage:', e);
-            return [];
-        }
-    }
-    return [];
-}
-
-function getTransactionsData() {
-    const stored = localStorage.getItem('transactions');
-    if (stored) {
-        try {
-            return JSON.parse(stored);
-        } catch (e) {
-            console.error('Error loading transactions from localStorage:', e);
-            return [];
-        }
-    }
-    return [];
-}
-
-function getSalesChartData() {
-    const transactions = getTransactionsData();
-    // Agrupar ventas por día
-    const salesByDay = {};
-    transactions
-        .filter(t => t.type === 'Venta')
-        .forEach(t => {
-            const date = t.date || new Date().toISOString().split('T')[0];
-            salesByDay[date] = (salesByDay[date] || 0) + t.amount;
-        });
-    
-    return Object.entries(salesByDay)
-        .sort((a, b) => new Date(a[0]) - new Date(b[0]))
-        .slice(-7) // Últimos 7 días
-        .map(([day, sales]) => ({ day, sales }));
-}
-
-function getInventoryChartData() {
-    const products = getProductsData();
-    // Agrupar por categoría
-    const byCategory = {};
-    products.forEach(p => {
-        byCategory[p.category] = (byCategory[p.category] || 0) + p.stock;
-    });
-    
-    return Object.entries(byCategory).map(([category, value]) => ({ category, value }));
-}
-
-// ============================================
 // PROTECCIÓN DE AUTENTICACIÓN
 // ============================================
 
@@ -230,8 +172,14 @@ function navigateToPage(pageId) {
     if (pageId === 'proveedores') {
         ProveedoresModule.load();
     }
+    if (pageId === 'inventory') {
+        loadInventory();
+    }
+    if (pageId === 'transactions') {
+        loadTransactions();
+    }
     if (pageId === 'estados-de-cuenta') {
-        EstadosDeCuentaModule.loadStatement();
+        EstadosDeCuentaModule.loadClients();
     }
     
     if (pageId === 'alertas') {
@@ -456,232 +404,136 @@ function populateRecentTransactions() {
 }
 
 // ============================================
-// INVENTARIO
 // ============================================
+// INVENTARIO Y TRANSACCIONES (datos reales)
+// ============================================
+
+function formatDate(value) {
+    if (!value) return 'Sin fecha';
+    const d = value instanceof Date ? value : new Date(String(value).length === 10 ? value + 'T00:00:00' : value);
+    return d.toLocaleDateString('es-GT', { year: 'numeric', month: 'long', day: 'numeric' });
+}
+function formatCurrency(v) { return legacyMoney(v); }
+function getTransactionTypeIcon(type) {
+    return type === 'Compra' ? 'fas fa-arrow-down' : 'fas fa-arrow-up';
+}
+const legacyMoney = v => 'Q. ' + (Number(v) || 0).toLocaleString('es-GT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const legacyEsc = v => BulkImport.escapeHtml(v);
+const getStatusBadgeClass = status => {
+    const s = String(status || '').toLowerCase();
+    if (['completada', 'pagada', 'recibida', 'completed'].includes(s)) return 'status-completed';
+    if (['anulada', 'cancelada', 'failed'].includes(s)) return 'status-failed';
+    return 'status-pending';
+};
+let inventoryItems = [];
+let transactionItems = [];
 
 function setupInventory() {
-    populateInventoryTable();
-
-    const searchInput = document.getElementById('searchProduct');
-    const categoryFilter = document.getElementById('categoryFilter');
-    const addBtn = document.getElementById('addProductBtn');
-
-    if (searchInput) searchInput.addEventListener('keyup', filterInventory);
-    if (categoryFilter) categoryFilter.addEventListener('change', filterInventory);
-    if (addBtn) addBtn.addEventListener('click', openProductModal);
+    ['addProductBtn', 'addTransactionBtn', 'bulkTransactionBtn'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+    });
+    document.getElementById('searchProduct')?.addEventListener('keyup', renderInventoryTable);
+    document.getElementById('categoryFilter')?.addEventListener('change', renderInventoryTable);
 }
 
-function populateInventoryTable() {
+async function loadInventory() {
+    try {
+        const response = await authManager.fetchWithAuth('/api/codigos-articulos?activo=true');
+        const result = await response.json();
+        inventoryItems = result.articulos || [];
+    } catch (error) {
+        console.error('Error cargando inventario:', error);
+        inventoryItems = [];
+    }
+    const filter = document.getElementById('categoryFilter');
+    if (filter) {
+        const current = filter.value;
+        const categories = [...new Set(inventoryItems.map(a => a.categoria).filter(Boolean))].sort();
+        filter.innerHTML = '<option value="">Todas las categorías</option>' +
+            categories.map(c => `<option value="${legacyEsc(c)}">${legacyEsc(c)}</option>`).join('');
+        filter.value = current;
+    }
+    renderInventoryTable();
+}
+
+function renderInventoryTable() {
     const tbody = document.getElementById('inventoryTable');
     if (!tbody) return;
-
-    tbody.innerHTML = '';
-
-    getProductsData().forEach(product => {
-        const row = document.createElement('tr');
-        const status = getProductStatus(product.stock, product.minStock);
-        const statusClass = getProductStatusClass(product.stock, product.minStock);
-
-        row.innerHTML = `
-            <td><strong>${product.id}</strong></td>
-            <td>${product.name}</td>
-            <td>${product.category}</td>
-            <td>${product.stock} unidades</td>
-            <td>${formatCurrency(product.price)}</td>
-            <td><strong>${formatCurrency(product.price * product.stock)}</strong></td>
-            <td>
-                <span class="status-badge ${statusClass}">${status}</span>
-            </td>
-            <td>
-                <button class="btn btn-small btn-secondary" onclick="editProduct('${product.id}')">Editar</button>
-            </td>
-        `;
-        tbody.appendChild(row);
-    });
-}
-
-function filterInventory() {
-    const searchTerm = document.getElementById('searchProduct')?.value.toLowerCase() || '';
+    const term = (document.getElementById('searchProduct')?.value || '').toLowerCase();
     const category = document.getElementById('categoryFilter')?.value || '';
 
-    const tbody = document.getElementById('inventoryTable');
-    if (!tbody) return;
+    const items = inventoryItems.filter(a =>
+        (!category || a.categoria === category) &&
+        (!term || `${a.nombre_articulo} ${a.codigo}`.toLowerCase().includes(term)));
 
-    let filteredProducts = getProductsData().filter(product => {
-        const matchSearch = product.name.toLowerCase().includes(searchTerm) ||
-                           product.id.toLowerCase().includes(searchTerm);
-        const matchCategory = category === '' || product.category === category;
-        return matchSearch && matchCategory;
-    });
-
-    tbody.innerHTML = '';
-
-    filteredProducts.forEach(product => {
-        const row = document.createElement('tr');
-        const status = getProductStatus(product.stock, product.minStock);
-        const statusClass = getProductStatusClass(product.stock, product.minStock);
-
-        row.innerHTML = `
-            <td><strong>${product.id}</strong></td>
-            <td>${product.name}</td>
-            <td>${product.category}</td>
-            <td>${product.stock} unidades</td>
-            <td>${formatCurrency(product.price)}</td>
-            <td><strong>${formatCurrency(product.price * product.stock)}</strong></td>
-            <td>
-                <span class="status-badge ${statusClass}">${status}</span>
-            </td>
-            <td>
-                <button class="btn btn-small btn-secondary" onclick="editProduct('${product.id}')">Editar</button>
-            </td>
-        `;
-        tbody.appendChild(row);
-    });
-
-    if (filteredProducts.length === 0) {
+    if (items.length === 0) {
         tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 30px;">No se encontraron productos</td></tr>';
+        return;
     }
-}
 
-function editProduct(productId) {
-    const product = getProduct(productId);
-    if (product) {
-        showNotification(`Editando: ${product.name}`, 'info');
-    }
+    tbody.innerHTML = items.map(a => {
+        const stock = Number(a.cantidad_disponible) || 0;
+        const price = Number(a.precio_unitario) || 0;
+        const status = stock <= 0 ? 'Agotado' : stock < 10 ? 'Stock bajo' : 'Disponible';
+        const cls = stock <= 0 ? 'status-failed' : stock < 10 ? 'status-pending' : 'status-completed';
+        return `
+            <tr>
+                <td><strong>${legacyEsc(a.codigo)}</strong></td>
+                <td>${legacyEsc(a.nombre_articulo)}</td>
+                <td>${legacyEsc(a.categoria || '-')}</td>
+                <td>${stock} unidades</td>
+                <td>${legacyMoney(price)}</td>
+                <td><strong>${legacyMoney(price * stock)}</strong></td>
+                <td><span class="status-badge ${cls}">${status}</span></td>
+                <td></td>
+            </tr>`;
+    }).join('');
 }
-
-// ============================================
-// TRANSACCIONES
-// ============================================
 
 function setupTransactions() {
-    populateTransactionsTable();
-
-    const typeFilter = document.getElementById('typeFilter');
-    const dateFromFilter = document.getElementById('dateFromFilter');
-    const dateToFilter = document.getElementById('dateToFilter');
-    const addBtn = document.getElementById('addTransactionBtn');
-
-    if (typeFilter) typeFilter.addEventListener('change', filterTransactions);
-    if (dateFromFilter) dateFromFilter.addEventListener('change', filterTransactions);
-    if (dateToFilter) dateToFilter.addEventListener('change', filterTransactions);
-    if (addBtn) addBtn.addEventListener('click', openTransactionModal);
-
-    // Setup transaction modal listeners
-    setupTransactionModal();
-    setupBulkTransactionModal();
+    ['typeFilter', 'dateFromFilter', 'dateToFilter'].forEach(id =>
+        document.getElementById(id)?.addEventListener('change', loadTransactions));
 }
 
-function populateTransactionsTable() {
-    const tbody = document.getElementById('transactionsTable');
-    if (!tbody) return;
+async function loadTransactions() {
+    const qs = new URLSearchParams();
+    const type = document.getElementById('typeFilter')?.value;
+    const from = document.getElementById('dateFromFilter')?.value;
+    const to = document.getElementById('dateToFilter')?.value;
+    if (type) qs.set('type', type);
+    if (from) qs.set('from', from);
+    if (to) qs.set('to', to);
 
-    tbody.innerHTML = '';
-
-    getTransactionsData().forEach(transaction => {
-        const product = getProduct(transaction.productId);
-        const row = document.createElement('tr');
-
-        row.innerHTML = `
-            <td><strong>${transaction.id}</strong></td>
-            <td>${formatDate(transaction.date)}</td>
-            <td>
-                <span style="display: flex; align-items: center; gap: 5px;">
-                    <i class="${getTransactionTypeIcon(transaction.type)}"></i>
-                    ${transaction.type}
-                </span>
-            </td>
-            <td>${transaction.description}</td>
-            <td>${transaction.quantity} unidades</td>
-            <td ${transaction.type === 'Compra' ? 'style="color: #ef4444"' : 'style="color: #22c55e"'}>
-                ${transaction.type === 'Compra' ? '-' : '+'}${formatCurrency(transaction.amount)}
-            </td>
-            <td>
-                <span class="status-badge ${getStatusBadgeClass(transaction.status)}">
-                    ${transaction.status}
-                </span>
-            </td>
-            <td>
-                <button class="btn btn-small btn-secondary" onclick="viewTransaction('${transaction.id}')">Ver</button>
-            </td>
-        `;
-        tbody.appendChild(row);
-    });
-}
-
-function filterTransactions() {
-    const type = document.getElementById('typeFilter')?.value || '';
-    const dateFrom = document.getElementById('dateFromFilter')?.value || '';
-    const dateTo = document.getElementById('dateToFilter')?.value || '';
+    try {
+        const response = await authManager.fetchWithAuth(`/api/dashboard/transactions?${qs}`);
+        const result = await response.json();
+        transactionItems = result.success ? result.data : [];
+    } catch (error) {
+        console.error('Error cargando transacciones:', error);
+        transactionItems = [];
+    }
 
     const tbody = document.getElementById('transactionsTable');
     if (!tbody) return;
-
-    let filteredTransactions = getTransactionsData().filter(transaction => {
-        const matchType = type === '' || transaction.type === type;
-        const transactionDate = new Date(transaction.date);
-        const matchDateFrom = dateFrom === '' || new Date(transaction.date) >= new Date(dateFrom);
-        const matchDateTo = dateTo === '' || new Date(transaction.date) <= new Date(dateTo);
-
-        return matchType && matchDateFrom && matchDateTo;
-    });
-
-    tbody.innerHTML = '';
-
-    filteredTransactions.forEach(transaction => {
-        const product = getProduct(transaction.productId);
-        const row = document.createElement('tr');
-
-        row.innerHTML = `
-            <td><strong>${transaction.id}</strong></td>
-            <td>${formatDate(transaction.date)}</td>
-            <td>
-                <span style="display: flex; align-items: center; gap: 5px;">
-                    <i class="${getTransactionTypeIcon(transaction.type)}"></i>
-                    ${transaction.type}
-                </span>
-            </td>
-            <td>${transaction.description}</td>
-            <td>${transaction.quantity} unidades</td>
-            <td ${transaction.type === 'Compra' ? 'style="color: #ef4444"' : 'style="color: #22c55e"'}>
-                ${transaction.type === 'Compra' ? '-' : '+'}${formatCurrency(transaction.amount)}
-            </td>
-            <td>
-                <span class="status-badge ${getStatusBadgeClass(transaction.status)}">
-                    ${transaction.status}
-                </span>
-            </td>
-            <td>
-                <button class="btn btn-small btn-secondary" onclick="viewTransaction('${transaction.id}')">Ver</button>
-            </td>
-        `;
-        tbody.appendChild(row);
-    });
-
-    if (filteredTransactions.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 30px;">No se encontraron transacciones</td></tr>';
+    if (transactionItems.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 30px;">No hay transacciones</td></tr>';
+        return;
     }
-}
-
-function viewTransaction(transactionId) {
-    const transaction = getTransactionsData().find(t => t.id === transactionId);
-    const product = getProduct(transaction.productId);
-    
-    if (transaction) {
-        // Create detailed view
-        const details = `
-            ID: ${transaction.id}
-            Producto: ${product.name}
-            Tipo: ${transaction.type}
-            Cantidad: ${transaction.quantity} unidades
-            Monto: ${formatCurrency(transaction.amount)}
-            Fecha: ${formatDate(transaction.date)}
-            Estado: ${transaction.status}
-            Descripción: ${transaction.description}
-        `;
-        
-        alert(`DETALLES DE TRANSACCIÓN\n\n${details}`);
-    }
+    tbody.innerHTML = transactionItems.map(t => {
+        const status = String(t.status || '').replace(/^./, c => c.toUpperCase());
+        return `
+            <tr>
+                <td>${legacyEsc(t.number)}</td>
+                <td>${legacyEsc(String(t.fecha).slice(0, 10))}</td>
+                <td>${legacyEsc(t.type)}</td>
+                <td>${legacyEsc(t.description)}</td>
+                <td>${Number(t.quantity) || 0}</td>
+                <td style="color:${t.type === 'Compra' ? '#ef4444' : '#22c55e'}">${t.type === 'Compra' ? '-' : '+'}${legacyMoney(t.amount)}</td>
+                <td><span class="status-badge ${getStatusBadgeClass(status)}">${legacyEsc(status)}</span></td>
+                <td></td>
+            </tr>`;
+    }).join('');
 }
 
 // ============================================
@@ -689,316 +541,18 @@ function viewTransaction(transactionId) {
 // ============================================
 
 function setupModals() {
-    const modal = document.getElementById('productModal');
-    const closeButtons = document.querySelectorAll('.modal-close, .modal-close-btn');
-    const saveBtn = document.getElementById('saveProductBtn');
-
-    if (modal) {
-        modal.addEventListener('click', function(e) {
-            if (e.target === modal) {
-                closeModal(modal);
-            }
-        });
-    }
-
-    closeButtons.forEach(btn => {
+    document.querySelectorAll('.modal-close, .modal-close-btn').forEach(btn => {
         btn.addEventListener('click', function() {
             const modal = this.closest('.modal');
             if (modal) closeModal(modal);
         });
     });
-
-    if (saveBtn) {
-        saveBtn.addEventListener('click', saveProduct);
-    }
 }
 
-function openProductModal() {
-    const modal = document.getElementById('productModal');
-    if (modal) {
-        modal.classList.add('active');
-        // Clear form
-        document.getElementById('productName').value = '';
-        document.getElementById('productPrice').value = '';
-        document.getElementById('productStock').value = '';
-    }
-}
-
-// ============================================
-// MODAL DE TRANSACCIONES - CONFIGURACIÓN
-// ============================================
-
-function setupTransactionModal() {
-    const modal = document.getElementById('transactionModal');
-    const typeSelect = document.getElementById('transactionType');
-    const productSelect = document.getElementById('transactionProduct');
-    const quantityInput = document.getElementById('transactionQuantity');
-    const unitPriceInput = document.getElementById('transactionUnitPrice');
-    const saveBtn = document.getElementById('saveTransactionBtn');
-
-    // Populate products dropdown
-    populateProductsDropdown();
-
-    // Event listeners
-    if (typeSelect) typeSelect.addEventListener('change', handleTransactionTypeChange);
-    if (productSelect) productSelect.addEventListener('change', handleProductSelection);
-    if (quantityInput) quantityInput.addEventListener('input', calculateTransactionAmount);
-    if (unitPriceInput) unitPriceInput.addEventListener('change', calculateTransactionAmount);
-    if (saveBtn) saveBtn.addEventListener('click', saveTransaction);
-
-    // Set today's date by default
-    const dateInput = document.getElementById('transactionDate');
-    if (dateInput) {
-        dateInput.valueAsDate = new Date();
-    }
-}
-
-function populateProductsDropdown() {
-    const select = document.getElementById('transactionProduct');
-    if (!select) return;
-
-    // Clear existing options (except first)
-    while (select.options.length > 1) {
-        select.remove(1);
-    }
-
-    getProductsData().forEach(product => {
-        const option = document.createElement('option');
-        option.value = product.id;
-        option.textContent = `${product.name} - Stock: ${product.stock}`;
-        option.dataset.price = product.price;
-        option.dataset.stock = product.stock;
-        select.appendChild(option);
-    });
-}
-
-function handleTransactionTypeChange() {
-    const typeSelect = document.getElementById('transactionType');
-    const type = typeSelect.value;
-    
-    // Update quantity label based on type
-    const quantityLabel = document.querySelector('label[for="transactionQuantity"]');
-    if (quantityLabel) {
-        if (type === 'Compra') {
-            quantityLabel.innerHTML = 'Cantidad (entrante) <span class="required">*</span>';
-        } else if (type === 'Devolución') {
-            quantityLabel.innerHTML = 'Cantidad (devuelta) <span class="required">*</span>';
-        } else {
-            quantityLabel.innerHTML = 'Cantidad <span class="required">*</span>';
-        }
-    }
-}
-
-function handleProductSelection() {
-    const productSelect = document.getElementById('transactionProduct');
-    const selectedOption = productSelect.options[productSelect.selectedIndex];
-
-    if (selectedOption.value === '') {
-        document.getElementById('transactionUnitPrice').value = '';
-        document.getElementById('transactionAmount').value = '';
-        updateTransactionSummary(0, 0, 0);
-        return;
-    }
-
-    const price = parseFloat(selectedOption.dataset.price);
-    const stock = parseInt(selectedOption.dataset.stock);
-
-    // Update unit price
-    document.getElementById('transactionUnitPrice').value = price.toFixed(2);
-
-    // Get selected quantity
-    const quantity = parseInt(document.getElementById('transactionQuantity').value || 0);
-
-    // Validate stock for sales
-    const typeSelect = document.getElementById('transactionType');
-    if (typeSelect.value === 'Venta' && quantity > stock) {
-        showNotification(`Stock insuficiente. Disponible: ${stock} unidades`, 'warning');
-    }
-
-    calculateTransactionAmount();
-}
-
-function calculateTransactionAmount() {
-    const quantity = parseInt(document.getElementById('transactionQuantity').value || 0);
-    const unitPrice = parseFloat(document.getElementById('transactionUnitPrice').value || 0);
-
-    if (quantity < 0 || unitPrice < 0) {
-        showNotification('Cantidad y precio deben ser positivos', 'warning');
-        document.getElementById('transactionAmount').value = '0.00';
-        updateTransactionSummary(0, 0, 0);
-        return;
-    }
-
-    const total = quantity * unitPrice;
-    document.getElementById('transactionAmount').value = total.toFixed(2);
-
-    updateTransactionSummary(unitPrice, quantity, total);
-}
-
-function updateTransactionSummary(unitPrice, quantity, total) {
-    document.getElementById('summaryUnitPrice').textContent = formatCurrency(unitPrice);
-    document.getElementById('summaryQuantity').textContent = `${quantity} unidades`;
-    document.getElementById('summaryTotal').textContent = formatCurrency(total);
-}
-
-function openTransactionModal() {
-    const modal = document.getElementById('transactionModal');
-    if (modal) {
-        modal.classList.add('active');
-        // Clear form
-        document.getElementById('transactionType').value = '';
-        document.getElementById('transactionProduct').value = '';
-        document.getElementById('transactionQuantity').value = '';
-        document.getElementById('transactionUnitPrice').value = '';
-        document.getElementById('transactionAmount').value = '';
-        document.getElementById('transactionDescription').value = '';
-        document.getElementById('transactionStatus').value = 'Completada';
-        document.getElementById('transactionReference').value = '';
-        
-        // Reset date to today
-        const dateInput = document.getElementById('transactionDate');
-        if (dateInput) {
-            dateInput.valueAsDate = new Date();
-        }
-
-        // Reset summary
-        updateTransactionSummary(0, 0, 0);
-
-        // Set focus to first field
-        setTimeout(() => {
-            document.getElementById('transactionType').focus();
-        }, 100);
-    }
-}
-
-function saveTransaction() {
-    const type = document.getElementById('transactionType').value;
-    const productId = document.getElementById('transactionProduct').value;
-    const quantity = parseInt(document.getElementById('transactionQuantity').value || 0);
-    const amount = parseFloat(document.getElementById('transactionAmount').value || 0);
-    const description = document.getElementById('transactionDescription').value;
-    const date = document.getElementById('transactionDate').value;
-    const status = document.getElementById('transactionStatus').value;
-    const reference = document.getElementById('transactionReference').value;
-
-    // Validation
-    if (!type) {
-        showNotification('Por favor selecciona un tipo de transacción', 'error');
-        return;
-    }
-    if (!productId) {
-        showNotification('Por favor selecciona un producto', 'error');
-        return;
-    }
-    if (quantity <= 0) {
-        showNotification('La cantidad debe ser mayor a 0', 'error');
-        return;
-    }
-    if (amount <= 0) {
-        showNotification('El monto debe ser mayor a 0', 'error');
-        return;
-    }
-    if (!description.trim()) {
-        showNotification('Por favor ingresa una descripción', 'error');
-        return;
-    }
-    if (!date) {
-        showNotification('Por favor selecciona una fecha', 'error');
-        return;
-    }
-
-    // Validate stock for sales
-    const product = getProduct(productId);
-    if (type === 'Venta' && quantity > product.stock) {
-        showNotification(`Stock insuficiente. Disponible: ${product.stock} unidades`, 'error');
-        return;
-    }
-
-    // Create new transaction
-    const transactions = getTransactionsData();
-    const newTransaction = {
-        id: 'TRN' + String(transactions.length + 1).padStart(3, '0'),
-        date: date,
-        type: type,
-        description: description,
-        quantity: quantity,
-        amount: amount,
-        status: status,
-        productId: productId
-    };
-
-    // Add to localStorage
-    transactions.unshift(newTransaction);
-    localStorage.setItem('transactions', JSON.stringify(transactions));
-
-    // Update stock based on type
-    const products = getProductsData();
-    const productToUpdate = products.find(p => p.id === productId);
-    if (productToUpdate) {
-        if (type === 'Venta') {
-            productToUpdate.stock -= quantity;
-        } else if (type === 'Compra') {
-            productToUpdate.stock += quantity;
-        } else if (type === 'Devolución') {
-            productToUpdate.stock += quantity;
-        }
-        localStorage.setItem('products', JSON.stringify(products));
-    }
-
-    // Update table
-    populateTransactionsTable();
-    closeModal(document.getElementById('transactionModal'));
-
-    showNotification('Transacción guardada exitosamente', 'success');
-
-    // Refresh dashboard if visible
-    if (currentPage === 'dashboard') {
-        populateRecentTransactions();
-    }
-
-    // Refresh inventory if visible
-    if (currentPage === 'inventory') {
-        populateInventoryTable();
-    }
-}
 
 function closeModal(modal) {
     modal.classList.remove('active');
 }
-
-function saveProduct() {
-    const name = document.getElementById('productName').value;
-    const category = document.getElementById('productCategory').value;
-    const price = document.getElementById('productPrice').value;
-    const stock = document.getElementById('productStock').value;
-
-    if (name && price && stock) {
-        // Create new product
-        const products = getProductsData();
-        const newProduct = {
-            id: 'PRD' + String(products.length + 1).padStart(3, '0'),
-            name: name,
-            category: category,
-            price: parseFloat(price),
-            stock: parseInt(stock),
-            minStock: 10,
-            lastUpdated: new Date().toISOString().split('T')[0]
-        };
-
-        products.push(newProduct);
-        localStorage.setItem('products', JSON.stringify(products));
-        populateInventoryTable();
-        closeModal(document.getElementById('productModal'));
-        
-        showNotification(`Producto "${name}" agregado exitosamente`, 'success');
-    } else {
-        showNotification('Por favor completa todos los campos', 'error');
-    }
-}
-
-// ============================================
-// NOTIFICACIONES
-// ============================================
 
 function showNotification(message, type = 'info') {
     // Mapeo de iconos por tipo
@@ -1146,420 +700,6 @@ function showNotification(message, type = 'info') {
             clearTimeout(autoRemoveTimeout);
         }
     });
-}
-
-// ============================================
-// BULK TRANSACTIONS
-// ============================================
-
-let bulkTransactions = [];
-
-function setupBulkTransactionModal() {
-    const bulkModal = document.getElementById('bulkTransactionModal');
-    const addRowBtn = document.getElementById('addRowBtn');
-    const selectAllCheckbox = document.getElementById('selectAllBulk');
-    const closeBtn = bulkModal.querySelector('.modal-close-btn');
-    const processBtn = document.getElementById('processBulkBtn');
-    const bulkCargaBtn = document.getElementById('bulkTransactionBtn');
-
-    if (bulkCargaBtn) bulkCargaBtn.addEventListener('click', openBulkTransactionModal);
-    if (addRowBtn) addRowBtn.addEventListener('click', addBulkRow);
-    if (selectAllCheckbox) selectAllCheckbox.addEventListener('change', selectAllBulkRows);
-    if (closeBtn) closeBtn.addEventListener('click', () => closeBulkModal());
-    if (processBtn) processBtn.addEventListener('click', processBulkTransactions);
-
-    // Initialize with 5 empty rows
-    bulkTransactions = [];
-    for (let i = 0; i < 5; i++) {
-        addBulkRow(true); // true = don't render yet
-    }
-    renderBulkTable();
-    updateBulkSummary();
-}
-
-function openBulkTransactionModal() {
-    const modal = document.getElementById('bulkTransactionModal');
-    if (modal) {
-        modal.classList.add('active');
-        // Set today's date on all date inputs
-        const dateInputs = modal.querySelectorAll('.bulk-date-input');
-        const today = new Date().toISOString().split('T')[0];
-        dateInputs.forEach(input => {
-            if (!input.value) input.value = today;
-        });
-    }
-}
-
-function closeBulkModal() {
-    const modal = document.getElementById('bulkTransactionModal');
-    if (modal) {
-        modal.classList.remove('active');
-    }
-}
-
-function addBulkRow(dontRender = false) {
-    const newRow = {
-        id: Date.now() + Math.random(),
-        type: 'Venta',
-        product: '',
-        quantity: '',
-        unitPrice: '',
-        total: 0,
-        date: new Date().toISOString().split('T')[0],
-        description: '',
-        status: 'pending',
-        checked: false,
-        errors: {}
-    };
-
-    bulkTransactions.push(newRow);
-
-    if (!dontRender) {
-        renderBulkTable();
-        updateBulkSummary();
-    }
-}
-
-function removeBulkRow(rowId) {
-    bulkTransactions = bulkTransactions.filter(row => row.id !== rowId);
-    renderBulkTable();
-    updateBulkSummary();
-}
-
-function renderBulkTable() {
-    const tbody = document.getElementById('bulkTableBody');
-    if (!tbody) return;
-
-    tbody.innerHTML = '';
-
-    bulkTransactions.forEach((row, index) => {
-        const tr = document.createElement('tr');
-        const hasErrors = Object.keys(row.errors).length > 0;
-        if (hasErrors) tr.style.backgroundColor = '#fee2e2';
-
-        // Checkbox column
-        const checkboxTd = document.createElement('td');
-        const checkbox = document.createElement('input');
-        checkbox.type = 'checkbox';
-        checkbox.checked = row.checked;
-        checkbox.addEventListener('change', (e) => {
-            row.checked = e.target.checked;
-        });
-        checkboxTd.appendChild(checkbox);
-        tr.appendChild(checkboxTd);
-
-        // Type column
-        const typeTd = document.createElement('td');
-        const typeSelect = document.createElement('select');
-        typeSelect.className = 'bulk-type-select';
-        const types = ['Venta', 'Compra', 'Devolución', 'Ajuste'];
-        types.forEach(t => {
-            const option = document.createElement('option');
-            option.value = t;
-            option.textContent = t;
-            if (t === row.type) option.selected = true;
-            typeSelect.appendChild(option);
-        });
-        typeSelect.addEventListener('change', (e) => {
-            row.type = e.target.value;
-        });
-        typeTd.appendChild(typeSelect);
-        tr.appendChild(typeTd);
-
-        // Product column
-        const productTd = document.createElement('td');
-        productTd.className = row.errors.product ? 'error' : '';
-        const productSelect = document.createElement('select');
-        productSelect.className = 'bulk-product-select';
-        
-        const emptyOption = document.createElement('option');
-        emptyOption.value = '';
-        emptyOption.textContent = 'Seleccionar...';
-        productSelect.appendChild(emptyOption);
-
-        getProductsData().forEach(product => {
-            const option = document.createElement('option');
-            option.value = product.id;
-            option.textContent = `${product.name}`;
-            option.dataset.price = product.price;
-            option.dataset.stock = product.stock;
-            if (product.id === row.product) option.selected = true;
-            productSelect.appendChild(option);
-        });
-
-        productSelect.addEventListener('change', (e) => {
-            row.product = e.target.value;
-            const selectedOption = e.target.options[e.target.selectedIndex];
-            if (selectedOption && selectedOption.dataset.price) {
-                row.unitPrice = parseFloat(selectedOption.dataset.price);
-                calculateBulkRowTotal(row);
-            }
-            delete row.errors.product;
-            renderBulkTable();
-            updateBulkSummary();
-        });
-        productTd.appendChild(productSelect);
-        tr.appendChild(productTd);
-
-        // Quantity column
-        const qtyTd = document.createElement('td');
-        qtyTd.className = row.errors.quantity ? 'error' : '';
-        const qtyInput = document.createElement('input');
-        qtyInput.type = 'number';
-        qtyInput.value = row.quantity;
-        qtyInput.placeholder = '0';
-        qtyInput.min = '1';
-        qtyInput.addEventListener('change', (e) => {
-            row.quantity = parseInt(e.target.value) || 0;
-            if (row.quantity <= 0) {
-                row.errors.quantity = 'Cantidad debe ser > 0';
-            } else {
-                delete row.errors.quantity;
-            }
-            calculateBulkRowTotal(row);
-            renderBulkTable();
-            updateBulkSummary();
-        });
-        qtyTd.appendChild(qtyInput);
-        tr.appendChild(qtyTd);
-
-        // Unit Price column
-        const priceTd = document.createElement('td');
-        const priceInput = document.createElement('input');
-        priceInput.type = 'number';
-        priceInput.value = row.unitPrice;
-        priceInput.placeholder = '0.00';
-        priceInput.step = '0.01';
-        priceInput.disabled = true;
-        priceInput.style.backgroundColor = '#f3f4f6';
-        priceTd.appendChild(priceInput);
-        tr.appendChild(priceTd);
-
-        // Total column
-        const totalTd = document.createElement('td');
-        const totalInput = document.createElement('input');
-        totalInput.type = 'number';
-        totalInput.value = row.total.toFixed(2);
-        totalInput.disabled = true;
-        totalInput.style.backgroundColor = '#f3f4f6';
-        totalInput.style.fontWeight = 'bold';
-        totalInput.style.color = 'var(--primary-color)';
-        totalTd.appendChild(totalInput);
-        tr.appendChild(totalTd);
-
-        // Date column
-        const dateTd = document.createElement('td');
-        const dateInput = document.createElement('input');
-        dateInput.type = 'date';
-        dateInput.value = row.date;
-        dateInput.className = 'bulk-date-input';
-        dateInput.addEventListener('change', (e) => {
-            row.date = e.target.value;
-        });
-        dateTd.appendChild(dateInput);
-        tr.appendChild(dateTd);
-
-        // Description column
-        const descTd = document.createElement('td');
-        const descInput = document.createElement('input');
-        descInput.type = 'text';
-        descInput.value = row.description;
-        descInput.placeholder = 'Nota...';
-        descInput.addEventListener('change', (e) => {
-            row.description = e.target.value;
-        });
-        descTd.appendChild(descInput);
-        tr.appendChild(descTd);
-
-        // Status column
-        const statusTd = document.createElement('td');
-        const statusSpan = document.createElement('span');
-        statusSpan.className = `status-badge status-${row.status}`;
-        statusSpan.textContent = row.status === 'pending' ? '⏳ Pendiente' : 
-                                 row.status === 'error' ? '❌ Error' : '✓ Válido';
-        statusTd.appendChild(statusSpan);
-        tr.appendChild(statusTd);
-
-        // Actions column
-        const actionsTd = document.createElement('td');
-        const removeBtn = document.createElement('button');
-        removeBtn.className = 'btn-remove-row';
-        removeBtn.innerHTML = '<i class="fas fa-trash"></i>';
-        removeBtn.addEventListener('click', () => removeBulkRow(row.id));
-        actionsTd.appendChild(removeBtn);
-        tr.appendChild(actionsTd);
-
-        tbody.appendChild(tr);
-    });
-}
-
-function calculateBulkRowTotal(row) {
-    if (row.quantity && row.unitPrice) {
-        row.total = row.quantity * row.unitPrice;
-    } else {
-        row.total = 0;
-    }
-}
-
-function updateBulkSummary() {
-    const rowCountSpan = document.getElementById('bulkRowCount');
-    const totalAmountSpan = document.getElementById('bulkTotalAmount');
-    const statusSpan = document.getElementById('bulkStatus');
-
-    if (rowCountSpan) rowCountSpan.textContent = bulkTransactions.length;
-
-    const totalAmount = bulkTransactions.reduce((sum, row) => sum + (row.total || 0), 0);
-    if (totalAmountSpan) totalAmountSpan.textContent = formatCurrency(totalAmount);
-
-    const validRows = bulkTransactions.filter(row => validateBulkRow(row, true)).length;
-    if (statusSpan) {
-        statusSpan.className = validRows === bulkTransactions.length ? 'status-info' : 'status-info status-error';
-        statusSpan.textContent = `${validRows}/${bulkTransactions.length} filas válidas`;
-    }
-}
-
-function validateBulkRow(row, checkOnly = false) {
-    const errors = {};
-
-    if (!row.type || row.type.trim() === '') {
-        errors.type = 'Tipo requerido';
-    }
-
-    if (!row.product || row.product.trim() === '') {
-        errors.product = 'Producto requerido';
-    }
-
-    if (!row.quantity || row.quantity <= 0) {
-        errors.quantity = 'Cantidad inválida';
-    }
-
-    if (!row.unitPrice || row.unitPrice <= 0) {
-        errors.unitPrice = 'Precio inválido';
-    }
-
-    if (!row.date || row.date.trim() === '') {
-        errors.date = 'Fecha requerida';
-    }
-
-    if (!checkOnly) {
-        row.errors = errors;
-        row.status = Object.keys(errors).length === 0 ? 'valid' : 'error';
-    }
-
-    return Object.keys(errors).length === 0;
-}
-
-function selectAllBulkRows() {
-    const selectAllCheckbox = document.getElementById('selectAllBulkCheckbox');
-    const isChecked = selectAllCheckbox.checked;
-
-    bulkTransactions.forEach(row => {
-        row.checked = isChecked;
-    });
-
-    renderBulkTable();
-}
-
-function processBulkTransactions() {
-    const checkedTransactions = bulkTransactions.filter(row => row.checked);
-
-    if (checkedTransactions.length === 0) {
-        showNotification('Selecciona al menos una transacción', 'error');
-        return;
-    }
-
-    let validCount = 0;
-    let errorCount = 0;
-    const processedIds = new Set();
-
-    checkedTransactions.forEach(row => {
-        if (validateBulkRow(row)) {
-            // Find product
-            const product = getProductsData().find(p => p.id === row.product);
-            if (!product) {
-                row.status = 'error';
-                row.errors.product = 'Producto no encontrado';
-                errorCount++;
-                return;
-            }
-
-            // Check stock for sales/devoluciones
-            if ((row.type === 'Venta' || row.type === 'Devolución') && product.stock < row.quantity) {
-                row.status = 'error';
-                row.errors.quantity = `Stock insuficiente. Stock: ${product.stock}`;
-                errorCount++;
-                return;
-            }
-
-            // Create transaction
-            const transactions = getTransactionsData();
-            const newTransaction = {
-                id: 'TRX' + String(transactions.length + 1).padStart(4, '0'),
-                type: row.type,
-                product: row.product,
-                quantity: row.quantity,
-                unitPrice: row.unitPrice,
-                monto: row.total,
-                date: row.date,
-                description: row.description,
-                user: 'Sistema',
-                status: 'completado'
-            };
-
-            // Update stock
-            if (row.type === 'Venta') {
-                if (!processedIds.has(product.id)) {
-                    product.stock -= row.quantity;
-                    processedIds.add(product.id);
-                }
-            } else if (row.type === 'Compra') {
-                if (!processedIds.has(product.id)) {
-                    product.stock += row.quantity;
-                    processedIds.add(product.id);
-                }
-            } else if (row.type === 'Devolución') {
-                if (!processedIds.has(product.id)) {
-                    product.stock += row.quantity;
-                    processedIds.add(product.id);
-                }
-            }
-
-            transactions.push(newTransaction);
-            localStorage.setItem('transactions', JSON.stringify(transactions));
-            row.status = 'success';
-            validCount++;
-        } else {
-            errorCount++;
-        }
-    });
-
-    renderBulkTable();
-    updateBulkSummary();
-
-    if (validCount > 0) {
-        showNotification(`✓ ${validCount} transacciones procesadas correctamente`, 'success');
-        
-        // Clear checked rows after 1.5 seconds and show updated data
-        setTimeout(() => {
-            bulkTransactions = bulkTransactions.filter(row => !row.checked);
-            for (let i = 0; i < 5; i++) {
-                addBulkRow(true);
-            }
-            renderBulkTable();
-            updateBulkSummary();
-
-            // Refresh other sections
-            if (currentPage === 'inventory') {
-                populateInventoryTable();
-            }
-            populateRecentTransactions();
-            updateDashboard();
-        }, 1500);
-    }
-
-    if (errorCount > 0) {
-        showNotification(`⚠ ${errorCount} transacciones con errores. Revisa los detalles.`, 'error');
-    }
 }
 
 // ============================================

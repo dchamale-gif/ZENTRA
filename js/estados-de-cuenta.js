@@ -1,249 +1,128 @@
 // ============================================
-// MÓDULO DE ESTADOS DE CUENTA
+// MÓDULO DE ESTADOS DE CUENTA (por cliente, datos reales)
 // ============================================
 
 const EstadosDeCuentaModule = {
-    state: {
-        cuentas: [],
-        movimientos: [],
-        periodos: []
-    },
+    state: { statement: null },
 
-    // Inicializar el módulo
     init() {
-        this.setupEventListeners();
-        this.loadData();
-        this.renderSelects();
-        console.log('Módulo de Estados de Cuenta inicializado');
+        document.getElementById('generateStatementBtn')?.addEventListener('click', () => this.loadStatement());
+        document.getElementById('exportStatementBtn')?.addEventListener('click', () => this.exportStatement());
+        document.getElementById('accountFilter')?.addEventListener('change', () => this.loadStatement());
+        document.getElementById('periodFilter')?.addEventListener('change', () => this.loadStatement());
+        this.renderPeriods();
     },
 
-    // Renderizar selects con datos
-    renderSelects() {
-        const accountFilter = document.getElementById('accountFilter');
-        if (accountFilter) {
-            accountFilter.innerHTML = '<option value="">Selecciona una cuenta...</option>' + 
-                this.state.cuentas.map(c => `<option value="${c.id}">${c.nombre}</option>`).join('');
-        }
+    monthRange(offset) {
+        const d = new Date();
+        const start = new Date(d.getFullYear(), d.getMonth() - offset, 1);
+        const end = new Date(d.getFullYear(), d.getMonth() - offset + 1, 0);
+        const iso = x => `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
+        const name = start.toLocaleDateString('es-GT', { month: 'long', year: 'numeric' });
+        return { from: iso(start), to: iso(end), name: name.charAt(0).toUpperCase() + name.slice(1) };
+    },
 
-        const periodFilter = document.getElementById('periodFilter');
-        if (periodFilter) {
-            periodFilter.innerHTML = '<option value="">Todos los períodos</option>' + 
-                this.state.periodos.map(p => `<option value="${p.id}">${p.nombre}</option>`).join('');
+    renderPeriods() {
+        const select = document.getElementById('periodFilter');
+        if (!select) return;
+        let options = '<option value="">Todos los períodos</option>';
+        for (let i = 0; i < 12; i++) {
+            const r = this.monthRange(i);
+            options += `<option value="${r.from}|${r.to}">${r.name}</option>`;
+        }
+        select.innerHTML = options;
+    },
+
+    async loadClients() {
+        const select = document.getElementById('accountFilter');
+        if (!select) return;
+        const current = select.value;
+        try {
+            const response = await authManager.fetchWithAuth('/api/clientes?activo=true');
+            const result = await response.json();
+            const clientes = result.success ? result.data : [];
+            select.innerHTML = '<option value="">Selecciona un cliente...</option>' +
+                clientes.map(c => `<option value="${BulkImport.escapeHtml(c.id)}">${BulkImport.escapeHtml(c.nombre)}</option>`).join('');
+            select.value = current;
+        } catch (error) {
+            console.error('Error cargando clientes:', error);
         }
     },
 
-    // Configurar event listeners
-    setupEventListeners() {
-        const generateReportBtn = document.getElementById('generateStatementBtn');
-        if (generateReportBtn) {
-            generateReportBtn.addEventListener('click', () => this.generateStatement());
-        }
-
-        const exportBtn = document.getElementById('exportStatementBtn');
-        if (exportBtn) {
-            exportBtn.addEventListener('click', () => this.exportStatement());
-        }
-
-        const accountFilter = document.getElementById('accountFilter');
-        if (accountFilter) {
-            accountFilter.addEventListener('change', () => this.loadStatement());
-        }
-
-        const periodFilter = document.getElementById('periodFilter');
-        if (periodFilter) {
-            periodFilter.addEventListener('change', () => this.loadStatement());
-        }
-    },
-
-    // Cargar datos
-    loadData() {
-        this.state.cuentas = [
-            {
-                id: 'CTA-001',
-                nombre: 'Cuenta Corriente Principal',
-                saldoInicial: 50000,
-                saldoActual: 47500,
-                tipo: 'Corriente'
-            },
-            {
-                id: 'CTA-002',
-                nombre: 'Cuenta de Ahorros',
-                saldoInicial: 100000,
-                saldoActual: 105000,
-                tipo: 'Ahorros'
-            }
-        ];
-
-        this.state.movimientos = [
-            {
-                id: 1,
-                cuenta: 'CTA-001',
-                fecha: '2026-04-01',
-                descripcion: 'Depósito inicial',
-                tipo: 'Crédito',
-                monto: 50000,
-                saldo: 50000
-            },
-            {
-                id: 2,
-                cuenta: 'CTA-001',
-                fecha: '2026-04-15',
-                descripcion: 'Pago de servicios',
-                tipo: 'Débito',
-                monto: 2500,
-                saldo: 47500
-            }
-        ];
-
-        this.state.periodos = [
-            { id: 1, nombre: 'Enero 2026', fechaInicio: '2026-01-01', fechaFin: '2026-01-31' },
-            { id: 2, nombre: 'Febrero 2026', fechaInicio: '2026-02-01', fechaFin: '2026-02-28' },
-            { id: 3, nombre: 'Marzo 2026', fechaInicio: '2026-03-01', fechaFin: '2026-03-31' },
-            { id: 4, nombre: 'Abril 2026', fechaInicio: '2026-04-01', fechaFin: '2026-04-30' }
-        ];
-    },
-
-    // Cargar estado de cuenta
-    loadStatement() {
-        const accountId = document.getElementById('accountFilter')?.value;
-        const periodId = document.getElementById('periodFilter')?.value;
-
-        if (!accountId) {
-            alert('Selecciona una cuenta');
+    async loadStatement() {
+        const clienteId = document.getElementById('accountFilter')?.value;
+        const container = document.getElementById('statementContent');
+        if (!container) return;
+        if (!clienteId) {
+            container.innerHTML = '';
+            this.state.statement = null;
             return;
         }
 
-        const account = this.state.cuentas.find(c => c.id === accountId);
-        if (!account) return;
+        const [from, to] = (document.getElementById('periodFilter')?.value || '|').split('|');
+        const qs = new URLSearchParams();
+        if (from) qs.set('from', from);
+        if (to) qs.set('to', to);
 
-        const statementContent = document.getElementById('statementContent');
-        if (!statementContent) return;
+        try {
+            const response = await authManager.fetchWithAuth(`/api/receivables/statement/${encodeURIComponent(clienteId)}?${qs}`);
+            const result = await response.json();
+            if (!response.ok || !result.success) throw new Error(result.message || 'Error al cargar el estado de cuenta');
+            this.state.statement = result.data;
+            this.render(result.data);
+        } catch (error) {
+            container.innerHTML = `<p class="text-muted">${BulkImport.escapeHtml(error.message)}</p>`;
+        }
+    },
 
-        const period = periodId ? this.state.periodos.find(p => p.id === parseInt(periodId)) : null;
-        const movs = period 
-            ? this.state.movimientos.filter(m => m.cuenta === accountId && m.fecha >= period.fechaInicio && m.fecha <= period.fechaFin)
-            : this.state.movimientos.filter(m => m.cuenta === accountId);
+    render(data) {
+        const esc = v => BulkImport.escapeHtml(v);
+        const rows = data.movimientos.length === 0
+            ? '<tr><td colspan="5" style="text-align:center;padding:20px;">Sin movimientos en el período</td></tr>'
+            : data.movimientos.map(m => `
+                <tr>
+                    <td>${esc(m.fecha)}</td>
+                    <td>${esc(m.descripcion)}</td>
+                    <td>${esc(m.tipo)}</td>
+                    <td>${this.formatCurrency(m.monto)}</td>
+                    <td class="saldo"><strong>${this.formatCurrency(m.saldo)}</strong></td>
+                </tr>`).join('');
 
-        const html = `
+        document.getElementById('statementContent').innerHTML = `
             <div class="statement-header">
-                <h3>${account.nombre}</h3>
-                <p><strong>Tipo de Cuenta:</strong> ${account.tipo}</p>
-                ${period ? `<p><strong>Período:</strong> ${period.nombre}</p>` : ''}
+                <h3>${esc(data.cliente.nombre)}</h3>
+                <p><strong>NIT:</strong> ${esc(data.cliente.nit || 'CF')}</p>
             </div>
-
             <table class="statement-table">
-                <thead>
-                    <tr>
-                        <th>Fecha</th>
-                        <th>Descripción</th>
-                        <th>Tipo</th>
-                        <th>Monto</th>
-                        <th>Saldo</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${movs.map(m => `
-                        <tr>
-                            <td>${m.fecha}</td>
-                            <td>${m.descripcion}</td>
-                            <td><span class="badge badge-${m.tipo.toLowerCase()}">${m.tipo}</span></td>
-                            <td>${this.formatCurrency(m.monto)}</td>
-                            <td class="saldo"><strong>${this.formatCurrency(m.saldo)}</strong></td>
-                        </tr>
-                    `).join('')}
-                </tbody>
+                <thead><tr><th>Fecha</th><th>Descripción</th><th>Tipo</th><th>Monto</th><th>Saldo</th></tr></thead>
+                <tbody>${rows}</tbody>
             </table>
-
             <div class="statement-summary">
-                <div class="summary-item">
-                    <span>Saldo Inicial:</span>
-                    <strong>${this.formatCurrency(account.saldoInicial)}</strong>
-                </div>
-                <div class="summary-item">
-                    <span>Saldo Actual:</span>
-                    <strong>${this.formatCurrency(account.saldoActual)}</strong>
-                </div>
-            </div>
-        `;
-
-        statementContent.innerHTML = html;
+                <div class="summary-item"><span>Saldo Inicial:</span><strong>${this.formatCurrency(data.saldoInicial)}</strong></div>
+                <div class="summary-item"><span>Saldo Final:</span><strong>${this.formatCurrency(data.saldoFinal)}</strong></div>
+            </div>`;
     },
 
     formatCurrency(value) {
-        return new Intl.NumberFormat('es-GT', {
-            style: 'currency',
-            currency: 'GTQ',
-            minimumFractionDigits: 2
-        }).format(Number(value) || 0);
+        return new Intl.NumberFormat('es-GT', { style: 'currency', currency: 'GTQ', minimumFractionDigits: 2 }).format(Number(value) || 0);
     },
 
-    // Generar estado de cuenta
-    generateStatement() {
-        const accountId = document.getElementById('accountFilter')?.value;
-        if (!accountId) {
-            alert('Selecciona una cuenta');
-            return;
-        }
-
-        this.loadStatement();
-        alert('Estado de cuenta generado correctamente');
-    },
-
-    // Exportar estado de cuenta
     exportStatement() {
-        const accountId = document.getElementById('accountFilter')?.value;
-        if (!accountId) {
-            alert('Selecciona una cuenta');
+        const data = this.state.statement;
+        if (!data) {
+            showNotification('Selecciona un cliente primero', 'error');
             return;
         }
-
-        const account = this.state.cuentas.find(c => c.id === accountId);
-        const movs = this.state.movimientos.filter(m => m.cuenta === accountId);
-
+        const cell = v => `"${String(v).replace(/"/g, '""')}"`;
         let csv = 'Fecha,Descripción,Tipo,Monto GTQ,Saldo GTQ\n';
-        movs.forEach(m => {
-            csv += `${m.fecha},"${m.descripcion}",${m.tipo},${m.monto},${m.saldo}\n`;
+        data.movimientos.forEach(m => {
+            csv += [m.fecha, cell(m.descripcion), m.tipo, m.monto, m.saldo].join(',') + '\n';
         });
-
-        const element = document.createElement('a');
-        element.setAttribute('href', 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv));
-        element.setAttribute('download', `estado_cuenta_${account.id}.csv`);
-        element.style.display = 'none';
-        document.body.appendChild(element);
-        element.click();
-        document.body.removeChild(element);
-
-        alert('Estado de cuenta exportado a CSV');
-    },
-
-    // Generar reporte PDF
-    generatePDFReport() {
-        const accountId = document.getElementById('accountFilter')?.value;
-        if (!accountId) {
-            alert('Selecciona una cuenta para exportar a PDF');
-            return;
-        }
-
-        alert('Generando PDF del estado de cuenta...');
-        console.log('Generando PDF para cuenta:', accountId);
-        // Implementar con librería como jsPDF
-    },
-
-    // Obtener resumen por período
-    getSummaryByPeriod(periodId) {
-        const period = this.state.periodos.find(p => p.id === periodId);
-        if (!period) return null;
-
-        const movs = this.state.movimientos.filter(m => m.fecha >= period.fechaInicio && m.fecha <= period.fechaFin);
-        const creditos = movs.filter(m => m.tipo === 'Crédito').reduce((sum, m) => sum + m.monto, 0);
-        const debitos = movs.filter(m => m.tipo === 'Débito').reduce((sum, m) => sum + m.monto, 0);
-
-        return {
-            periodo: period.nombre,
-            creditos,
-            debitos,
-            neto: creditos - debitos,
-            movimientos: movs.length
-        };
+        const link = document.createElement('a');
+        link.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent('\ufeff' + csv);
+        link.download = `estado_cuenta_${data.cliente.id}.csv`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
     }
 };

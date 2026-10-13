@@ -375,10 +375,6 @@
                         <input type="text" id="searchProduct" placeholder="Buscar producto...">
                         <select id="categoryFilter">
                             <option value="">Todas las categorías</option>
-                            <option value="Electrónica">Electrónica</option>
-                            <option value="Ropa">Ropa</option>
-                            <option value="Alimentos">Alimentos</option>
-                            <option value="Herramientas">Herramientas</option>
                         </select>
                     </div>
 
@@ -422,7 +418,6 @@
                             <option value="">Todos los tipos</option>
                             <option value="Venta">Venta</option>
                             <option value="Compra">Compra</option>
-                            <option value="Devolución">Devolución</option>
                         </select>
                         <input type="date" id="dateFromFilter">
                         <input type="date" id="dateToFilter">
@@ -717,18 +712,19 @@
                 <div id="page-cuentas-por-cobrar" class="page">
                     <div class="page-header">
                         <h1>Cuentas por Cobrar</h1>
-                        <button class="btn btn-primary" id="addDebtBtn">
+                        <button class="btn btn-primary" id="addDebtBtn" style="display:none">
                             <i class="fas fa-plus"></i> Registrar Deuda
                         </button>
                     </div>
+                    <p id="cxcSummary" class="date-info"></p>
                     <div class="table-container">
                         <table id="debutsTable">
                             <thead>
                                 <tr>
-                                    <th>ID</th>
+                                    <th>Factura</th>
                                     <th>Cliente</th>
-                                    <th>Monto</th>
-                                    <th>Fecha Vencimiento</th>
+                                    <th>Pendiente</th>
+                                    <th>Fecha Factura</th>
                                     <th>Estado</th>
                                     <th>Días Vencida</th>
                                     <th>Acciones</th>

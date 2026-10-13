@@ -98,4 +98,34 @@ const getDashboard = async (req, res) => {
   }
 };
 
-module.exports = { getDashboard };
+/**
+ * GET /api/dashboard/transactions?type=Venta|Compra&from&to
+ * Movimientos de ventas y compras unificados.
+ */
+const getTransactions = async (req, res) => {
+  try {
+    const { type, from, to } = req.query;
+    const rows = await pool.query(`
+      SELECT * FROM (
+        SELECT id, fecha, created_at, 'Venta' AS type, numero_venta AS number,
+               'Venta ' || numero_venta AS description, total::float AS amount, estado AS status
+        FROM ventas
+        UNION ALL
+        SELECT id, fecha, created_at, 'Compra', numero_compra,
+               'Compra ' || numero_compra, total::float, estado
+        FROM compras
+      ) t
+      WHERE ($1::text IS NULL OR type = $1)
+        AND ($2::date IS NULL OR fecha >= $2::date)
+        AND ($3::date IS NULL OR fecha <= $3::date)
+      ORDER BY fecha DESC, created_at DESC
+      LIMIT 500
+    `, [type || null, from || null, to || null]);
+    res.json({ success: true, data: rows.rows });
+  } catch (error) {
+    console.error('Error en getTransactions:', error);
+    res.status(500).json({ success: false, message: 'Error al obtener transacciones' });
+  }
+};
+
+module.exports = { getDashboard, getTransactions };

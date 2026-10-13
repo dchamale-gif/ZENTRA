@@ -17,6 +17,11 @@ router.get('/summary', rolePermissionMiddleware(['cobros_view']), (req, res) => 
     receivablesController.getReceivablesSummary(req, res);
 });
 
+// Estado de cuenta por cliente
+router.get('/statement/:cliente_id', rolePermissionMiddleware(['cobros_view']), (req, res) => {
+    receivablesController.getClientStatement(req, res);
+});
+
 // Movimientos de una cuenta
 router.get('/:venta_id/movements', rolePermissionMiddleware(['cobros_view']), (req, res) => {
     receivablesController.getReceivableMovements(req, res);
