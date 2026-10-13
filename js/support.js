@@ -117,16 +117,6 @@ async function updateLicense(id, action) {
         showMessage(error.message, 'error');
     }
 }
-                durationDays: duration
-            })
-        });
-        showMessage(data.message);
-        await loadOrganizations();
-    } catch (error) {
-        showMessage(error.message, 'error');
-    }
-}
-
 async function createCompany(event) {
     event.preventDefault();
     try {
