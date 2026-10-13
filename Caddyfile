@@ -1,4 +1,4 @@
-{$DOMAIN:localhost} {
+:80 {
     encode zstd gzip
 
     @api path /api/* /health

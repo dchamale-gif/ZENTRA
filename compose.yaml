@@ -47,7 +47,7 @@ services:
       PLATFORM_DB_PASSWORD_FILE: /run/secrets/platform_db_password
       JWT_SECRET_FILE: /run/secrets/jwt_secret
       JWT_EXPIRATION: ${JWT_EXPIRATION:-8h}
-      CORS_ORIGIN: https://${DOMAIN}
+      CORS_ORIGIN: ${CORS_ORIGIN:?Configura CORS_ORIGIN en .env}
       DB_SSL: disable
     secrets:
       - tenant_db_password
@@ -128,8 +128,7 @@ services:
       backend:
         condition: service_healthy
     ports:
-      - "80:80"
-      - "443:443"
+      - "127.0.0.1:8080:80"
     volumes:
       - caddy_data:/data
     read_only: true

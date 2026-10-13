@@ -10,14 +10,14 @@ const pool = new Pool({
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME || 'zentra',
   ssl: getDbSslConfig(),
+  connectionTimeoutMillis: 10000,
 });
 
 pool.on('error', (err) => {
-  console.error('❌ Error no esperado en cliente de Pool', err);
+  console.error('Error no esperado en cliente de Pool:', err);
 });
 
 const connectWithoutTenant = pool.connect.bind(pool);
-const queryWithoutTenant = pool.query.bind(pool);
 
 const configureTenant = async (client, organizationId) => {
   await client.query(
@@ -37,20 +37,27 @@ pool.connect = async () => {
   try {
     await configureTenant(client, organizationId);
   } catch (error) {
-    client.release();
+    client.release(error);
     throw error;
   }
 
   const releaseWithoutReset = client.release.bind(client);
   let released = false;
-  client.release = () => {
+
+  client.release = (error) => {
     if (released) return;
     released = true;
+
+    if (error) {
+      releaseWithoutReset(error);
+      return;
+    }
+
     client.query('RESET app.current_organization_id')
       .then(() => releaseWithoutReset())
-      .catch((error) => {
-        console.error('Error limpiando el contexto de empresa:', error);
-        releaseWithoutReset(error);
+      .catch((resetError) => {
+        console.error('Error limpiando el contexto de empresa:', resetError);
+        releaseWithoutReset(resetError);
       });
   };
 
@@ -59,30 +66,35 @@ pool.connect = async () => {
 
 pool.query = async (...args) => {
   const organizationId = getTenantId();
-  if (!organizationId) {
-    return queryWithoutTenant(...args);
-  }
-
   const client = await connectWithoutTenant();
+
   try {
-    await configureTenant(client, organizationId);
+    if (organizationId) {
+      await configureTenant(client, organizationId);
+    }
+
     return await client.query(...args);
   } finally {
-    try {
-      await client.query('RESET app.current_organization_id');
-    } finally {
-      client.release();
+    if (organizationId) {
+      try {
+        await client.query('RESET app.current_organization_id');
+      } catch (error) {
+        client.release(error);
+        throw error;
+      }
     }
+
+    client.release();
   }
 };
 
-// Test conexión
-queryWithoutTenant('SELECT NOW()', (err, res) => {
-  if (err) {
-    console.error('Error conectando a la DB:', err);
-  } else {
-    console.log('✅ Conexión a PostgreSQL establecida');
-  }
-});
+pool.query('SELECT NOW()')
+  .then(() => {
+    console.log('Conexión a PostgreSQL establecida');
+  })
+  .catch((err) => {
+    console.error('Error conectando a la DB:', err.message);
+  });
 
 module.exports = pool;
+

@@ -6,7 +6,8 @@ load_secret() {
   file_variable_name="${variable_name}_FILE"
   eval "file_path=\${$file_variable_name:-}"
   if [ -n "$file_path" ]; then
-    eval "export $variable_name=\"$(cat "$file_path")\""
+    secret_value="$(cat "$file_path")"
+    export "$variable_name=$secret_value"
   fi
 }
 
