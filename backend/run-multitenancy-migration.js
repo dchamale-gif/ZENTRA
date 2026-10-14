@@ -29,7 +29,9 @@ const run = async () => {
     console.log('✓ Migración multiempresa aplicada.');
 
     const estadoDeCuentaPath = path.join(__dirname, '../database/estado-de-cuenta-migration.sql');
-    if (fs.existsSync(estadoDeCuentaPath)) {
+    const { rows } = await pool.query("SELECT to_regclass('pacientes') AS t");
+    // Tras migrar pacientes -> clientes ya no existe la tabla base de estado de cuenta
+    if (fs.existsSync(estadoDeCuentaPath) && rows[0].t) {
       console.log('Aplicando migración de estado de cuenta...');
       await executeSqlFile(estadoDeCuentaPath);
       console.log('✓ Migración de estado de cuenta aplicada.');

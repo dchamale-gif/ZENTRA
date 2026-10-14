@@ -237,7 +237,11 @@ END $$;
 ALTER TABLE codigos_articulos DROP CONSTRAINT IF EXISTS codigos_articulos_codigo_key;
 ALTER TABLE compras DROP CONSTRAINT IF EXISTS compras_numero_compra_key;
 ALTER TABLE ventas DROP CONSTRAINT IF EXISTS ventas_numero_venta_key;
-ALTER TABLE pacientes DROP CONSTRAINT IF EXISTS pacientes_dpi_key;
+DO $$ BEGIN
+    IF to_regclass('pacientes') IS NOT NULL THEN
+        ALTER TABLE pacientes DROP CONSTRAINT IF EXISTS pacientes_dpi_key;
+    END IF;
+END $$;
 ALTER TABLE clientes DROP CONSTRAINT IF EXISTS clientes_email_key;
 ALTER TABLE configuracion DROP CONSTRAINT IF EXISTS configuracion_clave_key;
 
@@ -247,9 +251,13 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_compras_org_numero
     ON compras(organization_id, numero_compra);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_ventas_org_numero
     ON ventas(organization_id, numero_venta);
-CREATE UNIQUE INDEX IF NOT EXISTS uq_pacientes_org_dpi
-    ON pacientes(organization_id, dpi)
-    WHERE dpi IS NOT NULL;
+DO $$ BEGIN
+    IF to_regclass('pacientes') IS NOT NULL THEN
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_pacientes_org_dpi
+            ON pacientes(organization_id, dpi)
+            WHERE dpi IS NOT NULL;
+    END IF;
+END $$;
 CREATE UNIQUE INDEX IF NOT EXISTS uq_clientes_org_email
     ON clientes(organization_id, email)
     WHERE email IS NOT NULL;
