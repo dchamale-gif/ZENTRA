@@ -34,6 +34,7 @@ const getOrganizationPayload = (row) => {
     licenseKey: row.organization_license_key,
     plan: row.organization_license_plan,
     licenseIssuedAt: row.organization_license_issued_at,
+    maxUsers: row.organization_max_users,
     status: row.subscription_status,
     trialEndsAt: row.trial_ends_at,
     subscriptionEndsAt: row.subscription_ends_at,
@@ -154,7 +155,7 @@ const register = async (req, res) => {
         subscription_status, trial_started_at, trial_ends_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'Trial', NOW(), 'trial', NOW(), NOW() + ($9 * INTERVAL '1 day'))
        RETURNING id, nombre, slug, sector_comercial, email, license_key, license_plan,
-                 license_issued_at, subscription_status, trial_ends_at`,
+                 license_issued_at, license_max_users, subscription_status, trial_ends_at`,
       [
         normalizedCompanyName,
         buildSlug(normalizedCompanyName),
@@ -208,6 +209,7 @@ const register = async (req, res) => {
       organization_license_key: organization.license_key,
       organization_license_plan: organization.license_plan,
       organization_license_issued_at: organization.license_issued_at,
+      organization_max_users: organization.license_max_users,
       subscription_status: organization.subscription_status,
       trial_ends_at: organization.trial_ends_at
     });
@@ -263,6 +265,7 @@ const login = async (req, res) => {
               o.license_key AS organization_license_key,
               o.license_plan AS organization_license_plan,
               o.license_issued_at AS organization_license_issued_at,
+              o.license_max_users AS organization_max_users,
               o.subscription_status, o.trial_ends_at, o.subscription_ends_at
        FROM users u
        JOIN organizations o ON o.id = u.organization_id

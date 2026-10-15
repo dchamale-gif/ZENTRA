@@ -2,6 +2,15 @@ const crypto = require('crypto');
 const pool = require('../db/platformConnection');
 
 const LICENSE_STATUSES = new Set(['trial', 'active', 'suspended', 'cancelled']);
+const DEFAULT_MAX_USERS = 3;
+
+// Devuelve el número de usuarios validado, o null si no es válido.
+const parseMaxUsers = (value) => {
+  const maxUsers = Number(value);
+  return Number.isInteger(maxUsers) && maxUsers >= 1 && maxUsers <= 1000 ? maxUsers : null;
+};
+
+const ACTIVE_USERS_SQL = `(SELECT COUNT(*) FROM users u WHERE u.organization_id = organizations.id AND u.activo)::INTEGER AS active_users`;
 
 const generateLicenseKey = () => {
   const value = crypto.randomBytes(6).toString('hex').toUpperCase();
@@ -18,6 +27,8 @@ const mapOrganization = (row) => ({
   plan: row.license_plan,
   licenseKey: row.license_key,
   licenseIssuedAt: row.license_issued_at,
+  maxUsers: row.license_max_users,
+  activeUsers: Number(row.active_users || 0),
   trialEndsAt: row.trial_ends_at,
   subscriptionStartedAt: row.subscription_started_at,
   subscriptionEndsAt: row.subscription_ends_at,
@@ -30,8 +41,9 @@ const listOrganizations = async (req, res) => {
     const expiringIn = Math.min(Math.max(Number(req.query.expiringIn) || 30, 1), 3650);
     const result = await pool.query(
       `SELECT id, nombre, sector_comercial, email, nit, subscription_status,
-              license_plan, license_key, license_issued_at, trial_ends_at,
+              license_plan, license_key, license_issued_at, license_max_users, trial_ends_at,
               subscription_started_at, subscription_ends_at, created_at,
+              ${ACTIVE_USERS_SQL},
               GREATEST(
                 0,
                 CEIL(EXTRACT(EPOCH FROM (
@@ -61,9 +73,10 @@ const getOrganization = async (req, res) => {
     const result = await pool.query(
       `SELECT o.id, o.nombre, o.sector_comercial, o.email, o.nit,
               o.subscription_status, o.license_plan, o.license_key,
-              o.license_issued_at, o.trial_ends_at,
+              o.license_issued_at, o.license_max_users, o.trial_ends_at,
               o.subscription_started_at, o.subscription_ends_at, o.created_at,
-              COUNT(u.id)::INTEGER AS user_count
+              COUNT(u.id)::INTEGER AS user_count,
+              (COUNT(u.id) FILTER (WHERE u.activo))::INTEGER AS active_users
        FROM organizations o
        LEFT JOIN users u ON u.organization_id = o.id
        WHERE o.id = $1
@@ -88,9 +101,11 @@ const createOrganization = async (req, res) => {
       email,
       nit,
       plan = 'Demo',
-      durationDays = 30
+      durationDays = 30,
+      maxUsers = DEFAULT_MAX_USERS
     } = req.body;
     const days = Number(durationDays);
+    const userLimit = parseMaxUsers(maxUsers);
     if (!String(name || '').trim() || !String(sector || '').trim() ||
         !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || '').trim())) {
       return res.status(400).json({ error: 'Nombre, sector y correo válido son requeridos' });
@@ -98,14 +113,18 @@ const createOrganization = async (req, res) => {
     if (!Number.isInteger(days) || days < 1 || days > 3650) {
       return res.status(400).json({ error: 'La duración debe estar entre 1 y 3650 días' });
     }
+    if (!userLimit) {
+      return res.status(400).json({ error: 'Los usuarios permitidos deben estar entre 1 y 1000' });
+    }
 
     const result = await pool.query(
       `INSERT INTO organizations
        (nombre, slug, sector_comercial, email, nit, subscription_status,
-        license_plan, license_key, license_issued_at, trial_started_at, trial_ends_at)
-       VALUES ($1, $2, $3, $4, $5, 'trial', $6, $7, NOW(), NOW(), NOW() + ($8 * INTERVAL '1 day'))
+        license_plan, license_key, license_issued_at, license_max_users,
+        trial_started_at, trial_ends_at)
+       VALUES ($1, $2, $3, $4, $5, 'trial', $6, $7, NOW(), $9, NOW(), NOW() + ($8 * INTERVAL '1 day'))
        RETURNING id, nombre, sector_comercial, email, nit, subscription_status,
-                 license_plan, license_key, license_issued_at, trial_ends_at,
+                 license_plan, license_key, license_issued_at, license_max_users, trial_ends_at,
                  subscription_started_at, subscription_ends_at, created_at,
                  $8 AS days_remaining`,
       [
@@ -116,7 +135,8 @@ const createOrganization = async (req, res) => {
         nit ? String(nit).trim().slice(0, 30) : null,
         String(plan).trim().slice(0, 50) || 'Demo',
         generateLicenseKey(),
-        days
+        days,
+        userLimit
       ]
     );
     res.status(201).json({
@@ -130,20 +150,77 @@ const createOrganization = async (req, res) => {
   }
 };
 
+// Impide bajar la capacidad por debajo de los usuarios que ya están activos.
+const checkActiveUsersFit = async (organizationId, userLimit) => {
+  const { rows } = await pool.query(
+    'SELECT COUNT(*)::INTEGER AS active_users FROM users WHERE organization_id = $1 AND activo',
+    [organizationId]
+  );
+  const activeUsers = rows[0].active_users;
+  return activeUsers > userLimit
+    ? `La empresa tiene ${activeUsers} usuarios activos; desactiva algunos antes de bajar la licencia a ${userLimit}.`
+    : null;
+};
+
+const updateUserLimit = async (req, res) => {
+  try {
+    const userLimit = parseMaxUsers(req.body.maxUsers);
+    if (!userLimit) {
+      return res.status(400).json({ error: 'Los usuarios permitidos deben estar entre 1 y 1000' });
+    }
+    const limitError = await checkActiveUsersFit(req.params.id, userLimit);
+    if (limitError) return res.status(409).json({ error: limitError });
+
+    const result = await pool.query(
+      `UPDATE organizations
+       SET license_max_users = $1, updated_at = NOW()
+       WHERE id = $2
+       RETURNING id, nombre, sector_comercial, email, nit, subscription_status,
+                 license_plan, license_key, license_issued_at, license_max_users, trial_ends_at,
+                 subscription_started_at, subscription_ends_at, created_at,
+                 ${ACTIVE_USERS_SQL},
+                 GREATEST(0, CEIL(EXTRACT(EPOCH FROM (
+                   COALESCE(subscription_ends_at, trial_ends_at) - NOW()
+                 )) / 86400)) AS days_remaining`,
+      [userLimit, req.params.id]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Empresa no encontrada' });
+    }
+    res.json({
+      success: true,
+      message: `Licencia actualizada a ${userLimit} usuarios`,
+      organization: mapOrganization(result.rows[0])
+    });
+  } catch (error) {
+    console.error('Error actualizando usuarios de la licencia:', error);
+    res.status(500).json({ error: 'Error actualizando usuarios de la licencia' });
+  }
+};
+
 const updateLicense = async (req, res) => {
   try {
     const {
       status = 'active',
       plan = 'Demo',
       durationDays = 365,
-      generateNewKey = false
+      generateNewKey = false,
+      maxUsers
     } = req.body;
     const days = Number(durationDays);
+    const userLimit = maxUsers === undefined || maxUsers === null ? null : parseMaxUsers(maxUsers);
     if (!LICENSE_STATUSES.has(status)) {
       return res.status(400).json({ error: 'Estado de licencia inválido' });
     }
     if (!Number.isInteger(days) || days < 1 || days > 3650) {
       return res.status(400).json({ error: 'La duración debe estar entre 1 y 3650 días' });
+    }
+    if (maxUsers !== undefined && maxUsers !== null && !userLimit) {
+      return res.status(400).json({ error: 'Los usuarios permitidos deben estar entre 1 y 1000' });
+    }
+    if (userLimit) {
+      const limitError = await checkActiveUsersFit(req.params.id, userLimit);
+      if (limitError) return res.status(409).json({ error: limitError });
     }
 
     const newKey = generateLicenseKey();
@@ -153,6 +230,7 @@ const updateLicense = async (req, res) => {
            license_plan = $2,
            license_key = CASE WHEN $6 = true THEN $3 ELSE COALESCE(license_key, $3) END,
            license_issued_at = CASE WHEN $6 = true OR license_issued_at IS NULL THEN NOW() ELSE license_issued_at END,
+           license_max_users = COALESCE($7::INTEGER, license_max_users),
            subscription_started_at = CASE WHEN $1 = 'active' THEN NOW() ELSE subscription_started_at END,
            subscription_ends_at = CASE WHEN $1 = 'active'
              THEN NOW() + ($4 * INTERVAL '1 day')
@@ -161,8 +239,9 @@ const updateLicense = async (req, res) => {
            updated_at = NOW()
        WHERE id = $5
        RETURNING id, nombre, sector_comercial, email, nit, subscription_status,
-                 license_plan, license_key, license_issued_at, trial_ends_at,
+                 license_plan, license_key, license_issued_at, license_max_users, trial_ends_at,
                  subscription_started_at, subscription_ends_at, created_at,
+                 ${ACTIVE_USERS_SQL},
                  GREATEST(
                    0,
                    CEIL(EXTRACT(EPOCH FROM (
@@ -172,7 +251,7 @@ const updateLicense = async (req, res) => {
                      ) - NOW()
                    )) / 86400)
                  ) AS days_remaining`,
-      [status, String(plan).trim().slice(0, 50) || 'Demo', newKey, days, req.params.id, Boolean(generateNewKey)]
+      [status, String(plan).trim().slice(0, 50) || 'Demo', newKey, days, req.params.id, Boolean(generateNewKey), userLimit]
     );
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Empresa no encontrada' });
@@ -195,5 +274,6 @@ module.exports = {
   createOrganization,
   listOrganizations,
   getOrganization,
-  updateLicense
+  updateLicense,
+  updateUserLimit
 };

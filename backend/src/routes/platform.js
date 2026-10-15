@@ -9,5 +9,6 @@ router.post('/organizations', platformController.createOrganization);
 router.get('/organizations', platformController.listOrganizations);
 router.get('/organizations/:id', platformController.getOrganization);
 router.post('/organizations/:id/license', platformController.updateLicense);
+router.post('/organizations/:id/users-limit', platformController.updateUserLimit);
 
 module.exports = router;
