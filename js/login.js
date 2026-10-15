@@ -79,7 +79,7 @@ async function handleLogin(event) {
         const result = await authManager.login(email, password);
 
         if (result.success) {
-            showAlert('✓ Bienvenido ' + result.user.nombre, 'success', 2000);
+            showAlert('Bienvenido, ' + result.user.nombre, 'success', 2000);
 
             // Guardar preferencia de "recuérdame"
             if (rememberMe) {
@@ -88,16 +88,16 @@ async function handleLogin(event) {
                 localStorage.removeItem('rememberEmail');
             }
 
-            // Redirigir al dashboard después de 2 segundos
+            // Redirigir tras mostrar brevemente el mensaje de bienvenida
             setTimeout(() => {
                 if (result.platformAdmin) {
                     redirectToSupportPanel();
                 } else {
                     redirectToDashboard();
                 }
-            }, 2000);
+            }, 800);
         } else {
-            showAlert('❌ ' + result.error, 'error');
+            showAlert(result.error, 'error');
             setButtonLoading(submitBtn, false);
 
             // Limpiar contraseña

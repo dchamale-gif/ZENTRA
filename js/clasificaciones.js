@@ -26,7 +26,7 @@ const ClasificacionesConfig = {
 
     renderLevel(parentId, level, depth) {
         const next = { seccion: 'familia', familia: 'subfamilia' }[level];
-        const label = { seccion: 'sección', familia: 'familia', subfamilia: 'subfamilia' }[level];
+        const plural = { seccion: 'secciones', familia: 'familias', subfamilia: 'subfamilias' }[level];
         const nodes = this.childrenOf(parentId, level).map(node => `
             <li style="margin-left:${depth * 18}px;list-style:none;margin-bottom:6px">
                 <strong>${BulkImport.escapeHtml(node.nombre)}</strong>
@@ -42,7 +42,7 @@ const ClasificacionesConfig = {
                     </div>
                     ${this.renderLevel(node.id, next, depth + 1)}` : ''}
             </li>`).join('');
-        return nodes ? `<ul style="padding:0;margin:0">${nodes}</ul>` : (depth === 0 ? `<p style="color:#6b7280">Aún no hay ${label}s configuradas.</p>` : '');
+        return nodes ? `<ul style="padding:0;margin:0">${nodes}</ul>` : (depth === 0 ? `<p style="color:#6b7280">Aún no hay ${plural} configuradas.</p>` : '');
     },
 
     render() {

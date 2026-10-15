@@ -61,6 +61,8 @@ El script `database/verify-tenant-isolation.sql` verifica dinámicamente que **t
 
 ## 3. Despliegue Paso a Paso con Docker
 
+> **Atajo:** `./configurar-dominio.sh zentra.tu-dominio.com soporte@tu-dominio.com` realiza los pasos 1 y 2 y verifica el DNS.
+
 ### Paso 1: Configurar Variables de Entorno
 Copie el archivo de ejemplo:
 ```bash
@@ -127,7 +129,7 @@ docker compose up -d
    ```
    ✓ Roles de base de datos verificados: least-privilege activo y sin BYPASSRLS.
    ```
-3. Abra su navegador en `https://zentra.tu-dominio.com/login.html` (o `http://localhost/login.html` en local).
+3. Abra su navegador en `https://zentra.tu-dominio.com` (o `https://localhost` en local).
 4. Inicie sesión con el correo y contraseña del administrador de soporte. El sistema lo redirigirá inmediatamente a `support.html`.
 
 ---

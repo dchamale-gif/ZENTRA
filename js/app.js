@@ -741,9 +741,13 @@ function setSidebarOpen(open) {
     const backdrop = document.getElementById('sidebarBackdrop');
     if (!sidebar || !toggleBtn || !backdrop) return;
 
+    // En escritorio el menú lateral queda fijo y siempre visible.
+    const pinned = window.matchMedia('(min-width: 1024px)').matches;
+    if (pinned) open = false;
+
     sidebar.classList.toggle('active', open);
     backdrop.classList.toggle('active', open);
-    sidebar.setAttribute('aria-hidden', String(!open));
+    sidebar.setAttribute('aria-hidden', String(!open && !pinned));
     toggleBtn.setAttribute('aria-expanded', String(open));
     toggleBtn.setAttribute('aria-label', open ? 'Cerrar menú' : 'Abrir menú');
     toggleBtn.setAttribute('title', open ? 'Cerrar menú' : 'Abrir menú');
@@ -1144,13 +1148,22 @@ function setupLogout() {
 
     // Toggle user menu
     if (userMenu) {
-        userMenu.addEventListener('click', function(e) {
+        const toggleUserMenu = function(e) {
             e.stopPropagation();
             const menu = document.getElementById('userDropdown');
             if (menu) {
-                menu.classList.toggle('active');
+                const open = menu.classList.toggle('active');
+                userMenu.setAttribute('aria-expanded', String(open));
+            }
+        };
+        userMenu.addEventListener('click', toggleUserMenu);
+        userMenu.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                toggleUserMenu(e);
             }
         });
+        document.getElementById('userDropdown')?.addEventListener('click', e => e.stopPropagation());
     }
 
     // Cerrar menú al hacer click fuera
@@ -1158,6 +1171,7 @@ function setupLogout() {
         const dropdown = document.getElementById('userDropdown');
         if (dropdown) {
             dropdown.classList.remove('active');
+            userMenu?.setAttribute('aria-expanded', 'false');
         }
     });
 }

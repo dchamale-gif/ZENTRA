@@ -19,7 +19,28 @@ El backend usa tres roles PostgreSQL diferentes:
 - Un dominio cuyo DNS apunte al servidor.
 - Puertos 80 y 443 disponibles.
 
-## Configuración
+## Configuración rápida (recomendada)
+
+1. En tu proveedor de dominio crea un registro DNS tipo **A** que apunte el
+   dominio (o subdominio) a la IP pública del servidor.
+2. En el servidor, desde la carpeta del proyecto:
+
+```bash
+./configurar-dominio.sh zentra.midominio.com soporte@midominio.com
+docker compose up -d --build
+docker compose --profile setup run --rm bootstrap-admin
+```
+
+El script crea `.env`, escribe `DOMAIN` y `CORS_ORIGIN`, genera los secretos
+que falten y comprueba que el DNS apunte al servidor. Caddy emite el
+certificado HTTPS en el primer arranque; si el DNS aún no propagó, lo
+reintenta solo.
+
+Para probar en local sin dominio, deje `DOMAIN` vacío y use
+`CORS_ORIGIN=https://localhost`: Caddy servirá
+`https://localhost` con un certificado local.
+
+## Configuración manual
 
 ```bash
 cp .env.docker.example .env

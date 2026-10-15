@@ -3,9 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
-    <meta name="theme-color" content="#ffffff">
-    <title>Zentra</title>
+    <meta name="theme-color" content="#0b1b33">
+    <meta name="robots" content="noindex, nofollow">
+    <title>Zentra · Panel</title>
+    <link rel="icon" href="img/favicon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="img/apple-touch-icon.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
     <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/theme.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 <body>
@@ -15,8 +22,9 @@
             <button type="button" class="sidebar-close" id="closeSidebar" aria-label="Cerrar menú" title="Cerrar menú">
                 <i class="fas fa-xmark" aria-hidden="true"></i>
             </button>
-            <div class="logo-container">
-                <img src="img/zentra-logo.png" alt="Zentra Logo" class="logo-image">
+            <div class="logo-container brand">
+                <img src="img/zentra-mark-light.svg" alt="" class="brand-mark" width="32" height="32">
+                <span class="brand-name">Zentra</span>
             </div>
             <nav class="nav-menu">
                 <a href="#" class="nav-item active" data-page="dashboard">
@@ -51,7 +59,7 @@
                     <span>Ventas</span>
                 </a>
                 <a href="#" class="nav-item" data-page="caja">
-                    <i class="fas fa-cash-register"></i>
+                    <i class="fas fa-wallet"></i>
                     <span>Caja</span>
                 </a>
                 <a href="#" class="nav-item" data-page="cuentas-por-cobrar">
@@ -67,7 +75,7 @@
                     <span>Dashboard Ejecutivo</span>
                 </a>
                 <a href="#" class="nav-item" data-page="gastos-servicios">
-                    <i class="fas fa-receipt"></i>
+                    <i class="fas fa-file-invoice-dollar"></i>
                     <span>Gastos y Servicios</span>
                 </a>
 
@@ -85,7 +93,7 @@
                     <span>Transacciones</span>
                 </a>
                 <a href="#" class="nav-item" data-page="reports">
-                    <i class="fas fa-file-chart-bar"></i>
+                    <i class="fas fa-chart-column"></i>
                     <span>Reportes</span>
                 </a>
 
@@ -96,39 +104,27 @@
                     <span>Configuración</span>
                 </a>
             </nav>
-            <div class="user-info" id="userMenu" style="cursor: pointer;">
-                <div class="user-avatar"><i class="fas fa-user-circle"></i></div>
+            <div class="user-info" id="userMenu" role="button" tabindex="0" aria-haspopup="menu" aria-controls="userDropdown">
+                <div class="user-avatar" aria-hidden="true"><i class="fas fa-user"></i></div>
                 <div class="user-details">
                     <p class="user-name" id="userName">Cargando...</p>
                     <p class="user-status" id="userRole">Sistema</p>
                 </div>
-                <i class="fas fa-chevron-down" style="margin-left: auto; font-size: 12px;"></i>
+                <i class="fas fa-chevron-up user-chevron" aria-hidden="true"></i>
             </div>
-            
+
             <!-- User Dropdown Menu -->
-            <div id="userDropdown" style="
-                position: absolute;
-                bottom: 20px;
-                left: 20px;
-                background: white;
-                border-radius: 8px;
-                box-shadow: 0 5px 15px rgba(0,0,0,0.2);
-                width: 220px;
-                padding: 10px 0;
-                display: none;
-                z-index: 1000;
-            ">
-                <div style="padding: 15px; border-bottom: 1px solid #e0e0e0;">
-                    <p style="font-weight: 600; margin: 0 0 5px 0; color: #333;" id="userEmail">Email</p>
-                    <p style="font-size: 12px; color: #999; margin: 0;" id="userRole">Rol</p>
+            <div id="userDropdown" class="user-dropdown" role="menu">
+                <div class="user-dropdown-header">
+                    <p class="user-dropdown-email" id="userEmail">Email</p>
                 </div>
-                <a href="#" style="display: block; padding: 10px 15px; color: #666; text-decoration: none; border-bottom: 1px solid #e0e0e0;" onclick="event.preventDefault(); alert('Funcionalidad próximamente')">
+                <a href="#" class="user-dropdown-item" role="menuitem" onclick="event.preventDefault(); alert('Funcionalidad próximamente')">
                     <i class="fas fa-user"></i> Mi Perfil
                 </a>
-                <a href="#" style="display: block; padding: 10px 15px; color: #666; text-decoration: none; border-bottom: 1px solid #e0e0e0;" onclick="event.preventDefault(); alert('Funcionalidad próximamente')">
+                <a href="#" class="user-dropdown-item" role="menuitem" onclick="event.preventDefault(); alert('Funcionalidad próximamente')">
                     <i class="fas fa-key"></i> Cambiar Contraseña
                 </a>
-                <a href="#" style="display: block; padding: 10px 15px; color: #e74c3c; text-decoration: none;" id="logoutBtn">
+                <a href="#" class="user-dropdown-item danger" role="menuitem" id="logoutBtn">
                     <i class="fas fa-sign-out-alt"></i> Cerrar Sesión
                 </a>
             </div>
@@ -159,7 +155,7 @@
                     </button>
                 </div>
             </header>
-            <div id="trialBanner" style="display:none; background:#fff7ed; color:#9a3412; border-bottom:1px solid #fed7aa; padding:10px 24px; font-size:14px;"></div>
+            <div id="trialBanner" class="trial-banner" style="display:none"></div>
 
             <!-- Pages Container -->
             <div class="pages-container">

@@ -123,12 +123,14 @@ services:
       dockerfile: Dockerfile.frontend
     restart: unless-stopped
     environment:
-      DOMAIN: ${DOMAIN}
+      DOMAIN: ${DOMAIN:-localhost}
     depends_on:
       backend:
         condition: service_healthy
     ports:
-      - "127.0.0.1:8080:80"
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
     volumes:
       - caddy_data:/data
     read_only: true

@@ -3,48 +3,68 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Soporte - Zentra</title>
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="theme-color" content="#0b1b33">
+    <title>Soporte · Zentra</title>
+    <link rel="icon" href="img/favicon.svg" type="image/svg+xml">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        :root { font-family: Arial, sans-serif; color: #1f2937; background: #f3f4f6; }
+        :root { --primary: #1d4ed8; --primary-hover: #1e40af; --text: #0f172a; --body: #334155; --muted: #64748b; --border: #e5e9f0; --border-strong: #cbd5e1; }
         * { box-sizing: border-box; }
-        body { margin: 0; }
-        header { align-items: center; background: #fff; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; padding: 18px 28px; }
-        header h1 { color: #4f46e5; font-size: 22px; margin: 0; }
-        header button, .primary, .secondary, .danger { border: 0; border-radius: 6px; cursor: pointer; font-weight: 600; padding: 10px 14px; }
-        header button { background: #f3f4f6; color: #374151; }
+        body { margin: 0; font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 14px; color: var(--body); background: #f5f7fa; -webkit-font-smoothing: antialiased; }
+        header { align-items: center; background: #0b1b33; display: flex; justify-content: space-between; padding: 14px 28px; }
+        header h1 { align-items: center; color: #fff; display: flex; font-size: 15px; font-weight: 600; gap: 12px; margin: 0; }
+        header h1 img { height: 28px; width: 28px; }
+        header h1 .brand { font-size: 16px; font-weight: 700; letter-spacing: .14em; }
+        header h1 .tag { background: rgba(96, 165, 250, .16); border-radius: 999px; color: #93c5fd; font-size: 12px; font-weight: 600; padding: 3px 10px; }
+        button { font: inherit; }
+        header button, .primary, .secondary, .danger { align-items: center; border: 1px solid transparent; border-radius: 8px; cursor: pointer; display: inline-flex; font-size: 13px; font-weight: 600; gap: 6px; min-height: 36px; padding: 0 14px; transition: background-color .15s ease; }
+        header button { background: rgba(255, 255, 255, .08); border-color: rgba(255, 255, 255, .12); color: #e2e8f0; }
+        header button:hover { background: rgba(255, 255, 255, .14); }
         main { margin: 0 auto; max-width: 1300px; padding: 28px; }
-        .toolbar, .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 18px; }
+        .toolbar, .card { background: #fff; border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 1px 2px rgba(15, 23, 42, .04), 0 1px 3px rgba(15, 23, 42, .06); padding: 18px; }
         .toolbar { align-items: end; display: flex; gap: 12px; justify-content: space-between; margin-bottom: 18px; }
-        label { color: #4b5563; display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
-        input, select { border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; padding: 10px; }
-        .primary { background: #4f46e5; color: #fff; }
-        .secondary { background: #e0e7ff; color: #3730a3; }
-        .danger { background: #fee2e2; color: #991b1b; }
+        .toolbar > div { margin-right: auto; }
+        .card.table-wrap { padding: 0; }
+        label { color: var(--body); display: block; font-size: 12.5px; font-weight: 500; margin-bottom: 6px; }
+        input, select { background: #fff; border: 1px solid var(--border-strong); border-radius: 8px; color: var(--text); font: inherit; font-size: 13.5px; min-height: 38px; padding: 8px 12px; }
+        input:focus, select:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(29, 78, 216, .16); outline: none; }
+        .primary { background: var(--primary); color: #fff; }
+        .primary:hover { background: var(--primary-hover); }
+        .secondary { background: #fff; border-color: var(--border-strong); color: var(--text); }
+        .secondary:hover { background: #f1f5f9; }
+        .danger { background: #fef2f2; border-color: #fecaca; color: #991b1b; }
+        .danger:hover { background: #fee2e2; }
         .table-wrap { overflow-x: auto; }
         table { border-collapse: collapse; min-width: 1000px; width: 100%; }
-        th, td { border-bottom: 1px solid #e5e7eb; padding: 13px 10px; text-align: left; vertical-align: top; }
-        th { color: #6b7280; font-size: 12px; text-transform: uppercase; }
-        .key { color: #111827; font-family: monospace; font-weight: 700; white-space: nowrap; }
-        .status { border-radius: 999px; display: inline-block; font-size: 12px; font-weight: 700; padding: 4px 8px; }
+        th, td { border-bottom: 1px solid #eef1f5; padding: 12px 14px; text-align: left; vertical-align: top; }
+        th { background: #f8fafc; color: var(--muted); font-size: 11.5px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+        tbody tr:hover { background: #f8fafc; }
+        tbody tr:last-child td { border-bottom: 0; }
+        .key { color: var(--text); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 600; white-space: nowrap; }
+        .status { border-radius: 999px; display: inline-block; font-size: 11.5px; font-weight: 600; padding: 3px 10px; }
         .active { background: #dcfce7; color: #166534; }
         .trial { background: #fef3c7; color: #92400e; }
         .suspended, .cancelled { background: #fee2e2; color: #991b1b; }
         .actions { display: flex; flex-wrap: wrap; gap: 6px; }
-        .modal { background: rgba(17, 24, 39, .45); inset: 0; position: fixed; }
-        .modal-content { background: #fff; border-radius: 10px; margin: 7vh auto; max-width: 520px; padding: 24px; width: calc(100% - 32px); }
-        .modal-content h2 { margin-top: 0; }
+        .actions button { min-height: 30px; padding: 0 10px; font-size: 12.5px; }
+        .modal { background: rgba(15, 23, 42, .45); inset: 0; position: fixed; }
+        .modal-content { background: #fff; border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 24px 48px -12px rgba(15, 23, 42, .3); margin: 7vh auto; max-width: 520px; padding: 24px; width: calc(100% - 32px); }
+        .modal-content h2 { color: var(--text); font-size: 17px; margin-top: 0; }
         .form-group { margin-bottom: 14px; }
         .form-group input, .form-group select { width: 100%; }
-        .modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
+        .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
         .message { margin-bottom: 14px; }
         .hidden { display: none; }
-        @media (max-width: 700px) { main { padding: 16px; } .toolbar { align-items: stretch; flex-direction: column; } }
+        @media (max-width: 700px) { header { padding: 12px 16px; } main { padding: 16px; } .toolbar { align-items: stretch; flex-direction: column; } }
     </style>
 </head>
 <body>
     <header>
-        <h1><i class="fas fa-shield-halved"></i> Zentra Soporte</h1>
+        <h1><img src="img/zentra-mark-light.svg" alt=""><span class="brand">ZENTRA</span><span class="tag">Soporte</span></h1>
         <button id="logoutButton" type="button">Cerrar sesión</button>
     </header>
     <main>
