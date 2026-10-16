@@ -1,0 +1,16 @@
+# Modo "detrás de nginx": úsalo cuando otro servidor web (nginx con otras
+# páginas, como la web de BotEngine) ya ocupa los puertos 80 y 443.
+#
+# Caddy deja de pedir certificados y escucha solo en 127.0.0.1:8088 (ERP_LOCAL_PORT); nginx
+# termina el HTTPS del subdominio y reenvía aquí (ver deploy/nginx-erp.conf).
+# configurar-dominio.sh --nginx lo activa con COMPOSE_FILE en .env.
+services:
+  web:
+    environment:
+      DOMAIN: ":80"
+    ports: !override
+      - "127.0.0.1:${ERP_LOCAL_PORT:-8088}:80"
+
+  backend:
+    environment:
+      TRUST_PROXY: 2

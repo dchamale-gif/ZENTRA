@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="robots" content="noindex, nofollow">
     <meta name="theme-color" content="#0b1b33">
-    <title>Soporte · Zentra</title>
+    <title>Soporte · BotEngine ERP</title>
     <link rel="icon" href="img/favicon.svg" type="image/svg+xml">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -18,7 +18,8 @@
         header { align-items: center; background: #0b1b33; display: flex; justify-content: space-between; padding: 14px 28px; }
         header h1 { align-items: center; color: #fff; display: flex; font-size: 15px; font-weight: 600; gap: 12px; margin: 0; }
         header h1 img { height: 28px; width: 28px; }
-        header h1 .brand { font-size: 16px; font-weight: 700; letter-spacing: .14em; }
+        header h1 .brand { font-size: 16px; font-weight: 700; letter-spacing: -.01em; }
+        header h1 .brand-sub { color: #93c5fd; font-weight: 600; }
         header h1 .tag { background: rgba(96, 165, 250, .16); border-radius: 999px; color: #93c5fd; font-size: 12px; font-weight: 600; padding: 3px 10px; }
         button { font: inherit; }
         header button, .primary, .secondary, .danger { align-items: center; border: 1px solid transparent; border-radius: 8px; cursor: pointer; display: inline-flex; font-size: 13px; font-weight: 600; gap: 6px; min-height: 36px; padding: 0 14px; transition: background-color .15s ease; }
@@ -44,6 +45,7 @@
         th { background: #f8fafc; color: var(--muted); font-size: 11.5px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
         tbody tr:hover { background: #f8fafc; }
         tbody tr:last-child td { border-bottom: 0; }
+        .users-full { color: #b91c1c; font-weight: 600; }
         .key { color: var(--text); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 600; white-space: nowrap; }
         .status { border-radius: 999px; display: inline-block; font-size: 11.5px; font-weight: 600; padding: 3px 10px; }
         .active { background: #dcfce7; color: #166534; }
@@ -64,7 +66,7 @@
 </head>
 <body>
     <header>
-        <h1><img src="img/zentra-mark-light.svg" alt=""><span class="brand">ZENTRA</span><span class="tag">Soporte</span></h1>
+        <h1><img src="img/botengine-mark-light.svg" alt=""><span class="brand">BotEngine <span class="brand-sub">ERP</span></span><span class="tag">Soporte</span></h1>
         <button id="logoutButton" type="button">Cerrar sesión</button>
     </header>
     <main>
@@ -84,8 +86,8 @@
         </section>
         <section class="card table-wrap">
             <table>
-                <thead><tr><th>Empresa</th><th>Contacto</th><th>Estado</th><th>Licencia</th><th>Vencimiento</th><th>Acciones</th></tr></thead>
-                <tbody id="organizationsBody"><tr><td colspan="6">Cargando empresas...</td></tr></tbody>
+                <thead><tr><th>Empresa</th><th>Contacto</th><th>Estado</th><th>Licencia</th><th>Usuarios</th><th>Vencimiento</th><th>Acciones</th></tr></thead>
+                <tbody id="organizationsBody"><tr><td colspan="7">Cargando empresas...</td></tr></tbody>
             </table>
         </section>
     </main>
@@ -99,6 +101,7 @@
                 <div class="form-group"><label for="companyEmail">Correo</label><input id="companyEmail" type="email" required maxlength="150"></div>
                 <div class="form-group"><label for="companyNit">NIT (opcional)</label><input id="companyNit" maxlength="30"></div>
                 <div class="form-group"><label for="companyPlan">Plan</label><input id="companyPlan" value="Demo" maxlength="50"></div>
+                <div class="form-group"><label for="companyMaxUsers">Usuarios permitidos</label><input id="companyMaxUsers" type="number" min="1" max="1000" value="3" required></div>
                 <div class="form-group"><label for="companyDays">Días de prueba</label><input id="companyDays" type="number" min="1" max="3650" value="30" required></div>
                 <div class="modal-actions"><button class="secondary" id="cancelCompanyButton" type="button">Cancelar</button><button class="primary" type="submit">Guardar empresa</button></div>
             </form>

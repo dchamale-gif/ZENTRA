@@ -60,3 +60,6 @@ coverage/
 !js/
 !data/
 !*.md
+
+# Configuración de nginx generada por configurar-dominio.sh --nginx
+deploy/nginx-erp.*.conf

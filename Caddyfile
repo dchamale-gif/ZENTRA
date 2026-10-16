@@ -1,3 +1,11 @@
+# Confiar en X-Forwarded-For solo cuando la petición viene de una red privada
+# (por ejemplo nginx del mismo servidor en modo proxy); así el backend ve la IP real.
+{
+    servers {
+        trusted_proxies static private_ranges
+    }
+}
+
 # DOMAIN viene de .env (por ejemplo zentra.midominio.com).
 # Con un dominio real Caddy obtiene y renueva solo el certificado HTTPS
 # (Let's Encrypt) y redirige HTTP a HTTPS. Sin DOMAIN usa "localhost"

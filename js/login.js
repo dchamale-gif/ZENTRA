@@ -182,7 +182,7 @@ function openSupportWhatsApp() {
     const phone = document.getElementById('registerTelefono').value.trim() || 'No indicado';
     const address = document.getElementById('empresaDireccion').value.trim() || 'No indicada';
     const message = [
-        'Hola, necesito apoyo para configurar mi empresa en Zentra.',
+        'Hola, necesito apoyo para configurar mi empresa en BotEngine ERP.',
         '',
         `Empresa: ${companyName}`,
         `Sector comercial: ${sector}`,

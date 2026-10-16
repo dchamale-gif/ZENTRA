@@ -4,12 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
     <meta name="theme-color" content="#0b1b33">
-    <meta name="description" content="Zentra: contabilidad, ventas, caja e inventario para tu empresa en un solo lugar. Prueba gratis por 30 días.">
-    <title>Iniciar sesión · Zentra</title>
-    <link rel="icon" href="img/favicon.svg" type="image/svg+xml">
+    <meta name="description" content="BotEngine ERP: ventas, compras, caja, inventario y contabilidad de tu empresa en un solo lugar. Prueba gratis por 30 días.">
+    <title>Iniciar sesión · BotEngine ERP</title>
+    <link rel="icon" href="img/botengine-mark.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="img/apple-touch-icon.png">
-    <meta property="og:title" content="Zentra · Sistema contable en la nube">
-    <meta property="og:description" content="Contabilidad, ventas, caja e inventario en un solo lugar. Prueba gratis por 30 días.">
+    <meta property="og:title" content="BotEngine ERP · Gestión empresarial en la nube">
+    <meta property="og:description" content="Ventas, compras, caja, inventario y contabilidad en un solo lugar. Prueba gratis por 30 días.">
     <meta property="og:type" content="website">
     <meta property="og:image" content="img/og-image.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -84,9 +84,24 @@
 
         .brand span {
             color: #fff;
-            font-size: 18px;
+            font-size: 19px;
             font-weight: 700;
-            letter-spacing: 0.14em;
+            letter-spacing: -0.01em;
+        }
+
+        .brand .brand-tag {
+            padding: 2px 8px;
+            border-radius: 6px;
+            background: rgba(96, 165, 250, 0.16);
+            color: #93c5fd;
+            font-size: 12px;
+            font-weight: 600;
+            letter-spacing: 0.08em;
+        }
+
+        .logo-section .brand .brand-tag {
+            background: #eff6ff;
+            color: var(--primary);
         }
 
         .brand-copy h2 {
@@ -527,13 +542,17 @@
 <body>
     <aside class="brand-panel" aria-hidden="true">
         <div class="brand">
-            <img src="img/zentra-mark-light.svg" alt="">
-            <span>ZENTRA</span>
+            <img src="img/botengine-mark-light.svg" alt="">
+            <span>BotEngine</span><span class="brand-tag">ERP</span>
         </div>
         <div class="brand-copy">
-            <h2>La contabilidad de tu empresa, clara y en un solo lugar.</h2>
-            <p>Ventas, compras, caja e inventario conectados para que tomes decisiones con números reales.</p>
+            <h2>Toda la operación de tu empresa, conectada en un solo lugar.</h2>
+            <p>Ventas, compras, caja, inventario y cuentas por cobrar en una sola plataforma, con números reales para decidir.</p>
             <ul class="feature-list">
+                <li>
+                    <i class="fas fa-address-book"></i>
+                    <div><strong>Clientes y cuentas</strong><span>Directorio, estados de cuenta y cobros al día.</span></div>
+                </li>
                 <li>
                     <i class="fas fa-cash-register"></i>
                     <div><strong>Ventas y caja</strong><span>Registra ventas y cierres de caja en segundos.</span></div>
@@ -543,20 +562,20 @@
                     <div><strong>Inventario con códigos</strong><span>Controla existencias, costos y clasificaciones.</span></div>
                 </li>
                 <li>
-                    <i class="fas fa-chart-line"></i>
-                    <div><strong>Reportes y estados de cuenta</strong><span>Exporta a Excel o PDF cuando lo necesites.</span></div>
+                    <i class="fas fa-users"></i>
+                    <div><strong>Licencia por usuarios</strong><span>Agrega a tu equipo según la capacidad de tu plan.</span></div>
                 </li>
             </ul>
         </div>
-        <p class="brand-footer">© <span id="brandYear">2026</span> Zentra</p>
+        <p class="brand-footer">© <span id="brandYear">2026</span> BotEngine ERP</p>
     </aside>
 
     <main class="form-panel">
     <div class="login-container">
         <div class="logo-section">
             <div class="brand">
-                <img src="img/zentra-mark.svg" alt="">
-                <span>ZENTRA</span>
+                <img src="img/botengine-mark.svg" alt="">
+                <span>BotEngine</span><span class="brand-tag">ERP</span>
             </div>
             <h1>Inicia sesión</h1>
             <p>Ingresa con tu correo para continuar.</p>
@@ -618,7 +637,7 @@
             <p class="register-subtitle">Configura tu cuenta administradora para empezar.</p>
             <div class="trial-note">
                 <i class="fas fa-circle-info" aria-hidden="true"></i>
-                <div><strong>30 días gratis.</strong> Tendrás acceso completo durante el período de prueba.
+                <div><strong>30 días gratis, hasta 3 usuarios.</strong> Tendrás acceso completo durante el período de prueba.
                 Al finalizar, el acceso quedará bloqueado hasta activar una suscripción.</div>
             </div>
             <form id="registerForm">

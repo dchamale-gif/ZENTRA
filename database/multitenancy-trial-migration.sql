@@ -264,4 +264,71 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_clientes_org_email
 CREATE UNIQUE INDEX IF NOT EXISTS uq_configuracion_org_clave
     ON configuracion(organization_id, clave);
 
+-- Capacidad de la licencia: número máximo de usuarios activos por empresa.
+ALTER TABLE organizations ADD COLUMN IF NOT EXISTS license_max_users INTEGER NOT NULL DEFAULT 3;
+DO $$ BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'organizations_license_max_users_check'
+          AND conrelid = 'organizations'::regclass
+    ) THEN
+        ALTER TABLE organizations
+            ADD CONSTRAINT organizations_license_max_users_check
+            CHECK (license_max_users BETWEEN 1 AND 1000);
+    END IF;
+END $$;
+
+-- Las empresas que ya tenían más usuarios conservan su capacidad actual.
+UPDATE organizations o
+SET license_max_users = counts.active_users
+FROM (
+    SELECT organization_id, COUNT(*)::INTEGER AS active_users
+    FROM users
+    WHERE activo
+    GROUP BY organization_id
+) counts
+WHERE counts.organization_id = o.id
+  AND counts.active_users > o.license_max_users;
+
+CREATE OR REPLACE FUNCTION enforce_license_user_limit()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    max_users INTEGER;
+    active_users INTEGER;
+BEGIN
+    IF NOT NEW.activo THEN
+        RETURN NEW;
+    END IF;
+    IF TG_OP = 'UPDATE' AND OLD.activo AND OLD.organization_id = NEW.organization_id THEN
+        RETURN NEW;
+    END IF;
+
+    -- Bloquear la fila de la empresa serializa altas simultáneas.
+    SELECT license_max_users INTO max_users
+    FROM organizations
+    WHERE id = NEW.organization_id
+    FOR UPDATE;
+
+    SELECT COUNT(*) INTO active_users
+    FROM users
+    WHERE organization_id = NEW.organization_id
+      AND activo
+      AND id IS DISTINCT FROM NEW.id;
+
+    IF active_users >= max_users THEN
+        RAISE EXCEPTION 'USER_LIMIT_REACHED'
+            USING ERRCODE = 'check_violation',
+                  DETAIL = format('La licencia permite %s usuarios activos.', max_users);
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_enforce_license_user_limit ON users;
+CREATE TRIGGER trg_enforce_license_user_limit
+    BEFORE INSERT OR UPDATE OF activo, organization_id ON users
+    FOR EACH ROW EXECUTE FUNCTION enforce_license_user_limit();
+
 COMMIT;

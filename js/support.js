@@ -47,7 +47,7 @@ async function loadOrganizations() {
         if (!data) return;
         const body = document.getElementById('organizationsBody');
         if (!data.organizations.length) {
-            body.innerHTML = '<tr><td colspan="6">No hay empresas registradas.</td></tr>';
+            body.innerHTML = '<tr><td colspan="7">No hay empresas registradas.</td></tr>';
             return;
         }
         body.innerHTML = data.organizations.map((organization) => `
@@ -56,28 +56,60 @@ async function loadOrganizations() {
                 <td>${escapeHtml(organization.email || 'Sin correo')}<br><small>${escapeHtml(organization.nit || 'Sin NIT')}</small></td>
                 <td><span class="status ${organization.status}">${escapeHtml(organization.status)}</span><br><small>${organization.daysRemaining} días</small></td>
                 <td class="key">${escapeHtml(organization.licenseKey || 'Sin licencia')}</td>
+                <td class="${organization.activeUsers >= organization.maxUsers ? 'users-full' : ''}">${organization.activeUsers} / ${organization.maxUsers}<br><small>activos / permitidos</small></td>
                 <td>${formatDate(organization.status === 'trial' ? organization.trialEndsAt : organization.subscriptionEndsAt)}</td>
                 <td class="actions">
                     <button class="primary" type="button" data-action="activate" data-id="${organization.id}">Habilitar</button>
                     <button class="secondary" type="button" data-action="generate" data-id="${organization.id}">Generar clave</button>
+                    <button class="secondary" type="button" data-action="users" data-id="${organization.id}" data-max-users="${organization.maxUsers}">Usuarios</button>
                     <button class="danger" type="button" data-action="suspend" data-id="${organization.id}">Suspender</button>
                 </td>
             </tr>
         `).join('');
         body.querySelectorAll('button[data-action]').forEach(button => {
-            button.addEventListener('click', () => updateLicense(button.dataset.id, button.dataset.action));
+            button.addEventListener('click', () => updateLicense(button.dataset.id, button.dataset.action, button));
         });
     } catch (error) {
         showMessage(error.message, 'error');
     }
 }
 
-async function updateLicense(id, action) {
+const askMaxUsers = (current = 3) => {
+    const answer = window.prompt('Usuarios permitidos por la licencia:', String(current));
+    if (answer === null) return null;
+    const maxUsers = Number(answer);
+    if (!Number.isInteger(maxUsers) || maxUsers < 1 || maxUsers > 1000) {
+        showMessage('Los usuarios permitidos deben ser un número entre 1 y 1000.', 'error');
+        return null;
+    }
+    return maxUsers;
+};
+
+async function updateLicense(id, action, button) {
+    const currentMaxUsers = Number(button?.dataset.maxUsers) || 3;
+    if (action === 'users') {
+        const maxUsers = askMaxUsers(currentMaxUsers);
+        if (!maxUsers) return;
+        try {
+            const data = await apiRequest(`/organizations/${id}/users-limit`, {
+                method: 'POST',
+                body: JSON.stringify({ maxUsers })
+            });
+            showMessage(data.message);
+            await loadOrganizations();
+        } catch (error) {
+            showMessage(error.message, 'error');
+        }
+        return;
+    }
+
     if (action === 'generate') {
         const confirmGen = window.confirm('¿Deseas generar una nueva clave de licencia XXXX-XXXX-XXXX para esta empresa?');
         if (!confirmGen) return;
         const plan = window.prompt('Plan de la licencia:', 'Pro') || 'Pro';
         const duration = Number(window.prompt('Duración en días:', '365') || 365);
+        const maxUsers = askMaxUsers(currentMaxUsers);
+        if (!maxUsers) return;
         try {
             const data = await apiRequest(`/organizations/${id}/license`, {
                 method: 'POST',
@@ -85,7 +117,8 @@ async function updateLicense(id, action) {
                     status: 'active',
                     plan,
                     durationDays: duration,
-                    generateNewKey: true
+                    generateNewKey: true,
+                    maxUsers
                 })
             });
             showMessage(data.message);
@@ -101,6 +134,8 @@ async function updateLicense(id, action) {
     const duration = action === 'activate'
         ? Number(window.prompt('Duración en días:', '365') || 365)
         : 1;
+    const maxUsers = action === 'activate' ? askMaxUsers(currentMaxUsers) : undefined;
+    if (action === 'activate' && !maxUsers) return;
     try {
         const data = await apiRequest(`/organizations/${id}/license`, {
             method: 'POST',
@@ -108,7 +143,8 @@ async function updateLicense(id, action) {
                 status: action === 'activate' ? 'active' : 'suspended',
                 plan,
                 durationDays: duration,
-                generateNewKey: false
+                generateNewKey: false,
+                maxUsers
             })
         });
         showMessage(data.message);
@@ -128,7 +164,8 @@ async function createCompany(event) {
                 email: document.getElementById('companyEmail').value.trim(),
                 nit: document.getElementById('companyNit').value.trim(),
                 plan: document.getElementById('companyPlan').value.trim(),
-                durationDays: Number(document.getElementById('companyDays').value)
+                durationDays: Number(document.getElementById('companyDays').value),
+                maxUsers: Number(document.getElementById('companyMaxUsers').value)
             })
         });
         closeCompanyModal();
