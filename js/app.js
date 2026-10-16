@@ -185,7 +185,7 @@ function navigateToPage(pageId) {
         EstadosDeCuentaModule.loadClients();
     }
     
-    if (pageId === 'alertas') {
+    if (pageId === 'alertas' && typeof AlertasModule !== 'undefined') {
         AlertasModule.renderAlertas();
     }
 }

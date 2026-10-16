@@ -66,6 +66,12 @@ const ComprasModule = {
         }
     },
 
+    // Al volver a la página se recargan las compras desde el servidor.
+    refreshTable() {
+        if (this.state.initialized) this.loadData();
+        else this.init();
+    },
+
     render() {
         const tbody = document.querySelector('#comprasTable tbody');
         if (!tbody) return;

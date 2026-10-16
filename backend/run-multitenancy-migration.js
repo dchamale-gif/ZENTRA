@@ -37,6 +37,19 @@ const run = async () => {
       console.log('✓ Migración de estado de cuenta aplicada.');
     }
 
+    // Migraciones de la edición sin módulo médico; todas se pueden repetir sin efecto.
+    const featureMigrations = [
+      'migrate-pacientes-a-clientes.sql',
+      'migrate-codigos-articulos.sql',
+      'compras-conceptos-migration.sql',
+      'migrate-dpi-y-clasificaciones.sql'
+    ];
+    for (const file of featureMigrations) {
+      console.log(`Aplicando ${file}...`);
+      await executeSqlFile(path.join(__dirname, '../database', file));
+    }
+    console.log('✓ Migraciones de clientes, artículos, compras y clasificaciones aplicadas.');
+
     console.log('Verificando aislamiento de datos (RLS) en todas las tablas empresariales...');
     await executeSqlFile(path.join(__dirname, '../database/verify-tenant-isolation.sql'));
     console.log('✓ Aislamiento multiempresa y RLS verificado exitosamente.');
