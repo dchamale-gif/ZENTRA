@@ -61,6 +61,12 @@
         .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
         .message { margin-bottom: 14px; }
         .hidden { display: none; }
+        .modal-hint { color: var(--muted); font-size: 13px; line-height: 1.5; margin: -4px 0 16px; }
+        .module-checks { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+        .module-checks label { align-items: center; border: 1px solid var(--border); border-radius: 8px; cursor: pointer; display: flex; font-size: 13.5px; font-weight: 500; gap: 10px; margin: 0; padding: 10px 12px; }
+        .module-checks label:has(input:checked) { background: #eff6ff; border-color: #bfdbfe; }
+        .module-checks input { accent-color: var(--primary); height: 16px; min-height: 0; width: 16px; }
+        .modal-actions .spacer { flex: 1; }
         @media (max-width: 700px) { header { padding: 12px 16px; } main { padding: 16px; } .toolbar { align-items: stretch; flex-direction: column; } }
     </style>
 </head>
@@ -86,8 +92,8 @@
         </section>
         <section class="card table-wrap">
             <table>
-                <thead><tr><th>Empresa</th><th>Contacto</th><th>Estado</th><th>Licencia</th><th>Usuarios</th><th>Vencimiento</th><th>Acciones</th></tr></thead>
-                <tbody id="organizationsBody"><tr><td colspan="7">Cargando empresas...</td></tr></tbody>
+                <thead><tr><th>Empresa</th><th>Contacto</th><th>Estado</th><th>Licencia</th><th>Usuarios</th><th>Módulos</th><th>Vencimiento</th><th>Acciones</th></tr></thead>
+                <tbody id="organizationsBody"><tr><td colspan="8">Cargando empresas...</td></tr></tbody>
             </table>
         </section>
     </main>
@@ -104,6 +110,21 @@
                 <div class="form-group"><label for="companyMaxUsers">Usuarios permitidos</label><input id="companyMaxUsers" type="number" min="1" max="1000" value="3" required></div>
                 <div class="form-group"><label for="companyDays">Días de prueba</label><input id="companyDays" type="number" min="1" max="3650" value="30" required></div>
                 <div class="modal-actions"><button class="secondary" id="cancelCompanyButton" type="button">Cancelar</button><button class="primary" type="submit">Guardar empresa</button></div>
+            </form>
+        </div>
+    </div>
+    <div id="modulesModal" class="modal hidden">
+        <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="modulesTitle">
+            <h2 id="modulesTitle">Módulos de la empresa</h2>
+            <p class="modal-hint">Lo que desmarques desaparece del menú y del dashboard de todos sus usuarios al recargar, y el servidor lo bloquea. Sus datos se conservan.</p>
+            <form id="modulesForm">
+                <div class="module-checks" id="modulesChecks"></div>
+                <div class="modal-actions">
+                    <button class="secondary" type="button" id="modulesSelectAll">Marcar todos</button>
+                    <span class="spacer"></span>
+                    <button class="secondary" type="button" id="cancelModulesButton">Cancelar</button>
+                    <button class="primary" type="submit">Guardar módulos</button>
+                </div>
             </form>
         </div>
     </div>

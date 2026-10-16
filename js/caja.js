@@ -224,7 +224,7 @@ const CajaModule = {
         if (this.state.movimientos.length === 0) {
             tbody.innerHTML = `<tr><td colspan="9" class="text-center" style="padding: 24px;">
                 Aún no hay movimientos de caja.
-                <button class="btn btn-primary" onclick="CajaModule.openMovementModal()"><i class="fas fa-plus"></i> Registrar el primero</button>
+                <button class="btn btn-primary btn-sm" onclick="CajaModule.openMovementModal()"><i class="fas fa-plus"></i> Registrar el primero</button>
             </td></tr>`;
             return;
         }
@@ -268,18 +268,15 @@ const CajaModule = {
             .reduce((total, m) => total + m.monto, 0);
         const ingresos = sum('entrada');
         const egresos = sum('salida');
-        const card = (label, value, color) => `
-            <div style="background: #fff; border: 1px solid #e5e9f0; border-radius: 10px; padding: 16px 18px;">
-                <div style="font-size: 12px; color: #64748b; margin-bottom: 6px;">${label}</div>
-                <div style="font-size: 22px; font-weight: 700; color: ${color};">${value}</div>
-            </div>`;
+        const tile = (label, value, tone = '') => `
+            <div class="stat-tile ${tone}"><span class="stat-label">${label}</span><span class="stat-value">${value}</span></div>`;
 
         statusElement.innerHTML = `
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 20px;">
-                ${card('Ingresos', `+Q${ingresos.toFixed(2)}`, '#166534')}
-                ${card('Egresos', `-Q${egresos.toFixed(2)}`, '#991b1b')}
-                ${card('Neto del período', `Q${(ingresos - egresos).toFixed(2)}`, '#0f172a')}
-                ${card('Saldo en caja', `Q${this.state.saldoCaja.toFixed(2)}`, '#1d4ed8')}
+            <div class="stat-strip">
+                ${tile('Ingresos', `Q${ingresos.toFixed(2)}`, 'is-positive')}
+                ${tile('Egresos', `Q${egresos.toFixed(2)}`, egresos > 0 ? 'is-danger' : '')}
+                ${tile('Neto del período', `Q${(ingresos - egresos).toFixed(2)}`)}
+                ${tile('Saldo en caja', `Q${this.state.saldoCaja.toFixed(2)}`, 'is-accent')}
             </div>
         `;
     },

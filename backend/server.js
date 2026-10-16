@@ -20,6 +20,7 @@ const cajaRoutes = require('./src/routes/caja');
 const clientesRoutes = require('./src/routes/clientes');
 const notificationsRoutes = require('./src/routes/notifications');
 const dashboardRoutes = require('./src/routes/dashboard');
+const usersRoutes = require('./src/routes/users');
 
 // Importar middleware
 const { auditMiddleware } = require('./src/middleware/audit');
@@ -94,6 +95,7 @@ app.get('/health', (req, res) => {
 // Autenticación
 app.use('/api/auth/login', authRateLimiter);
 app.use('/api/auth/register', authRateLimiter);
+app.use('/api/auth/change-password', authRateLimiter);
 app.use('/api/auth', authRoutes);
 app.use('/api/platform', platformRoutes);
 
@@ -132,6 +134,7 @@ app.use('/api/clientes', clientesRoutes);
 // Notificaciones
 app.use('/api/notifications', notificationsRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/users', usersRoutes);
 
 
 // Lugar de Trabajo

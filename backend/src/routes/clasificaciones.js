@@ -6,7 +6,7 @@ const router = express.Router();
 
 router.use(authMiddleware);
 
-router.get('/', rolePermissionMiddleware(['inventario_view']), controller.getClasificaciones);
+router.get('/', rolePermissionMiddleware(['inventario_view', 'ventas_view', 'compras_view']), controller.getClasificaciones);
 router.post('/', rolePermissionMiddleware(['inventario_create']), controller.createClasificacion);
 router.delete('/:id', rolePermissionMiddleware(['inventario_delete']), controller.deleteClasificacion);
 

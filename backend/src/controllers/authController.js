@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const pool = require('../db/authConnection');
 const platformPool = require('../db/platformConnection');
 const { clearSessionCookie, setSessionCookie } = require('../utils/sessionCookie');
+const { resolveUserAccess } = require('../utils/modules');
 
 const TRIAL_DAYS = 30;
 
@@ -35,6 +36,7 @@ const getOrganizationPayload = (row) => {
     plan: row.organization_license_plan,
     licenseIssuedAt: row.organization_license_issued_at,
     maxUsers: row.organization_max_users,
+    modules: row.organization_modules ?? null,
     status: row.subscription_status,
     trialEndsAt: row.trial_ends_at,
     subscriptionEndsAt: row.subscription_ends_at,
@@ -191,15 +193,8 @@ const register = async (req, res) => {
       'INSERT INTO user_roles (user_id, role_id) VALUES ($1, (SELECT id FROM roles WHERE nombre = $2))',
       [user.id, 'admin']
     );
-    const roles = ['admin'];
-    const permissionsResult = await client.query(
-      `SELECT p.nombre FROM permissions p
-       JOIN role_permissions rp ON p.id = rp.permission_id
-       JOIN roles r ON r.id = rp.role_id
-       WHERE r.nombre = 'admin'`
-    );
-    const permissions = permissionsResult.rows.map(row => row.nombre);
     await client.query('COMMIT');
+    const { roles, permissions, modules } = await resolveUserAccess(pool, user.id, null);
     const organizationData = getOrganizationPayload({
       organization_id: organization.id,
       organization_name: organization.nombre,
@@ -226,6 +221,8 @@ const register = async (req, res) => {
         apellido: user.apellido,
         roles,
         permissions,
+        modules,
+        isAdmin: true,
         organization: organizationData
       },
       organization: organizationData
@@ -266,6 +263,7 @@ const login = async (req, res) => {
               o.license_plan AS organization_license_plan,
               o.license_issued_at AS organization_license_issued_at,
               o.license_max_users AS organization_max_users,
+              o.modulos_habilitados AS organization_modules,
               o.subscription_status, o.trial_ends_at, o.subscription_ends_at
        FROM users u
        JOIN organizations o ON o.id = u.organization_id
@@ -305,25 +303,9 @@ const login = async (req, res) => {
       });
     }
 
-    // Obtener roles y permisos
-    const rolesResult = await pool.query(
-      `SELECT r.nombre FROM roles r
-       JOIN user_roles ur ON r.id = ur.role_id
-       WHERE ur.user_id = $1`,
-      [user.id]
-    );
-
-    const permissionsResult = await pool.query(
-      `SELECT p.nombre FROM permissions p
-       JOIN role_permissions rp ON p.id = rp.permission_id
-       JOIN user_roles ur ON rp.role_id = ur.role_id
-       WHERE ur.user_id = $1
-       GROUP BY p.nombre`,
-      [user.id]
-    );
-
-    const roles = rolesResult.rows.map(r => r.nombre);
-    const permissions = permissionsResult.rows.map(p => p.nombre);
+    // Rol, módulos y permisos efectivos según lo habilitado para la empresa
+    const access = await resolveUserAccess(pool, user.id, user.organization_modules);
+    const { roles, permissions, modules } = access;
 
     // Generar JWT
     const token = createToken(user, roles, permissions);
@@ -343,8 +325,10 @@ const login = async (req, res) => {
         email: user.email,
         nombre: user.nombre,
         apellido: user.apellido,
-        roles: roles,
-        permissions: permissions,
+        roles,
+        permissions,
+        modules,
+        isAdmin: access.isAdmin,
         organization
       },
       organization
@@ -381,9 +365,14 @@ const getProfile = async (req, res) => {
       return res.status(404).json({ error: 'Usuario no encontrado' });
     }
 
+    const access = await resolveUserAccess(pool, userId, req.organization.modules);
     res.status(200).json({
       user: {
         ...result.rows[0],
+        roles: access.roles,
+        permissions: access.permissions,
+        modules: access.modules,
+        isAdmin: access.isAdmin,
         organization: req.organization
       }
     });
@@ -393,7 +382,29 @@ const getProfile = async (req, res) => {
   }
 };
 
+// Cambio de la contraseña propia, verificando la actual.
+const changePassword = async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    if (!newPassword || String(newPassword).length < 8) {
+      return res.status(400).json({ error: 'La nueva contraseña debe tener al menos 8 caracteres' });
+    }
+    const result = await pool.query('SELECT password_hash FROM users WHERE id = $1', [req.user.id]);
+    const matches = result.rows[0] && await bcrypt.compare(String(currentPassword || ''), result.rows[0].password_hash);
+    if (!matches) return res.status(400).json({ error: 'La contraseña actual no es correcta' });
+    await pool.query(
+      'UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2',
+      [await bcrypt.hash(String(newPassword), 10), req.user.id]
+    );
+    res.json({ success: true, message: 'Contraseña actualizada' });
+  } catch (error) {
+    console.error('Error en changePassword:', error);
+    res.status(500).json({ error: 'Error cambiando la contraseña' });
+  }
+};
+
 module.exports = {
+  changePassword,
   register,
   login,
   logout,

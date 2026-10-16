@@ -146,7 +146,7 @@ const CajaIntegradaModule = {
                     </div>
                     <div class="card-content">
                         <label>Total Ingresos</label>
-                        <p class="amount positive">$${ingresos.toFixed(2)}</p>
+                        <p class="amount positive">Q${ingresos.toFixed(2)}</p>
                     </div>
                 </div>
 
@@ -156,7 +156,7 @@ const CajaIntegradaModule = {
                     </div>
                     <div class="card-content">
                         <label>Total Egresos</label>
-                        <p class="amount negative">$${egresos.toFixed(2)}</p>
+                        <p class="amount negative">Q${egresos.toFixed(2)}</p>
                     </div>
                 </div>
 
@@ -166,7 +166,7 @@ const CajaIntegradaModule = {
                     </div>
                     <div class="card-content">
                         <label>Saldo en Caja</label>
-                        <p class="amount ${saldo >= 0 ? 'positive' : 'negative'}" style="font-size: 20px;">$${saldo.toFixed(2)}</p>
+                        <p class="amount ${saldo >= 0 ? 'positive' : 'negative'}" style="font-size: 20px;">Q${saldo.toFixed(2)}</p>
                     </div>
                 </div>
 
@@ -267,7 +267,7 @@ const CajaIntegradaModule = {
                 <td>${tipoBadge}</td>
                 <td>${clienteName}</td>
                 <td>${movimiento.descripcion}</td>
-                <td><span class="amount ${montoClass}">$${movimiento.monto.toFixed(2)}</span></td>
+                <td><span class="amount ${montoClass}">Q${movimiento.monto.toFixed(2)}</span></td>
                 <td>${movimiento.usuario}</td>
                 <td>
                     <button class="btn-icon btn-view" title="Ver Detalles" onclick="CajaIntegradaModule.viewMovimientoDetails('${movimiento.id}')">
@@ -342,7 +342,7 @@ const CajaIntegradaModule = {
                 <div class="detail-amount">
                     <label>Monto</label>
                     <p class="amount ${(movimiento.tipo === 'Ingreso por Cobro' || movimiento.tipo === 'Microfactura') ? 'positive' : 'negative'}" style="font-size: 18px;">
-                        $${movimiento.monto.toFixed(2)}
+                        Q${movimiento.monto.toFixed(2)}
                     </p>
                 </div>
 
@@ -351,7 +351,7 @@ const CajaIntegradaModule = {
                         <label>Artículos/Servicios</label>
                         <ul>
                             ${movimiento.detallesItems.map(item => `
-                                <li>${item.descripcion} - $${item.monto.toFixed(2)}</li>
+                                <li>${item.descripcion} - Q${item.monto.toFixed(2)}</li>
                             `).join('')}
                         </ul>
                     </div>

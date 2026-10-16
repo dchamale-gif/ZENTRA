@@ -241,7 +241,7 @@ const CodigosArticulosModule = {
         const select = document.getElementById('filterSeccion');
         if (!select) return;
 
-        select.innerHTML = '<option value="todos">-- Todas las Secciones --</option>' +
+        select.innerHTML = '<option value="todos">Todas las secciones</option>' +
             this.state.secciones.map(s => `<option value="${s.id}">${s.nombre}</option>`).join('');
 
         const modalSelect = document.getElementById('articuloSeccion');
@@ -260,7 +260,7 @@ const CodigosArticulosModule = {
             ? this.state.familias
             : this.state.familias.filter(f => f.seccionId === this.state.filterSeccion);
 
-        select.innerHTML = '<option value="todos">-- Todas las Familias --</option>' +
+        select.innerHTML = '<option value="todos">Todas las familias</option>' +
             familiasFiltradas.map(f => `<option value="${f.id}">${f.nombre}</option>`).join('');
     },
 
@@ -291,74 +291,105 @@ const CodigosArticulosModule = {
             );
         }
 
+        this.renderResumen();
+
         if (filtered.length === 0) {
-            container.innerHTML = '<div class="empty-state"><p>No hay artículos registrados</p></div>';
+            const sinArticulos = this.state.articulos.length === 0;
+            container.innerHTML = `
+                <div class="empty-block">
+                    <i class="fas ${sinArticulos ? 'fa-box-open' : 'fa-magnifying-glass'}" aria-hidden="true"></i>
+                    <h3>${sinArticulos ? 'Aún no tienes artículos' : 'Ningún artículo coincide'}</h3>
+                    <p>${sinArticulos
+                        ? 'Crea tu primer artículo o impórtalos desde Excel para empezar a vender y comprar.'
+                        : 'Prueba con otro nombre o código, o quita los filtros de sección y familia.'}</p>
+                    ${sinArticulos ? '<button class="btn btn-primary" type="button" onclick="CodigosArticulosModule.openArticuloModal()"><i class="fas fa-plus"></i> Nuevo artículo</button>' : ''}
+                </div>`;
             return;
         }
 
         container.innerHTML = `
-            <div class="table-responsive">
-                <table class="data-table">
+            <div class="table-card">
+                <table class="data-table articles-table">
                     <thead>
                         <tr>
-                            <th>Concepto</th>
-                            <th>Código de Venta (Interno)</th>
-                            <th>Código de Compra (Externo)</th>
-                            <th>Sección</th>
-                            <th>Familia</th>
-                            <th>Subfamilia</th>
-                            <th>Precio Compra</th>
-                            <th>Precio Venta</th>
-                            <th>Margen</th>
-                            <th>Estado</th>
-                            <th>Acciones</th>
+                            <th>Artículo</th>
+                            <th>Clasificación</th>
+                            <th class="text-right">Existencia</th>
+                            <th class="text-right">Costo</th>
+                            <th class="text-right">Precio</th>
+                            <th class="text-right">Margen</th>
+                            <th class="text-right"><span class="sr-only">Acciones</span></th>
                         </tr>
                     </thead>
                     <tbody>
                         ${filtered.map(art => this.renderArticuloRow(art)).join('')}
                     </tbody>
                 </table>
+                <div class="table-foot">${filtered.length} de ${this.state.articulos.length} artículos</div>
             </div>
         `;
     },
 
-    // Renderizar fila de artículo
+    // Totales del inventario sobre todos los artículos activos.
+    renderResumen() {
+        const container = document.getElementById('articulosResumen');
+        if (!container) return;
+        const activos = this.state.articulos.filter(a => a.activo);
+        const valor = activos.reduce((sum, a) => sum + a.cantidadDisponible * (a.precioCompra || a.precioVenta), 0);
+        const agotados = activos.filter(a => a.cantidadDisponible <= 0).length;
+        const bajos = activos.filter(a => a.cantidadDisponible > 0 && a.cantidadDisponible <= this.stockBajo).length;
+        const stat = (label, value, tone = '') => `
+            <div class="stat-tile ${tone}"><span class="stat-label">${label}</span><span class="stat-value">${value}</span></div>`;
+        container.innerHTML = [
+            stat('Artículos activos', activos.length.toLocaleString('es-GT')),
+            stat('Valor del inventario', `Q${valor.toLocaleString('es-GT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`),
+            stat(`Existencia baja (≤ ${this.stockBajo})`, bajos, bajos ? 'is-warning' : ''),
+            stat('Agotados', agotados, agotados ? 'is-danger' : '')
+        ].join('');
+    },
+
+    stockBajo: 5,
+
     renderArticuloRow(articulo) {
-        const seccion = this.state.secciones.find(s => s.id === articulo.seccionId);
-        const familia = this.state.familias.find(f => f.id === articulo.familiaId);
-        const subfamilia = this.state.subfamilias.find(s => s.id === articulo.subfamiliaId);
-        const precioCompra = articulo.precioCompra || 0;
-        const precioVenta = articulo.precioVenta || 0;
-        const margen = precioCompra > 0 ? ((precioVenta - precioCompra) / precioCompra * 100).toFixed(1) : '-';
-        const estadoBadge = articulo.estado === 'activo'
-            ? '<span class="badge badge-success">Activo</span>'
-            : '<span class="badge badge-secondary">Inactivo</span>';
+        const esc = (value) => this.escapeHtml(value);
+        const clasificacion = [articulo.seccionId, articulo.familiaId, articulo.subfamiliaId].filter(Boolean);
+        const costo = articulo.precioCompra || 0;
+        const precio = articulo.precioVenta || 0;
+        const margen = costo > 0 ? ((precio - costo) / costo) * 100 : null;
+        const stock = articulo.cantidadDisponible;
+        const stockTone = stock <= 0 ? 'is-danger' : (stock <= this.stockBajo ? 'is-warning' : 'is-ok');
+        const stockLabel = stock <= 0 ? 'Agotado' : `${stock.toLocaleString('es-GT')}${articulo.unidadMedida ? ` ${esc(articulo.unidadMedida)}` : ''}`;
+        const codigos = [
+            articulo.codigoVenta ? `<span title="Código de venta (interno)">${esc(articulo.codigoVenta)}</span>` : '',
+            articulo.codigoCompra ? `<span title="Código de compra o de barras">${esc(articulo.codigoCompra)}</span>` : ''
+        ].filter(Boolean).join('<span class="sep">·</span>');
 
         return `
-            <tr>
-                <td><strong>${articulo.concepto}</strong></td>
-                <td><code class="codigo-venta">${articulo.codigoVenta}</code></td>
-                <td><code class="codigo-compra">${articulo.codigoCompra}</code></td>
-                <td>${seccion ? seccion.nombre : '-'}</td>
-                <td>${familia ? familia.nombre : '-'}</td>
-                <td>${subfamilia ? subfamilia.nombre : '-'}</td>
-                <td>Q${(articulo.precioCompra || 0).toFixed(2)}</td>
-                <td>Q${(articulo.precioVenta || 0).toFixed(2)}</td>
-                <td><span class="badge badge-info">${margen}${margen !== '-' ? '%' : ''}</span></td>
-                <td>${estadoBadge}</td>
-                <td class="actions">
-                    <button class="btn-icon btn-view" title="Ver Detalles" onclick="CodigosArticulosModule.viewArticuloDetails('${articulo.id}')">
-                        <i class="fas fa-eye"></i>
-                    </button>
-                    <button class="btn-icon btn-edit" title="Editar" onclick="CodigosArticulosModule.editArticulo('${articulo.id}')">
-                        <i class="fas fa-edit"></i>
-                    </button>
-                    <button class="btn-icon btn-delete" title="Eliminar" onclick="CodigosArticulosModule.deleteArticulo('${articulo.id}')">
-                        <i class="fas fa-trash"></i>
-                    </button>
+            <tr class="${articulo.activo ? '' : 'is-inactive'}">
+                <td>
+                    <button class="cell-link" type="button" onclick="CodigosArticulosModule.viewArticuloDetails('${esc(articulo.id)}')">${esc(articulo.nombre || articulo.concepto)}</button>
+                    <div class="cell-sub mono">${codigos || 'Sin código'}${articulo.activo ? '' : ' <span class="chip">Inactivo</span>'}</div>
+                </td>
+                <td>${clasificacion.length ? `<span class="breadcrumb-text">${clasificacion.map(esc).join('<i class="fas fa-chevron-right" aria-hidden="true"></i>')}</span>` : '<span class="muted">Sin clasificar</span>'}</td>
+                <td class="text-right"><span class="stock-pill ${stockTone}">${stockLabel}</span></td>
+                <td class="text-right num">Q${costo.toFixed(2)}</td>
+                <td class="text-right num"><strong>Q${precio.toFixed(2)}</strong></td>
+                <td class="text-right num ${margen === null ? 'muted' : (margen < 0 ? 'text-danger' : '')}">${margen === null ? '—' : `${margen.toFixed(1)}%`}</td>
+                <td class="text-right">
+                    <div class="row-actions">
+                        <button class="icon-btn" type="button" title="Ver detalles" aria-label="Ver ${esc(articulo.nombre)}" onclick="CodigosArticulosModule.viewArticuloDetails('${esc(articulo.id)}')"><i class="fas fa-eye"></i></button>
+                        <button class="icon-btn" type="button" title="Editar" aria-label="Editar ${esc(articulo.nombre)}" onclick="CodigosArticulosModule.editArticulo('${esc(articulo.id)}')"><i class="fas fa-pen"></i></button>
+                        <button class="icon-btn is-danger" type="button" title="Eliminar" aria-label="Eliminar ${esc(articulo.nombre)}" onclick="CodigosArticulosModule.deleteArticulo('${esc(articulo.id)}')"><i class="fas fa-trash"></i></button>
+                    </div>
                 </td>
             </tr>
         `;
+    },
+
+    escapeHtml(value) {
+        return String(value ?? '').replace(/[&<>"']/g, char => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'
+        }[char]));
     },
 
     // Ver detalles

@@ -458,27 +458,27 @@ const ReportsModule = {
 
                 <div class="report-summary-grid">
                     <div class="summary-card gastos">
-                        <h4>💰 Gastos Totales</h4>
+                        <h4>Gastos totales</h4>
                         <p class="amount">${this.formatarMoneda(resumen.totalGastos)}</p>
                         <p class="details">${resumen.detalles.compras?.cantidad || 0} compras</p>
                     </div>
 
                     <div class="summary-card costos">
-                        <h4>📦 Costos (Inventario)</h4>
+                        <h4>Costos de inventario</h4>
                         <p class="amount">${this.formatarMoneda(resumen.totalCostos)}</p>
                         <p class="details">${resumen.detalles.medicinas?.cantidad || 0} ítems</p>
                     </div>
 
                     <div class="summary-card ingresos">
-                        <h4>💳 Ingresos Totales</h4>
+                        <h4>Ingresos totales</h4>
                         <p class="amount">${this.formatarMoneda(resumen.totalIngresos)}</p>
                         <p class="details">${(resumen.detalles.ventas?.cantidad || 0) + (resumen.detalles.servicios?.cantidad || 0)} transacciones</p>
                     </div>
 
                     <div class="summary-card ganancia ${resumen.ganancia >= 0 ? 'positivo' : 'negativo'}">
-                        <h4>📈 Ganancia Neta</h4>
+                        <h4>Ganancia neta</h4>
                         <p class="amount">${this.formatarMoneda(resumen.ganancia)}</p>
-                        <p class="details">Margen: ${resumen.margenNeto}%</p>
+                        <p class="details">Margen: ${Number(resumen.margenNeto) || 0}%</p>
                     </div>
                 </div>
 
@@ -740,11 +740,12 @@ const ReportsModule = {
 
     // Formatear moneda
     formatarMoneda(valor) {
+        const monto = Number(valor);
         return new Intl.NumberFormat('es-GT', {
             style: 'currency',
             currency: 'GTQ',
-            minimumFractionDigits: 0
-        }).format(valor);
+            minimumFractionDigits: 2
+        }).format(Number.isFinite(monto) ? monto : 0);
     },
 
     // Sin datos de ejemplo - Compras

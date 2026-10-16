@@ -1,4 +1,6 @@
 const platformApi = '/api/platform';
+const state = { organizations: [], modules: [], editingId: null };
+const statusLabels = { trial: 'Prueba', active: 'Activa', suspended: 'Suspendida', cancelled: 'Cancelada' };
 
 document.addEventListener('DOMContentLoaded', () => {
     const user = authManager.getUser();
@@ -13,6 +15,11 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('companyModal').classList.remove('hidden');
     });
     document.getElementById('cancelCompanyButton').addEventListener('click', closeCompanyModal);
+    document.getElementById('cancelModulesButton').addEventListener('click', closeModules);
+    document.getElementById('modulesForm').addEventListener('submit', saveModules);
+    document.getElementById('modulesSelectAll').addEventListener('click', () => {
+        document.querySelectorAll('#modulesChecks input').forEach(input => { input.checked = true; });
+    });
     document.getElementById('companyForm').addEventListener('submit', createCompany);
     document.getElementById('logoutButton').addEventListener('click', async () => {
         await authManager.logout();
@@ -42,32 +49,38 @@ const formatDate = (value) => value ? new Date(value).toLocaleDateString('es-GT'
 
 async function loadOrganizations() {
     try {
+        if (!state.modules.length) state.modules = (await apiRequest('/modules'))?.modules || [];
         const days = document.getElementById('expiringDays').value;
         const data = await apiRequest(`/organizations?expiringIn=${days}`);
         if (!data) return;
         const body = document.getElementById('organizationsBody');
         if (!data.organizations.length) {
-            body.innerHTML = '<tr><td colspan="7">No hay empresas registradas.</td></tr>';
+            body.innerHTML = '<tr><td colspan="8">No hay empresas registradas.</td></tr>';
             return;
         }
         body.innerHTML = data.organizations.map((organization) => `
             <tr>
                 <td><strong>${escapeHtml(organization.name)}</strong><br><small>${escapeHtml(organization.sector || 'Sin sector')}</small></td>
                 <td>${escapeHtml(organization.email || 'Sin correo')}<br><small>${escapeHtml(organization.nit || 'Sin NIT')}</small></td>
-                <td><span class="status ${organization.status}">${escapeHtml(organization.status)}</span><br><small>${organization.daysRemaining} días</small></td>
+                <td><span class="status ${organization.status}">${escapeHtml(statusLabels[organization.status] || organization.status)}</span><br><small>${organization.daysRemaining} días</small></td>
                 <td class="key">${escapeHtml(organization.licenseKey || 'Sin licencia')}</td>
                 <td class="${organization.activeUsers >= organization.maxUsers ? 'users-full' : ''}">${organization.activeUsers} / ${organization.maxUsers}<br><small>activos / permitidos</small></td>
+                <td>${modulesSummary(organization)}</td>
                 <td>${formatDate(organization.status === 'trial' ? organization.trialEndsAt : organization.subscriptionEndsAt)}</td>
                 <td class="actions">
                     <button class="primary" type="button" data-action="activate" data-id="${organization.id}">Habilitar</button>
                     <button class="secondary" type="button" data-action="generate" data-id="${organization.id}">Generar clave</button>
                     <button class="secondary" type="button" data-action="users" data-id="${organization.id}" data-max-users="${organization.maxUsers}">Usuarios</button>
+                    <button class="secondary" type="button" data-action="modules" data-id="${organization.id}">Módulos</button>
                     <button class="danger" type="button" data-action="suspend" data-id="${organization.id}">Suspender</button>
                 </td>
             </tr>
         `).join('');
+        state.organizations = data.organizations;
         body.querySelectorAll('button[data-action]').forEach(button => {
-            button.addEventListener('click', () => updateLicense(button.dataset.id, button.dataset.action, button));
+            button.addEventListener('click', () => button.dataset.action === 'modules'
+                ? openModules(button.dataset.id)
+                : updateLicense(button.dataset.id, button.dataset.action, button));
         });
     } catch (error) {
         showMessage(error.message, 'error');
@@ -171,6 +184,52 @@ async function createCompany(event) {
         closeCompanyModal();
         document.getElementById('companyForm').reset();
         showMessage(`${data.message}. Licencia: ${data.organization.licenseKey}`);
+        await loadOrganizations();
+    } catch (error) {
+        showMessage(error.message, 'error');
+    }
+}
+
+const modulesSummary = (organization) => {
+    if (!organization.modules) return 'Todos';
+    const total = state.modules.length || 10;
+    return `${organization.modules.length} de ${total}`;
+};
+
+async function openModules(id) {
+    const organization = state.organizations.find(entry => String(entry.id) === String(id));
+    if (!organization) return;
+    try {
+        if (!state.modules.length) state.modules = (await apiRequest('/modules')).modules;
+    } catch (error) {
+        showMessage(error.message, 'error');
+        return;
+    }
+    state.editingId = id;
+    const enabled = organization.modules || state.modules.map(module => module.key);
+    document.getElementById('modulesTitle').textContent = `Módulos de ${organization.name}`;
+    document.getElementById('modulesChecks').innerHTML = state.modules.map(module => `
+        <label><input type="checkbox" value="${module.key}" ${enabled.includes(module.key) ? 'checked' : ''}> ${escapeHtml(module.label)}</label>
+    `).join('');
+    document.getElementById('modulesModal').classList.remove('hidden');
+}
+
+function closeModules() {
+    document.getElementById('modulesModal').classList.add('hidden');
+    state.editingId = null;
+}
+
+async function saveModules(event) {
+    event.preventDefault();
+    const modules = [...document.querySelectorAll('#modulesChecks input:checked')].map(input => input.value);
+    if (modules.length === 0 && !confirm('La empresa quedará solo con el Dashboard y la Configuración. ¿Continuar?')) return;
+    try {
+        const data = await apiRequest(`/organizations/${state.editingId}/modules`, {
+            method: 'POST',
+            body: JSON.stringify({ modules })
+        });
+        closeModules();
+        showMessage(data.message);
         await loadOrganizations();
     } catch (error) {
         showMessage(error.message, 'error');

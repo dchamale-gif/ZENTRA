@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const pool = require('../db/platformConnection');
+const { MODULES, MODULE_KEYS } = require('../utils/modules');
 
 const LICENSE_STATUSES = new Set(['trial', 'active', 'suspended', 'cancelled']);
 const DEFAULT_MAX_USERS = 3;
@@ -28,6 +29,8 @@ const mapOrganization = (row) => ({
   licenseKey: row.license_key,
   licenseIssuedAt: row.license_issued_at,
   maxUsers: row.license_max_users,
+  // null = todos los módulos habilitados
+  modules: row.modulos_habilitados ?? null,
   activeUsers: Number(row.active_users || 0),
   trialEndsAt: row.trial_ends_at,
   subscriptionStartedAt: row.subscription_started_at,
@@ -41,7 +44,7 @@ const listOrganizations = async (req, res) => {
     const expiringIn = Math.min(Math.max(Number(req.query.expiringIn) || 30, 1), 3650);
     const result = await pool.query(
       `SELECT id, nombre, sector_comercial, email, nit, subscription_status,
-              license_plan, license_key, license_issued_at, license_max_users, trial_ends_at,
+              license_plan, license_key, license_issued_at, license_max_users, modulos_habilitados, trial_ends_at,
               subscription_started_at, subscription_ends_at, created_at,
               ${ACTIVE_USERS_SQL},
               GREATEST(
@@ -73,7 +76,7 @@ const getOrganization = async (req, res) => {
     const result = await pool.query(
       `SELECT o.id, o.nombre, o.sector_comercial, o.email, o.nit,
               o.subscription_status, o.license_plan, o.license_key,
-              o.license_issued_at, o.license_max_users, o.trial_ends_at,
+              o.license_issued_at, o.license_max_users, o.modulos_habilitados, o.trial_ends_at,
               o.subscription_started_at, o.subscription_ends_at, o.created_at,
               COUNT(u.id)::INTEGER AS user_count,
               (COUNT(u.id) FILTER (WHERE u.activo))::INTEGER AS active_users
@@ -124,7 +127,7 @@ const createOrganization = async (req, res) => {
         trial_started_at, trial_ends_at)
        VALUES ($1, $2, $3, $4, $5, 'trial', $6, $7, NOW(), $9, NOW(), NOW() + ($8 * INTERVAL '1 day'))
        RETURNING id, nombre, sector_comercial, email, nit, subscription_status,
-                 license_plan, license_key, license_issued_at, license_max_users, trial_ends_at,
+                 license_plan, license_key, license_issued_at, license_max_users, modulos_habilitados, trial_ends_at,
                  subscription_started_at, subscription_ends_at, created_at,
                  $8 AS days_remaining`,
       [
@@ -176,7 +179,7 @@ const updateUserLimit = async (req, res) => {
        SET license_max_users = $1, updated_at = NOW()
        WHERE id = $2
        RETURNING id, nombre, sector_comercial, email, nit, subscription_status,
-                 license_plan, license_key, license_issued_at, license_max_users, trial_ends_at,
+                 license_plan, license_key, license_issued_at, license_max_users, modulos_habilitados, trial_ends_at,
                  subscription_started_at, subscription_ends_at, created_at,
                  ${ACTIVE_USERS_SQL},
                  GREATEST(0, CEIL(EXTRACT(EPOCH FROM (
@@ -195,6 +198,42 @@ const updateUserLimit = async (req, res) => {
   } catch (error) {
     console.error('Error actualizando usuarios de la licencia:', error);
     res.status(500).json({ error: 'Error actualizando usuarios de la licencia' });
+  }
+};
+
+const listModules = (req, res) => {
+  res.json({ success: true, modules: MODULES.map(({ key, label }) => ({ key, label })) });
+};
+
+// Habilita o quita módulos a una empresa; los usuarios dejan de verlos al recargar.
+const updateModules = async (req, res) => {
+  try {
+    const { modules } = req.body;
+    if (!Array.isArray(modules) || modules.some((key) => !MODULE_KEYS.has(key))) {
+      return res.status(400).json({ error: 'Lista de módulos no válida' });
+    }
+    const all = modules.length === MODULE_KEYS.size;
+    const result = await pool.query(
+      `UPDATE organizations SET modulos_habilitados = $1, updated_at = NOW()
+       WHERE id = $2
+       RETURNING id, nombre, sector_comercial, email, nit, subscription_status,
+                 license_plan, license_key, license_issued_at, license_max_users, modulos_habilitados, trial_ends_at,
+                 subscription_started_at, subscription_ends_at, created_at,
+                 ${ACTIVE_USERS_SQL},
+                 GREATEST(0, CEIL(EXTRACT(EPOCH FROM (
+                   COALESCE(subscription_ends_at, trial_ends_at) - NOW()
+                 )) / 86400)) AS days_remaining`,
+      [all ? null : [...new Set(modules)], req.params.id]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Empresa no encontrada' });
+    res.json({
+      success: true,
+      message: all ? 'La empresa tiene todos los módulos' : `Módulos actualizados (${modules.length} habilitados)`,
+      organization: mapOrganization(result.rows[0])
+    });
+  } catch (error) {
+    console.error('Error actualizando módulos:', error);
+    res.status(500).json({ error: 'Error actualizando módulos' });
   }
 };
 
@@ -239,7 +278,7 @@ const updateLicense = async (req, res) => {
            updated_at = NOW()
        WHERE id = $5
        RETURNING id, nombre, sector_comercial, email, nit, subscription_status,
-                 license_plan, license_key, license_issued_at, license_max_users, trial_ends_at,
+                 license_plan, license_key, license_issued_at, license_max_users, modulos_habilitados, trial_ends_at,
                  subscription_started_at, subscription_ends_at, created_at,
                  ${ACTIVE_USERS_SQL},
                  GREATEST(
@@ -275,5 +314,7 @@ module.exports = {
   listOrganizations,
   getOrganization,
   updateLicense,
-  updateUserLimit
+  updateUserLimit,
+  listModules,
+  updateModules
 };

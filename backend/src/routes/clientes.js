@@ -6,7 +6,7 @@ const router = express.Router();
 
 router.use(authMiddleware);
 
-router.get('/', rolePermissionMiddleware(['clientes_view']), clientesController.getClientes);
+router.get('/', rolePermissionMiddleware(['clientes_view', 'caja_view', 'cobros_view']), clientesController.getClientes);
 router.post('/import', rolePermissionMiddleware(['clientes_create']), clientesController.importClientes);
 router.get('/:id', rolePermissionMiddleware(['clientes_view']), clientesController.getClienteById);
 router.post('/', rolePermissionMiddleware(['clientes_create']), clientesController.createCliente);

@@ -13,6 +13,7 @@
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
     <link rel="stylesheet" href="css/style.css">
     <link rel="stylesheet" href="css/theme.css">
+    <link rel="stylesheet" href="css/refresh.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 <body>
@@ -31,78 +32,78 @@
                     <i class="fas fa-chart-line"></i>
                     <span>Dashboard</span>
                 </a>
-
-                <!-- MÓDULO CONTABLE -->
-                <div class="nav-section-title">MÓDULO CONTABLE</div>
-                <a href="#" class="nav-item" data-page="codigos-articulos">
-                    <i class="fas fa-barcode"></i>
-                    <span>Códigos Artículos</span>
-                </a>
-                <a href="#" class="nav-item" data-page="clientes">
-                    <i class="fas fa-users"></i>
-                    <span>Clientes</span>
-                </a>
-                <a href="#" class="nav-item" data-page="proveedores">
-                    <i class="fas fa-truck"></i>
-                    <span>Proveedores</span>
-                </a>
-                <a href="#" class="nav-item" data-page="caja-integrada">
-                    <i class="fas fa-cash-register"></i>
-                    <span>Caja Integrada</span>
-                </a>
-                <a href="#" class="nav-item" data-page="compras">
-                    <i class="fas fa-shopping-cart"></i>
-                    <span>Compras</span>
-                </a>
-                <a href="#" class="nav-item" data-page="ventas">
+                <div class="nav-section" data-nav-section>
+                <div class="nav-section-title">Comercial</div>
+                <a href="#" class="nav-item" data-page="ventas" data-module="ventas">
                     <i class="fas fa-receipt"></i>
                     <span>Ventas</span>
                 </a>
-                <a href="#" class="nav-item" data-page="caja">
+                <a href="#" class="nav-item" data-page="clientes" data-module="clientes">
+                    <i class="fas fa-users"></i>
+                    <span>Clientes</span>
+                </a>
+                <a href="#" class="nav-item" data-page="cuentas-por-cobrar" data-module="cobros">
+                    <i class="fas fa-handshake"></i>
+                    <span>Cuentas por cobrar</span>
+                </a>
+                <a href="#" class="nav-item" data-page="estados-de-cuenta" data-module="cobros">
+                    <i class="fas fa-file-invoice"></i>
+                    <span>Estados de cuenta</span>
+                </a>
+                </div>
+                <div class="nav-section" data-nav-section>
+                <div class="nav-section-title">Compras e inventario</div>
+                <a href="#" class="nav-item" data-page="codigos-articulos" data-module="articulos">
+                    <i class="fas fa-barcode"></i>
+                    <span>Artículos</span>
+                </a>
+                <a href="#" class="nav-item" data-page="inventory" data-module="articulos">
+                    <i class="fas fa-boxes-stacked"></i>
+                    <span>Inventario</span>
+                </a>
+                <a href="#" class="nav-item" data-page="compras" data-module="compras">
+                    <i class="fas fa-cart-shopping"></i>
+                    <span>Compras</span>
+                </a>
+                <a href="#" class="nav-item" data-page="proveedores" data-module="proveedores">
+                    <i class="fas fa-truck"></i>
+                    <span>Proveedores</span>
+                </a>
+                </div>
+                <div class="nav-section" data-nav-section>
+                <div class="nav-section-title">Caja y finanzas</div>
+                <a href="#" class="nav-item" data-page="caja" data-module="caja">
                     <i class="fas fa-wallet"></i>
                     <span>Caja</span>
                 </a>
-                <a href="#" class="nav-item" data-page="cuentas-por-cobrar">
-                    <i class="fas fa-handshake"></i>
-                    <span>Cuentas por Cobrar</span>
+                <a href="#" class="nav-item" data-page="caja-integrada" data-module="caja">
+                    <i class="fas fa-cash-register"></i>
+                    <span>Caja integrada</span>
                 </a>
-                <a href="#" class="nav-item" data-page="estados-de-cuenta">
-                    <i class="fas fa-file-invoice"></i>
-                    <span>Estados de Cuenta</span>
-                </a>
-                <a href="#" class="nav-item" data-page="dashboard-financiero">
-                    <i class="fas fa-chart-pie"></i>
-                    <span>Dashboard Ejecutivo</span>
-                </a>
-                <a href="#" class="nav-item" data-page="gastos-servicios">
+                <a href="#" class="nav-item" data-page="gastos-servicios" data-module="gastos">
                     <i class="fas fa-file-invoice-dollar"></i>
-                    <span>Gastos y Servicios</span>
+                    <span>Gastos y servicios</span>
                 </a>
-
-                <!-- MÓDULO ADMINISTRATIVO -->
-                <div class="nav-section-title">MÓDULO ADMINISTRATIVO</div>
-                <a href="#" class="nav-item" data-page="inventory">
-                    <i class="fas fa-boxes"></i>
-                    <span>Inventario</span>
-                </a>
-
-                <!-- FINANZAS -->
-                <div class="nav-section-title">FINANZAS</div>
-                <a href="#" class="nav-item" data-page="transactions">
-                    <i class="fas fa-exchange-alt"></i>
+                <a href="#" class="nav-item" data-page="transactions" data-module="finanzas">
+                    <i class="fas fa-right-left"></i>
                     <span>Transacciones</span>
                 </a>
-                <a href="#" class="nav-item" data-page="reports">
+                <a href="#" class="nav-item" data-page="dashboard-financiero" data-module="finanzas">
+                    <i class="fas fa-chart-pie"></i>
+                    <span>Dashboard ejecutivo</span>
+                </a>
+                <a href="#" class="nav-item" data-page="reports" data-module="reportes">
                     <i class="fas fa-chart-column"></i>
                     <span>Reportes</span>
                 </a>
-
-                <!-- CONFIGURACIÓN -->
-                <div class="nav-section-title">SISTEMA</div>
+                </div>
+                <div class="nav-section" data-nav-section>
+                <div class="nav-section-title">Sistema</div>
                 <a href="#" class="nav-item" data-page="settings">
-                    <i class="fas fa-cog"></i>
+                    <i class="fas fa-gear"></i>
                     <span>Configuración</span>
                 </a>
+                </div>
             </nav>
             <div class="user-info" id="userMenu" role="button" tabindex="0" aria-haspopup="menu" aria-controls="userDropdown">
                 <div class="user-avatar" aria-hidden="true"><i class="fas fa-user"></i></div>
@@ -169,7 +170,7 @@
 
                     <!-- KPI Cards -->
                     <div class="kpi-grid">
-                        <div class="kpi-card kpi-revenue">
+                        <div class="kpi-card kpi-revenue" data-module="ventas">
                             <div class="kpi-header">
                                 <h3>Ingresos del Mes</h3>
                                 <i class="fas fa-dollar-sign"></i>
@@ -178,7 +179,7 @@
                             <div class="kpi-change" id="kpiIngresosChange"></div>
                         </div>
 
-                        <div class="kpi-card kpi-expenses">
+                        <div class="kpi-card kpi-expenses" data-module="compras">
                             <div class="kpi-header">
                                 <h3>Gastos del Mes</h3>
                                 <i class="fas fa-shopping-cart"></i>
@@ -187,7 +188,7 @@
                             <div class="kpi-change" id="kpiGastosChange"></div>
                         </div>
 
-                        <div class="kpi-card kpi-inventory">
+                        <div class="kpi-card kpi-inventory" data-module="articulos">
                             <div class="kpi-header">
                                 <h3>Valor Inventario</h3>
                                 <i class="fas fa-boxes"></i>
@@ -196,7 +197,7 @@
                             <div class="kpi-change" id="kpiInventarioChange"></div>
                         </div>
 
-                        <div class="kpi-card kpi-margin">
+                        <div class="kpi-card kpi-margin" data-module="ventas">
                             <div class="kpi-header">
                                 <h3>Margen Neto</h3>
                                 <i class="fas fa-percentage"></i>
@@ -208,11 +209,11 @@
 
                     <!-- Charts Section -->
                     <div class="charts-section">
-                        <div class="chart-card">
+                        <div class="chart-card" data-module="ventas">
                             <h3>Ventas Últimos 7 Días</h3>
                             <canvas id="salesChart"></canvas>
                         </div>
-                        <div class="chart-card">
+                        <div class="chart-card" data-module="articulos">
                             <h3>Distribución de Inventario</h3>
                             <canvas id="inventoryChart"></canvas>
                         </div>
@@ -243,28 +244,39 @@
                 <!-- Códigos de Artículos Page -->
                 <div id="page-codigos-articulos" class="page">
                     <div class="page-header">
-                        <h1>Sistema de Códigos de Artículos</h1>
+                        <div>
+                            <h1>Artículos</h1>
+                            <p class="page-subtitle">Catálogo con precios, costos y existencias. Las ventas descuentan y las compras recibidas suman.</p>
+                        </div>
                         <div class="button-group">
                             <button class="btn btn-secondary" id="importArticulosBtn">
-                                <i class="fas fa-file-excel"></i> Importar desde Excel
+                                <i class="fas fa-file-excel"></i> Importar Excel
                             </button>
                             <button class="btn btn-primary" id="addArticuloBtn">
-                                <i class="fas fa-plus"></i> Nuevo Artículo
+                                <i class="fas fa-plus"></i> Nuevo artículo
                             </button>
                         </div>
                     </div>
 
-                    <div class="articulos-filters">
-                        <input type="text" id="searchArticulos" class="form-input" placeholder="Buscar por nombre, concepto o código...">
+                    <div class="stat-strip" id="articulosResumen"></div>
+
+                    <div class="toolbar">
+                        <label class="search-field">
+                            <i class="fas fa-magnifying-glass" aria-hidden="true"></i>
+                            <span class="sr-only">Buscar artículos</span>
+                            <input type="search" id="searchArticulos" class="form-input" placeholder="Buscar por nombre o código">
+                        </label>
+                        <label class="sr-only" for="filterSeccion">Sección</label>
                         <select id="filterSeccion" class="form-input">
-                            <option value="todos">-- Todas las Secciones --</option>
+                            <option value="todos">Todas las secciones</option>
                         </select>
+                        <label class="sr-only" for="filterFamilia">Familia</label>
                         <select id="filterFamilia" class="form-input">
-                            <option value="todos">-- Todas las Familias --</option>
+                            <option value="todos">Todas las familias</option>
                         </select>
                     </div>
 
-                    <div id="articulosTableContainer" class="table-responsive">
+                    <div id="articulosTableContainer">
                         <!-- Poblada por JavaScript -->
                     </div>
                 </div>
@@ -452,21 +464,21 @@
                             <div class="filter-group compact">
                                 <label><i class="fas fa-calendar-alt"></i> Período</label>
                                 <select id="reportPeriod" class="form-input">
-                                    <option value="día">📅 Hoy</option>
-                                    <option value="semana">📊 Última semana</option>
-                                    <option value="mes" selected>📈 Este mes</option>
-                                    <option value="año">📉 Este año</option>
-                                    <option value="personalizado">🗓️ Personalizado</option>
+                                    <option value="día">Hoy</option>
+                                    <option value="semana">Última semana</option>
+                                    <option value="mes" selected>Este mes</option>
+                                    <option value="año">Este año</option>
+                                    <option value="personalizado">Personalizado</option>
                                 </select>
                             </div>
 
                             <div class="filter-group compact">
                                 <label><i class="fas fa-list"></i> Concepto</label>
                                 <select id="conceptFilter" class="form-input">
-                                    <option value="todos" selected>📋 Todos</option>
-                                    <option value="compras">🛒 Compras</option>
-                                    <option value="ventas">💳 Ventas</option>
-                                    <option value="servicios">🏥 Servicios</option>
+                                    <option value="todos" selected>Todos</option>
+                                    <option value="compras">Compras</option>
+                                    <option value="ventas">Ventas</option>
+                                    <option value="servicios">Servicios</option>
                                 </select>
                             </div>
 
@@ -508,86 +520,79 @@
                 <!-- Settings Page -->
                 <div id="page-settings" class="page">
                     <div class="page-header">
-                        <h1>Configuración</h1>
+                        <div>
+                            <h1>Configuración</h1>
+                            <p class="page-subtitle">Empresa, usuarios y tu cuenta.</p>
+                        </div>
                     </div>
 
-                    <div class="settings-container">
-                        <div class="settings-section">
-                            <h3><i class="fas fa-sitemap"></i> Clasificación de Artículos</h3>
-                            <p style="color:#6b7280;margin-bottom:10px">Configura las secciones, familias y subfamilias que usarás en tus artículos.</p>
+                    <div class="settings-stack">
+                        <section class="panel" id="settingsCompany">
+                            <div class="panel-header">
+                                <div>
+                                    <h2>Empresa y licencia</h2>
+                                    <p class="panel-subtitle">Datos de tu suscripción. Para cambiarlos, contacta a soporte.</p>
+                                </div>
+                            </div>
+                            <dl class="info-grid" id="companyInfo"></dl>
+                        </section>
+
+                        <section class="panel" id="settingsUsers" data-admin-only hidden>
+                            <div class="panel-header">
+                                <div>
+                                    <h2>Usuarios</h2>
+                                    <p class="panel-subtitle" id="seatsSummary">Cargando...</p>
+                                </div>
+                                <button class="btn btn-primary" type="button" id="addUserBtn">
+                                    <i class="fas fa-user-plus"></i> Agregar usuario
+                                </button>
+                            </div>
+                            <div class="seats-meter" aria-hidden="true"><div class="seats-meter-fill" id="seatsMeterFill"></div></div>
+                            <div class="table-responsive">
+                                <table class="data-table" id="usersTable">
+                                    <thead>
+                                        <tr><th>Usuario</th><th>Rol</th><th>Acceso</th><th>Estado</th><th>Último ingreso</th><th class="text-right">Acciones</th></tr>
+                                    </thead>
+                                    <tbody></tbody>
+                                </table>
+                            </div>
+                        </section>
+
+                        <section class="panel">
+                            <div class="panel-header">
+                                <div>
+                                    <h2>Mi cuenta</h2>
+                                    <p class="panel-subtitle" id="accountSummary"></p>
+                                </div>
+                            </div>
+                            <form id="changePasswordForm" class="form-grid">
+                                <div class="form-group">
+                                    <label for="currentPassword">Contraseña actual</label>
+                                    <input type="password" id="currentPassword" class="form-input" autocomplete="current-password" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="newPassword">Nueva contraseña</label>
+                                    <input type="password" id="newPassword" class="form-input" minlength="8" autocomplete="new-password" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="confirmPassword">Confirmar nueva contraseña</label>
+                                    <input type="password" id="confirmPassword" class="form-input" minlength="8" autocomplete="new-password" required>
+                                </div>
+                                <div class="form-actions">
+                                    <button class="btn btn-primary" type="submit">Cambiar contraseña</button>
+                                </div>
+                            </form>
+                        </section>
+
+                        <section class="panel" data-module="articulos">
+                            <div class="panel-header">
+                                <div>
+                                    <h2>Clasificación de artículos</h2>
+                                    <p class="panel-subtitle">Secciones, familias y subfamilias que usarás en tus artículos.</p>
+                                </div>
+                            </div>
                             <div id="clasificacionesConfig"></div>
-                        </div>
-
-                        <div class="settings-section">
-                            <h3><i class="fas fa-building"></i> Información de la Empresa</h3>
-                            <div class="settings-form">
-                                <div class="form-group">
-                                    <label>Nombre de la Empresa</label>
-                                    <input type="text" value="Mi Empresa" class="form-input">
-                                </div>
-                                <div class="form-group">
-                                    <label>RIF/NIT</label>
-                                    <input type="text" value="J-12345678-9" class="form-input">
-                                </div>
-                                <div class="form-group">
-                                    <label>Teléfono</label>
-                                    <input type="tel" value="+58 XXX XXX XXXX" class="form-input">
-                                </div>
-                                <div class="form-group">
-                                    <label>Email</label>
-                                    <input type="email" value="info@empresa.com" class="form-input">
-                                </div>
-                                <button class="btn btn-primary">Guardar Cambios</button>
-                            </div>
-                        </div>
-
-                        <div class="settings-section">
-                            <h3><i class="fas fa-user"></i> Cuenta de Usuario</h3>
-                            <div class="settings-form">
-                                <div class="form-group">
-                                    <label>Nombre de Usuario</label>
-                                    <input type="text" value="admin_user" class="form-input">
-                                </div>
-                                <div class="form-group">
-                                    <label>Email</label>
-                                    <input type="email" value="admin@empresa.com" class="form-input">
-                                </div>
-                                <div class="form-group">
-                                    <label>Contraseña Actual</label>
-                                    <input type="password" class="form-input">
-                                </div>
-                                <div class="form-group">
-                                    <label>Nueva Contraseña</label>
-                                    <input type="password" class="form-input">
-                                </div>
-                                <button class="btn btn-primary">Actualizar Contraseña</button>
-                            </div>
-                        </div>
-
-                        <div class="settings-section">
-                            <h3><i class="fas fa-cogs"></i> Preferencias del Sistema</h3>
-                            <div class="settings-form">
-                                <div class="checkbox-group">
-                                    <label>
-                                        <input type="checkbox" checked>
-                                        <span>Notificaciones por email</span>
-                                    </label>
-                                </div>
-                                <div class="checkbox-group">
-                                    <label>
-                                        <input type="checkbox" checked>
-                                        <span>Modo oscuro</span>
-                                    </label>
-                                </div>
-                                <div class="select-group">
-                                    <label>Idioma</label>
-                                    <select class="form-input">
-                                        <option>Español</option>
-                                        <option>English</option>
-                                    </select>
-                                </div>
-                            </div>
-                        </div>
+                        </section>
                     </div>
                 </div>
 
@@ -644,49 +649,44 @@
                 <!-- Caja Page -->
                 <div id="page-caja" class="page">
                     <div class="page-header">
-                        <h1>📦 Gestión de Caja</h1>
+                        <div>
+                            <h1>Caja</h1>
+                            <p class="page-subtitle">Ingresos y egresos de efectivo. Las ventas en efectivo y los cobros entran solos.</p>
+                        </div>
                         <button class="btn btn-primary" onclick="CajaModule.openMovementModal()">
-                            <i class="fas fa-plus"></i> Nuevo Movimiento
+                            <i class="fas fa-plus"></i> Nuevo movimiento
                         </button>
                     </div>
-                    
+
                     <div id="cashStatus" class="cash-status-container"></div>
-                    
-                    <!-- Filtros y Búsqueda -->
-                    <div style="background: white; padding: 15px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                        <div class="filter-grid filter-grid-search">
-                            <div>
-                                <label style="display: block; font-weight: bold; font-size: 12px; margin-bottom: 5px;">🔍 Buscar</label>
-                                <input type="text" id="searchMovimientos" placeholder="Cliente, referencia o descripción..." class="form-input">
-                            </div>
-                            <div>
-                                <label style="display: block; font-weight: bold; font-size: 12px; margin-bottom: 5px;">📋 Tipo</label>
-                                <select id="filterTipoMovimiento" class="form-input">
-                                    <option value="todos">Todos</option>
-                                    <option value="Ingreso">Ingresos</option>
-                                    <option value="Egreso">Egresos</option>
-                                    <option value="Transferencia">Transferencias</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label style="display: block; font-weight: bold; font-size: 12px; margin-bottom: 5px;">📅 Fecha</label>
-                                <select id="filterFechaMovimiento" class="form-input">
-                                    <option value="todos">Todos los períodos</option>
-                                    <option value="hoy">Hoy</option>
-                                    <option value="semana">Última semana</option>
-                                    <option value="mes">Último mes</option>
-                                </select>
-                            </div>
-                            <div style="display: flex; align-items: flex-end;">
-                                <button class="btn btn-secondary" onclick="CajaModule.loadData()" style="width: 100%;">
-                                    <i class="fas fa-sync"></i> Actualizar
-                                </button>
-                            </div>
-                        </div>
+
+                    <div class="toolbar">
+                        <label class="search-field">
+                            <i class="fas fa-magnifying-glass" aria-hidden="true"></i>
+                            <span class="sr-only">Buscar movimientos</span>
+                            <input type="search" id="searchMovimientos" class="form-input" placeholder="Buscar por cliente, referencia o descripción">
+                        </label>
+                        <label class="sr-only" for="filterTipoMovimiento">Tipo</label>
+                        <select id="filterTipoMovimiento" class="form-input">
+                            <option value="todos">Todos los tipos</option>
+                            <option value="Ingreso">Ingresos</option>
+                            <option value="Egreso">Egresos</option>
+                            <option value="Transferencia">Transferencias</option>
+                        </select>
+                        <label class="sr-only" for="filterFechaMovimiento">Período</label>
+                        <select id="filterFechaMovimiento" class="form-input">
+                            <option value="todos">Todos los períodos</option>
+                            <option value="hoy">Hoy</option>
+                            <option value="semana">Última semana</option>
+                            <option value="mes">Último mes</option>
+                        </select>
+                        <button class="btn btn-secondary" type="button" onclick="CajaModule.loadData()">
+                            <i class="fas fa-rotate"></i> Actualizar
+                        </button>
                     </div>
 
                     <div class="cash-content">
-                        <div class="table-responsive">
+                        <div class="table-card">
                             <table id="movementsTable" class="data-table">
                                 <thead>
                                     <tr>
@@ -1696,6 +1696,7 @@
     
     <!-- Autenticación (DEBE SER ANTES DE LOS MÓDULOS) -->
     <script src="js/auth-utils.js"></script>
+    <script src="js/access.js"></script>
     
     <!-- Módulos Administrativos -->
     <script src="js/bulk-import.js"></script>
@@ -1716,6 +1717,7 @@
     <script src="js/gastos-servicios.js"></script>
     
     <!-- App Principal -->
+    <script src="js/usuarios.js"></script>
     <script src="js/app.js"></script>
 </body>
 </html>

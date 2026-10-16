@@ -12,13 +12,13 @@ router.use(authMiddleware);
 router.post('/import', rolePermissionMiddleware(['proveedores_create']), importController.importProveedores);
 
 // GET - Listar proveedores
-router.get('/', rolePermissionMiddleware(['proveedores_view']), proveedoresController.getProveedores);
+router.get('/', rolePermissionMiddleware(['proveedores_view', 'compras_view']), proveedoresController.getProveedores);
 
 // GET - Obtener proveedor específico
 router.get('/:id', rolePermissionMiddleware(['proveedores_view']), proveedoresController.getProveedorById);
 
 // POST - Crear proveedor
-router.post('/', rolePermissionMiddleware(['proveedores_create']), proveedoresController.createProveedor);
+router.post('/', rolePermissionMiddleware(['proveedores_create', 'compras_create']), proveedoresController.createProveedor);
 
 // PUT - Actualizar proveedor
 router.put('/:id', rolePermissionMiddleware(['proveedores_edit']), proveedoresController.updateProveedor);

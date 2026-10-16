@@ -43,6 +43,9 @@ function initializeTrialBanner() {
 }
 
 async function initializeApp() {
+    // Ocultar lo que la empresa o el usuario no tiene habilitado antes de cargar datos.
+    AccessControl.apply();
+
     // Initialize event listeners
     setupNavigation();
     setupModals();
@@ -54,25 +57,27 @@ async function initializeApp() {
     setupMobileListTables();
     updateCurrentDate();
     
-    try { if (typeof ClientesModule !== 'undefined') ClientesModule.init(); } catch(e) { console.warn('ClientesModule error:', e); }
-    try { if (typeof ProveedoresModule !== 'undefined') ProveedoresModule.init(); } catch(e) { console.warn('ProveedoresModule error:', e); }
+    try { if (typeof ClientesModule !== 'undefined' && AccessControl.hasModule('clientes')) ClientesModule.init(); } catch(e) { console.warn('ClientesModule error:', e); }
+    try { if (typeof ProveedoresModule !== 'undefined' && AccessControl.hasModule('proveedores')) ProveedoresModule.init(); } catch(e) { console.warn('ProveedoresModule error:', e); }
     try { if (typeof NotificationsModule !== 'undefined') NotificationsModule.init(); } catch(e) { console.warn('NotificationsModule error:', e); }
-    try { if (typeof CodigosArticulosModule !== 'undefined') CodigosArticulosModule.init(); } catch(e) { console.warn('CodigosArticulosModule error:', e); }
-    try { if (typeof CajaIntegradaModule !== 'undefined') CajaIntegradaModule.init(); } catch(e) { console.warn('CajaIntegradaModule error:', e); }
-    try { if (typeof ComprasModule !== 'undefined') ComprasModule.init(); } catch(e) { console.warn('ComprasModule error:', e); }
+    try { if (typeof CodigosArticulosModule !== 'undefined' && AccessControl.hasModule('articulos')) CodigosArticulosModule.init(); } catch(e) { console.warn('CodigosArticulosModule error:', e); }
+    try { if (typeof CajaIntegradaModule !== 'undefined' && AccessControl.hasModule('caja')) CajaIntegradaModule.init(); } catch(e) { console.warn('CajaIntegradaModule error:', e); }
+    try { if (typeof ComprasModule !== 'undefined' && AccessControl.hasModule('compras')) ComprasModule.init(); } catch(e) { console.warn('ComprasModule error:', e); }
     try { if (typeof AlertasModule !== 'undefined') AlertasModule.init(); } catch(e) { console.warn('AlertasModule error:', e); }
-    try { if (typeof VentasModule !== 'undefined') VentasModule.init(); } catch(e) { console.warn('VentasModule error:', e); }
-    try { if (typeof CajaModule !== 'undefined') CajaModule.init(); } catch(e) { console.warn('CajaModule error:', e); }
-    try { if (typeof CuentasPorCobrarModule !== 'undefined') CuentasPorCobrarModule.init(); } catch(e) { console.warn('CuentasPorCobrarModule error:', e); }
-    try { if (typeof EstadosDeCuentaModule !== 'undefined') EstadosDeCuentaModule.init(); } catch(e) { console.warn('EstadosDeCuentaModule error:', e); }
-    if (typeof DashboardFinancieroModule !== 'undefined' && DashboardFinancieroModule.init) {
+    try { if (typeof VentasModule !== 'undefined' && AccessControl.hasModule('ventas')) VentasModule.init(); } catch(e) { console.warn('VentasModule error:', e); }
+    try { if (typeof CajaModule !== 'undefined' && AccessControl.hasModule('caja')) CajaModule.init(); } catch(e) { console.warn('CajaModule error:', e); }
+    try { if (typeof CuentasPorCobrarModule !== 'undefined' && AccessControl.hasModule('cobros')) CuentasPorCobrarModule.init(); } catch(e) { console.warn('CuentasPorCobrarModule error:', e); }
+    try { if (typeof EstadosDeCuentaModule !== 'undefined' && AccessControl.hasModule('cobros')) EstadosDeCuentaModule.init(); } catch(e) { console.warn('EstadosDeCuentaModule error:', e); }
+    if (typeof DashboardFinancieroModule !== 'undefined' && DashboardFinancieroModule.init && AccessControl.hasModule('finanzas')) {
         try { DashboardFinancieroModule.init(); } catch(e) { console.warn('DashboardFinancieroModule init error:', e); }
     }
-    if (typeof ReportsModule !== 'undefined' && ReportsModule.init) {
+    if (typeof ReportsModule !== 'undefined' && ReportsModule.init && AccessControl.hasModule('reportes')) {
         try { ReportsModule.init(); } catch(e) { console.warn('ReportsModule init error:', e); }
     }
     
     
+    if (typeof UsuariosModule !== 'undefined') UsuariosModule.init();
+    AccessControl.refresh().then(initializeUserProfile);
     console.log('✅ Sistema inicializado correctamente');
 }
 
@@ -92,6 +97,10 @@ function setupNavigation() {
 }
 
 function navigateToPage(pageId) {
+    if (!AccessControl.canOpenPage(pageId)) {
+        showNotification('Este módulo no está disponible para tu usuario', 'warning');
+        pageId = 'dashboard';
+    }
     // Remove active class from all pages and nav items
     document.querySelectorAll('.page').forEach(page => {
         page.classList.remove('active');
@@ -116,25 +125,9 @@ function navigateToPage(pageId) {
         pagesContainer.scrollTop = 0;
     }
 
-    // Update page title
-    const titleMap = {
-        'dashboard': 'Dashboard',
-        'inventory': 'Gestión de Inventario',
-        'compras': 'Gestión de Compras',
-        'ventas': 'Gestión de Ventas',
-        'caja': 'Gestión de Caja',
-        'cuentas-por-cobrar': 'Cuentas por Cobrar',
-        'estados-de-cuenta': 'Estados de Cuenta',
-        'dashboard-financiero': 'Dashboard Ejecutivo',
-        'transactions': 'Transacciones',
-        'reports': 'Reportes',
-        'clientes': 'Gestión de Clientes',
-        'proveedores': 'Gestión de Proveedores',
-        'codigos-articulos': 'Códigos de Artículos',
-        'caja-integrada': 'Caja Integrada',
-        'settings': 'Configuración'
-    };
-    document.getElementById('pageTitle').textContent = titleMap[pageId];
+    // El título superior es el mismo texto del menú.
+    const navLabel = document.querySelector(`.nav-item[data-page="${pageId}"] span`)?.textContent;
+    document.getElementById('pageTitle').textContent = navLabel || 'Dashboard';
 
     currentPage = pageId;
 
@@ -1127,8 +1120,8 @@ function initializeUserProfile() {
         userEmailElement.textContent = user.email || '';
     }
 
-    if (userRoleElement && user.roles && user.roles.length > 0) {
-        userRoleElement.textContent = user.roles[0] || '';
+    if (userRoleElement) {
+        userRoleElement.textContent = AccessControl.isAdmin() ? 'Administrador' : 'Usuario';
     }
 
     console.log('✓ Perfil de usuario cargado:', user.nombre);

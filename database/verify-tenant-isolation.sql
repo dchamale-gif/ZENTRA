@@ -18,7 +18,8 @@ BEGIN
           AND t.table_name NOT IN (
               'organizations', 'users', 'roles', 'user_roles',
               'permissions', 'role_permissions', 'platform_admins',
-              'login_attempts', 'password_reset_tokens', 'user_sessions'
+              'login_attempts', 'password_reset_tokens', 'user_sessions',
+              'user_module_access'
           )
         ORDER BY t.table_name
     ) LOOP

@@ -2,6 +2,7 @@ const jwt = require('jsonwebtoken');
 const pool = require('../db/authConnection');
 const { runWithTenant } = require('../db/tenantContext');
 const { getSessionToken } = require('../utils/sessionCookie');
+const { moduleOfPermission, resolveUserAccess } = require('../utils/modules');
 
 const hasOrganizationAccess = (organization) => {
   if (organization.subscription_status === 'active') {
@@ -35,6 +36,7 @@ const authMiddleware = async (req, res, next) => {
               o.license_plan AS organization_license_plan,
               o.license_issued_at AS organization_license_issued_at,
               o.license_max_users AS organization_max_users,
+              o.modulos_habilitados AS organization_modules,
               o.subscription_status, o.trial_ends_at, o.subscription_ends_at
        FROM users u
        JOIN organizations o ON o.id = u.organization_id
@@ -79,6 +81,7 @@ const authMiddleware = async (req, res, next) => {
       licenseKey: user.organization_license_key,
       plan: user.organization_license_plan,
       maxUsers: user.organization_max_users,
+      modules: user.organization_modules,
       subscriptionEndsAt: user.subscription_ends_at,
       status: user.subscription_status,
       trialEndsAt: user.trial_ends_at
@@ -97,54 +100,26 @@ const authMiddleware = async (req, res, next) => {
 const rolePermissionMiddleware = (requiredPermissions = []) => {
   return async (req, res, next) => {
     try {
-      const userId = req.user.id;
-
-      // Obtener roles del usuario
-      const rolesResult = await pool.query(
-        `SELECT r.id, r.nombre FROM roles r
-         JOIN user_roles ur ON r.id = ur.role_id
-         WHERE ur.user_id = $1`,
-        [userId]
-      );
-
-      if (rolesResult.rows.length === 0) {
+      const access = await resolveUserAccess(pool, req.user.id, req.organization?.modules);
+      if (access.roles.length === 0) {
         return res.status(403).json({ error: 'Usuario sin roles asignados' });
       }
 
-      const userRoles = rolesResult.rows.map(r => r.nombre);
-
-      // Si no hay permisos requeridos, solo verificar que tenga rol
-      if (requiredPermissions.length === 0) {
-        req.userRoles = userRoles;
-        return next();
-      }
-
-      // Obtener permisos del usuario
-      const permissionsResult = await pool.query(
-        `SELECT p.nombre FROM permissions p
-         JOIN role_permissions rp ON p.id = rp.permission_id
-         JOIN user_roles ur ON rp.role_id = ur.role_id
-         WHERE ur.user_id = $1`,
-        [userId]
-      );
-
-      const userPermissions = permissionsResult.rows.map(p => p.nombre);
-
-      // Verificar si tiene al menos uno de los permisos requeridos
-      const hasPermission = requiredPermissions.some(perm => 
-        userPermissions.includes(perm)
-      );
-
-      if (!hasPermission) {
-        return res.status(403).json({ 
-          error: 'Permiso denegado',
-          required: requiredPermissions,
-          userPermissions: userPermissions
+      if (requiredPermissions.length > 0 &&
+          !requiredPermissions.some((permission) => access.permissions.includes(permission))) {
+        const moduleKey = moduleOfPermission(requiredPermissions[0]);
+        const moduleDisabled = moduleKey && !access.enabledModules.includes(moduleKey);
+        return res.status(403).json({
+          error: moduleDisabled
+            ? 'Este módulo no está habilitado para tu empresa'
+            : 'No tienes permiso para esta acción; pide acceso al administrador',
+          code: moduleDisabled ? 'MODULE_DISABLED' : 'PERMISSION_DENIED'
         });
       }
 
-      req.userRoles = userRoles;
-      req.userPermissions = userPermissions;
+      req.userRoles = access.roles;
+      req.userPermissions = access.permissions;
+      req.userAccess = access;
       next();
     } catch (error) {
       console.error('Error en rolePermissionMiddleware:', error);
