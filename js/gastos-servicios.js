@@ -35,8 +35,8 @@ class GastosServiciosModule {
         this.setDefaultPeriod();
     }
 
+    // Sin datos guardados todavía: empezar con listas vacías.
     loadDemoData() {
-        console.error('❌ ERROR: No hay datos de gastos disponibles en localStorage');
         this.state.conceptos = [];
         this.state.proveedores = [];
         this.state.pagos = [];

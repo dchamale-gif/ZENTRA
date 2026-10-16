@@ -6,7 +6,6 @@ const ComprasModule = {
     state: {
         compras: [],
         proveedores: [],
-        medicinas: [],
         articulos: [],
         items: [],
         initialized: false
@@ -42,23 +41,13 @@ const ComprasModule = {
 
     async loadData() {
         try {
-            const [comprasData, proveedoresData, medicinasData, articulosData] = await Promise.all([
+            const [comprasData, proveedoresData, articulosData] = await Promise.all([
                 this.apiRequest('/api/compras'),
                 this.apiRequest('/api/proveedores'),
-                this.apiRequest('/api/medicinas').catch(() => ({ medicinas: [] })),
                 this.apiRequest('/api/codigos-articulos')
             ]);
             this.state.compras = comprasData.compras || [];
             this.state.proveedores = proveedoresData.proveedores || [];
-            this.state.medicinas = (medicinasData.medicinas || []).map(medicina => ({
-                id: String(medicina.id),
-                nombre: medicina.nombre,
-                codigo: medicina.codigo_interno || medicina.codigo_externo || medicina.codigo_barra || '',
-                precio: Number(medicina.precio_costo ?? medicina.precio ?? 0),
-                seccion: medicina.seccion || medicina.categoria || '',
-                familia: medicina.familia || '',
-                subfamilia: medicina.subfamilia || ''
-            }));
             this.state.articulos = (articulosData.articulos || []).map(articulo => ({
                 id: String(articulo.id),
                 nombre: articulo.nombre_articulo,
@@ -222,8 +211,8 @@ const ComprasModule = {
         this.renderItems();
     },
 
-    getCatalog(tipo) {
-        return tipo === 'medicina' ? this.state.medicinas : this.state.articulos;
+    getCatalog() {
+        return this.state.articulos;
     },
 
     getFilterOptions(item, field) {
@@ -328,7 +317,6 @@ const ComprasModule = {
                     <td>
                         <select class="form-input" onchange="ComprasModule.updateItem(${index}, 'tipo', this.value)">
                             <option value="articulo" ${item.tipo === 'articulo' ? 'selected' : ''}>Artículo</option>
-                            <option value="medicina" ${item.tipo === 'medicina' ? 'selected' : ''}>Medicina</option>
                         </select>
                     </td>
                     <td>

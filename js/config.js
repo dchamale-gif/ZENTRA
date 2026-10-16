@@ -1,5 +1,5 @@
 // ============================================
-// CONFIGURACIÓN DE STOCK FLOW
+// CONFIGURACIÓN DE BOTENGINE ERP
 // ============================================
 
 const CONFIG = {
@@ -7,9 +7,9 @@ const CONFIG = {
     // INFORMACIÓN DE LA APLICACIÓN
     // ============================================
     APP: {
-        name: 'Zentra',
+        name: 'BotEngine ERP',
         version: '1.0.0',
-        description: 'Zentra - Sistema Médico Integral',
+        description: 'BotEngine ERP - Gestión empresarial',
         author: 'Tu Empresa',
         releaseDate: '2026-03-23'
     },

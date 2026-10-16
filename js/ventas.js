@@ -6,7 +6,6 @@ const VentasModule = {
     state: {
         ventas: [],
         receptores: [],
-        medicinas: [],
         articulos: [],
         items: [],
         receptorId: '',
@@ -41,10 +40,9 @@ const VentasModule = {
         const requests = await Promise.allSettled([
             this.apiRequest('/api/ventas'),
             this.apiRequest('/api/ventas/receptores'),
-            this.apiRequest('/api/medicinas'),
             this.apiRequest('/api/codigos-articulos')
         ]);
-        const [ventasResult, receptoresResult, medicinasResult, articulosResult] = requests;
+        const [ventasResult, receptoresResult, articulosResult] = requests;
 
         if (ventasResult.status === 'fulfilled') {
             this.state.ventas = ventasResult.value.ventas || [];
@@ -53,18 +51,6 @@ const VentasModule = {
         }
         if (receptoresResult.status === 'fulfilled') {
             this.state.receptores = receptoresResult.value.receptores || [];
-        }
-        if (medicinasResult.status === 'fulfilled') {
-            this.state.medicinas = (medicinasResult.value.medicinas || []).map(medicina => ({
-                id: String(medicina.id),
-                nombre: medicina.nombre,
-                codigo: medicina.codigo_interno || medicina.codigo_externo || medicina.codigo_barra || '',
-                precio: Number(medicina.precio_venta ?? 0),
-                stock: Number(medicina.cantidad ?? 0),
-                seccion: medicina.seccion || medicina.categoria || '',
-                familia: medicina.familia || '',
-                subfamilia: medicina.subfamilia || ''
-            }));
         }
         if (articulosResult.status === 'fulfilled') {
             this.state.articulos = (articulosResult.value.articulos || []).map(articulo => ({
@@ -81,7 +67,7 @@ const VentasModule = {
 
         requests.slice(1).forEach((result, index) => {
             if (result.status === 'rejected') {
-                const names = ['receptores', 'medicinas', 'artículos'];
+                const names = ['receptores', 'artículos'];
                 this.notify(`No se pudieron cargar ${names[index]}: ${result.reason.message}`, 'warning');
             }
         });
@@ -233,8 +219,8 @@ const VentasModule = {
         this.renderItems();
     },
 
-    getCatalog(type) {
-        return type === 'medicina' ? this.state.medicinas : this.state.articulos;
+    getCatalog() {
+        return this.state.articulos;
     },
 
     getFilterOptions(item, field) {
@@ -322,7 +308,6 @@ const VentasModule = {
             return `<tr>
                 <td><select class="form-input" onchange="VentasModule.updateItem(${index}, 'tipo', this.value)">
                     <option value="articulo" ${item.tipo === 'articulo' ? 'selected' : ''}>Artículo</option>
-                    <option value="medicina" ${item.tipo === 'medicina' ? 'selected' : ''}>Medicina</option>
                 </select></td>
                 <td><div class="concept-search"><div class="concept-search-input"><i class="fas fa-search"></i>
                     <input id="saleConceptSearch-${index}" class="form-input" type="search" autocomplete="off" placeholder="Buscar por nombre o código..."

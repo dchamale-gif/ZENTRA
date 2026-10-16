@@ -1209,5 +1209,5 @@ async function refreshUserProfile() {
 }
 
 // Initialize the application
-console.log('Zentra v1.0');
+console.log('BotEngine ERP v1.0');
 console.log('Demo Mode - All transactions are simulated');
