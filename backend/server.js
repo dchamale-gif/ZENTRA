@@ -29,7 +29,8 @@ const platformPool = require('./src/db/platformConnection');
 
 const app = express();
 const PORT = process.env.PORT || 3011;
-app.set('trust proxy', 1);
+// Número de proxies delante del backend: 1 con Caddy solo, 2 si nginx va delante de Caddy.
+app.set('trust proxy', Number(process.env.TRUST_PROXY) || 1);
 
 // ====================================
 // MIDDLEWARE GLOBALES
