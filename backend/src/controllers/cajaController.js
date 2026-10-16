@@ -12,6 +12,7 @@ function mapMovimiento(row) {
     return {
         id: row.id,
         tipo: row.tipo_movimiento || row.categoria || legacyTypes[row.tipo] || row.tipo,
+        direccion: row.tipo,
         clienteId: row.cliente_id,
         cliente: row.cliente_nombre || null,
         monto: Number(row.monto),
@@ -117,12 +118,13 @@ class CajaController {
                     return res.status(400).json({ success: false, message: 'El cliente seleccionado no existe' });
                 }
             }
+            // Saldo a partir de los movimientos activos, para que anular uno no descuadre los siguientes.
             const balanceResult = await client.query(`
-                SELECT saldo_posterior FROM caja
+                SELECT COALESCE(SUM(CASE WHEN tipo = 'entrada' THEN monto WHEN tipo = 'salida' THEN -monto ELSE 0 END), 0) AS saldo
+                FROM caja
                 WHERE COALESCE(estado, 'activo') = 'activo'
-                ORDER BY created_at DESC LIMIT 1
             `);
-            const previousBalance = Number(balanceResult.rows[0]?.saldo_posterior || 0);
+            const previousBalance = Number(balanceResult.rows[0].saldo);
             const direction = OUTPUT_TYPES.has(tipo) ? 'salida' : (tipo === 'Transferencia' ? 'transferencia' : 'entrada');
             const delta = direction === 'entrada' ? amount : (direction === 'salida' ? -amount : 0);
             const id = generateId('CAJ');
@@ -149,6 +151,26 @@ class CajaController {
             res.status(500).json({ success: false, message: 'Error al registrar el movimiento', error: error.message });
         } finally {
             client.release();
+        }
+    }
+
+    // Los movimientos de caja no se borran: se anulan para conservar el historial.
+    async anularMovimiento(req, res) {
+        try {
+            const result = await db.query(`
+                UPDATE caja
+                SET estado = 'anulado', updated_at = CURRENT_TIMESTAMP
+                WHERE id = $1 AND COALESCE(estado, 'activo') = 'activo'
+                RETURNING *
+            `, [req.params.id]);
+
+            if (result.rows.length === 0) {
+                return res.status(404).json({ success: false, message: 'Movimiento no encontrado o ya anulado' });
+            }
+            res.json({ success: true, message: 'Movimiento anulado', data: mapMovimiento(result.rows[0]) });
+        } catch (error) {
+            console.error('Error anulando movimiento de caja:', error);
+            res.status(500).json({ success: false, message: 'Error al anular el movimiento', error: error.message });
         }
     }
 

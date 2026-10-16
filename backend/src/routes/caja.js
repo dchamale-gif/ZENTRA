@@ -9,5 +9,6 @@ router.get('/', rolePermissionMiddleware(['caja_view']), (req, res) => cajaContr
 router.get('/summary', rolePermissionMiddleware(['caja_view']), (req, res) => cajaController.getResumen(req, res));
 router.post('/', rolePermissionMiddleware(['caja_edit']), (req, res) => cajaController.createMovimiento(req, res));
 router.put('/:id', rolePermissionMiddleware(['caja_edit']), (req, res) => cajaController.updateMovimiento(req, res));
+router.delete('/:id', rolePermissionMiddleware(['caja_edit']), (req, res) => cajaController.anularMovimiento(req, res));
 
 module.exports = router;
