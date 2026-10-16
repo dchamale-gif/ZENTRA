@@ -87,7 +87,10 @@ const ComprasModule = {
                 <td>${this.formatDate(compra.fecha)}</td>
                 <td>${this.escapeHtml(compra.proveedor_nombre)}</td>
                 <td>Q${Number(compra.total || 0).toFixed(2)}</td>
-                <td><span class="badge badge-${this.escapeHtml(compra.estado)}">${this.capitalize(compra.estado)}</span></td>
+                <td>
+                    <span class="badge badge-${this.escapeHtml(compra.estado)}">${this.capitalize(compra.estado)}</span>
+                    ${compra.inventario_aplicado ? '<br><small><i class="fas fa-boxes-stacked"></i> Sumada al inventario</small>' : ''}
+                </td>
                 <td class="actions">
                     <button class="btn-icon btn-edit" title="Editar compra" onclick="ComprasModule.editPurchase('${compra.id}')">
                         <i class="fas fa-edit"></i>
@@ -321,11 +324,6 @@ const ComprasModule = {
             return `
                 <tr>
                     <td>
-                        <select class="form-input" onchange="ComprasModule.updateItem(${index}, 'tipo', this.value)">
-                            <option value="articulo" ${item.tipo === 'articulo' ? 'selected' : ''}>Artículo</option>
-                        </select>
-                    </td>
-                    <td>
                         <div class="concept-search">
                             <div class="concept-search-input">
                                 <i class="fas fa-search"></i>
@@ -394,18 +392,18 @@ const ComprasModule = {
 
         if (!payload.proveedor_id || !payload.fecha || payload.items.some(item =>
             !item.concepto_id || !Number.isInteger(item.cantidad) || item.cantidad <= 0 || item.precio_unitario < 0)) {
-            this.notify('Completa el proveedor, la fecha y todos los conceptos de la compra.', 'warning');
+            this.notify('Completa el proveedor, la fecha y selecciona un artículo con cantidad en cada línea.', 'warning');
             return;
         }
 
         try {
-            await this.apiRequest(id ? `/api/compras/${id}` : '/api/compras', {
+            const result = await this.apiRequest(id ? `/api/compras/${id}` : '/api/compras', {
                 method: id ? 'PUT' : 'POST',
                 body: JSON.stringify(payload)
             });
             this.closePurchaseModal();
             await this.loadData();
-            this.notify(id ? 'Compra actualizada correctamente.' : 'Compra registrada correctamente.', 'success');
+            this.notify(`${result.message}.`, 'success');
         } catch (error) {
             console.error('Error guardando compra:', error);
             this.notify(error.message, 'error');
@@ -418,11 +416,13 @@ const ComprasModule = {
     },
 
     async deletePurchase(id) {
-        if (!confirm('¿Eliminar esta compra y todos sus conceptos?')) return;
+        const compra = this.state.compras.find(entry => String(entry.id) === String(id));
+        const aviso = compra?.inventario_aplicado ? ' Sus artículos se descontarán del inventario.' : '';
+        if (!confirm(`¿Eliminar esta compra?${aviso}`)) return;
         try {
-            await this.apiRequest(`/api/compras/${id}`, { method: 'DELETE' });
+            const result = await this.apiRequest(`/api/compras/${id}`, { method: 'DELETE' });
             await this.loadData();
-            this.notify('Compra eliminada correctamente.', 'success');
+            this.notify(`${result.message}.`, 'success');
         } catch (error) {
             this.notify(error.message, 'error');
         }

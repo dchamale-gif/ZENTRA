@@ -1,5 +1,5 @@
 const db = require('../db/connection');
-const { generateId } = require('../utils/helpers');
+const { registrarMovimientoCaja } = require('../utils/cajaLedger');
 
 const OUTPUT_TYPES = new Set(['Egreso', 'Devolución']);
 
@@ -109,7 +109,6 @@ class CajaController {
             }
 
             await client.query('BEGIN');
-            await client.query('LOCK TABLE caja IN SHARE ROW EXCLUSIVE MODE');
             const customerId = clienteId || cliente_id || null;
             if (customerId) {
                 const customer = await client.query('SELECT id FROM clientes WHERE id = $1', [customerId]);
@@ -118,33 +117,22 @@ class CajaController {
                     return res.status(400).json({ success: false, message: 'El cliente seleccionado no existe' });
                 }
             }
-            // Saldo a partir de los movimientos activos, para que anular uno no descuadre los siguientes.
-            const balanceResult = await client.query(`
-                SELECT COALESCE(SUM(CASE WHEN tipo = 'entrada' THEN monto WHEN tipo = 'salida' THEN -monto ELSE 0 END), 0) AS saldo
-                FROM caja
-                WHERE COALESCE(estado, 'activo') = 'activo'
-            `);
-            const previousBalance = Number(balanceResult.rows[0].saldo);
-            const direction = OUTPUT_TYPES.has(tipo) ? 'salida' : (tipo === 'Transferencia' ? 'transferencia' : 'entrada');
-            const delta = direction === 'entrada' ? amount : (direction === 'salida' ? -amount : 0);
-            const id = generateId('CAJ');
+            const direccion = OUTPUT_TYPES.has(tipo) ? 'salida' : (tipo === 'Transferencia' ? 'transferencia' : 'entrada');
             const userId = Number.isInteger(Number(req.user?.id)) ? Number(req.user.id) : null;
-
-            const result = await client.query(`
-                INSERT INTO caja (
-                    id, tipo, tipo_movimiento, concepto, categoria, monto, descripcion,
-                    cliente_id, referencia, user_id, fecha, hora,
-                    saldo_anterior, saldo_posterior, estado
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, COALESCE($12::time, CURRENT_TIME), $13, $14, 'activo')
-                RETURNING *
-            `, [
-                id, direction, tipo, descripcion.trim().slice(0, 150), tipo, amount,
-                descripcion.trim(), customerId, referencia || null,
-                userId, fecha, hora || null, previousBalance, previousBalance + delta
-            ]);
+            const movimiento = await registrarMovimientoCaja(client, {
+                direccion,
+                tipoMovimiento: tipo,
+                monto: amount,
+                descripcion: descripcion.trim(),
+                fecha,
+                hora: hora || null,
+                clienteId: customerId,
+                referencia: referencia || null,
+                userId
+            });
             await client.query('COMMIT');
 
-            res.status(201).json({ success: true, message: 'Movimiento registrado', data: mapMovimiento(result.rows[0]) });
+            res.status(201).json({ success: true, message: 'Movimiento registrado', data: mapMovimiento(movimiento) });
         } catch (error) {
             await client.query('ROLLBACK');
             console.error('Error registrando movimiento de caja:', error);
@@ -157,6 +145,16 @@ class CajaController {
     // Los movimientos de caja no se borran: se anulan para conservar el historial.
     async anularMovimiento(req, res) {
         try {
+            const linked = await db.query(
+                `SELECT v.numero_venta FROM caja c JOIN ventas v ON v.id = c.referencia_venta_id WHERE c.id = $1`,
+                [req.params.id]
+            );
+            if (linked.rows.length > 0) {
+                return res.status(409).json({
+                    success: false,
+                    message: `Este ingreso pertenece a la venta ${linked.rows[0].numero_venta}; edita o elimina la venta para cambiarlo.`
+                });
+            }
             const result = await db.query(`
                 UPDATE caja
                 SET estado = 'anulado', updated_at = CURRENT_TIMESTAMP

@@ -4,6 +4,7 @@
 
 const db = require('../db/connection');
 const { generateId } = require('../utils/helpers');
+const { registrarMovimientoCaja } = require('../utils/cajaLedger');
 
 class ReceivablesController {
     /**
@@ -29,7 +30,7 @@ class ReceivablesController {
                 FROM ventas v
                 LEFT JOIN clientes cl ON v.cliente_id = cl.id
                 LEFT JOIN pagos_factura pa ON v.id = pa.venta_id
-                WHERE 1=1
+                WHERE COALESCE(v.estado, 'completada') <> 'anulada'
             `;
 
             const params = [];
@@ -89,6 +90,7 @@ class ReceivablesController {
                     SELECT v.id, v.total, v.fecha, COALESCE(SUM(pa.monto), 0) as pagado
                     FROM ventas v
                     LEFT JOIN pagos_factura pa ON v.id = pa.venta_id
+                    WHERE COALESCE(v.estado, 'completada') <> 'anulada'
                     GROUP BY v.id, v.total, v.fecha
                     HAVING v.total > COALESCE(SUM(pa.monto), 0)
                 ) t
@@ -226,53 +228,75 @@ class ReceivablesController {
      * Registrar pago de cuenta por cobrar
      */
     async recordPayment(req, res) {
+        const venta_id = req.params.venta_id || req.body.venta_id;
+        const { observaciones } = req.body;
+        const metodoPago = req.body.metodo_pago || 'efectivo';
+        const monto = Number(req.body.monto);
+        if (!(monto > 0)) {
+            return res.status(400).json({ success: false, message: 'El monto debe ser mayor a cero' });
+        }
+
+        const client = await db.connect();
         try {
-            const venta_id = req.params.venta_id || req.body.venta_id;
-            const { metodo_pago, observaciones } = req.body;
-            const monto = Number(req.body.monto);
-            const user_id = req.user.id;
-
-            if (!(monto > 0)) {
-                return res.status(400).json({ success: false, message: 'El monto debe ser mayor a cero' });
-            }
-
-            const saldo = await db.query(
-                `SELECT v.total - COALESCE((SELECT SUM(monto) FROM pagos_factura WHERE venta_id = v.id), 0) AS pendiente
-                 FROM ventas v WHERE v.id = $1`,
+            await client.query('BEGIN');
+            const venta = await client.query(
+                `SELECT v.id, v.numero_venta, v.cliente_id,
+                        v.total - COALESCE((SELECT SUM(monto) FROM pagos_factura WHERE venta_id = v.id), 0) AS pendiente
+                 FROM ventas v WHERE v.id = $1 FOR UPDATE`,
                 [venta_id]
             );
-
-            if (saldo.rows.length === 0) {
+            if (venta.rows.length === 0) {
+                await client.query('ROLLBACK');
                 return res.status(404).json({ success: false, message: 'Factura no encontrada' });
             }
 
-            const pendiente = parseFloat(saldo.rows[0].pendiente);
+            const { numero_venta: numeroVenta, cliente_id: clienteId } = venta.rows[0];
+            const pendiente = parseFloat(venta.rows[0].pendiente);
             if (monto > pendiente + 0.005) {
+                await client.query('ROLLBACK');
                 return res.status(400).json({
                     success: false,
                     message: `El pago excede el saldo pendiente (${pendiente.toFixed(2)})`
                 });
             }
 
-            const result = await db.query(
-                `INSERT INTO pagos_factura (id, venta_id, monto, fecha, metodo_pago, observaciones, usuario_id)
-                 VALUES ($1, $2, $3, CURRENT_DATE, $4, $5, $6)
+            const result = await client.query(
+                `INSERT INTO pagos_factura (id, venta_id, monto, fecha, metodo_pago, observaciones, usuario_id, origen)
+                 VALUES ($1, $2, $3, CURRENT_DATE, $4, $5, $6, 'abono')
                  RETURNING *`,
-                [generateId('PAG'), venta_id, monto, metodo_pago || 'efectivo', observaciones || null, user_id]
+                [generateId('PAG'), venta_id, monto, metodoPago, observaciones || null, req.user.id]
             );
+
+            // Los cobros en efectivo entran a la caja.
+            if (metodoPago === 'efectivo') {
+                await registrarMovimientoCaja(client, {
+                    direccion: 'entrada',
+                    tipoMovimiento: 'Ingreso por Cobro',
+                    monto,
+                    descripcion: `Abono a la venta ${numeroVenta}`,
+                    fecha: new Date().toISOString().slice(0, 10),
+                    clienteId,
+                    referencia: numeroVenta,
+                    userId: req.user.id
+                });
+            }
+            await client.query('COMMIT');
 
             res.status(201).json({
                 success: true,
-                message: 'Pago registrado exitosamente',
+                message: metodoPago === 'efectivo' ? 'Pago registrado y sumado a la caja' : 'Pago registrado exitosamente',
                 data: result.rows[0]
             });
         } catch (error) {
+            await client.query('ROLLBACK');
             console.error('Error en recordPayment:', error);
             res.status(500).json({
                 success: false,
                 message: 'Error al registrar pago',
                 error: error.message
             });
+        } finally {
+            client.release();
         }
     }
 }

@@ -630,9 +630,9 @@
                                 <tr>
                                     <th>Venta</th>
                                     <th>Fecha</th>
-                                    <th>Receptor</th>
+                                    <th>Cliente</th>
                                     <th>Total</th>
-                                    <th>Estado</th>
+                                    <th>Pago</th>
                                     <th>Acciones</th>
                                 </tr>
                             </thead>
@@ -1059,6 +1059,7 @@
                                 <option value="recibida">Recibida</option>
                                 <option value="cancelada">Cancelada</option>
                             </select>
+                            <small class="date-info">Al marcarla como Recibida, sus artículos se suman al inventario.</small>
                         </div>
                     </div>
 
@@ -1121,8 +1122,7 @@
                         <table class="data-table purchase-items-table">
                             <thead>
                                 <tr>
-                                    <th>Tipo</th>
-                                    <th>Artículo / Medicina</th>
+                                    <th>Artículo</th>
                                     <th>Cantidad</th>
                                     <th>Costo unitario</th>
                                     <th>Subtotal</th>
@@ -1188,7 +1188,7 @@
                         </div>
                         <div class="form-group">
                             <label>Método de pago</label>
-                            <select id="salePaymentMethod" class="form-input">
+                            <select id="salePaymentMethod" class="form-input" onchange="VentasModule.updateCreditHint()">
                                 <option value="efectivo">Efectivo</option>
                                 <option value="tarjeta">Tarjeta</option>
                                 <option value="transferencia">Transferencia</option>
@@ -1196,15 +1196,16 @@
                             </select>
                         </div>
                     </div>
+                    <p id="saleCreditHint" class="date-info" hidden>Las ventas al crédito quedan en Cuentas por Cobrar y requieren un cliente.</p>
                     <div class="purchase-items-header">
-                        <h3>Conceptos</h3>
+                        <h3>Artículos</h3>
                         <button class="btn btn-secondary" type="button" onclick="VentasModule.addItem()">
-                            <i class="fas fa-plus"></i> Agregar concepto
+                            <i class="fas fa-plus"></i> Agregar artículo
                         </button>
                     </div>
                     <div class="table-responsive">
                         <table class="data-table purchase-items-table">
-                            <thead><tr><th>Tipo</th><th>Artículo / Medicina</th><th>Cantidad</th><th>Precio unitario</th><th>Subtotal</th><th></th></tr></thead>
+                            <thead><tr><th>Artículo</th><th>Cantidad</th><th>Precio unitario</th><th>Subtotal</th><th></th></tr></thead>
                             <tbody id="saleItemsBody"></tbody>
                         </table>
                     </div>

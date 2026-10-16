@@ -87,7 +87,7 @@ const VentasModule = {
                 <td>${this.formatDate(venta.fecha)}</td>
                 <td>${this.escapeHtml(venta.receptor_nombre)}</td>
                 <td>Q${Number(venta.total || 0).toFixed(2)}</td>
-                <td><span class="badge badge-${this.escapeHtml(venta.estado)}">${this.capitalize(venta.estado)}</span></td>
+                <td>${this.paymentCell(venta)}</td>
                 <td class="actions">
                     <button class="btn-icon" type="button" title="Ver conceptos" onclick="VentasModule.viewSale('${venta.id}')">
                         <i class="fas fa-eye"></i>
@@ -103,7 +103,25 @@ const VentasModule = {
     },
 
     refreshTable() {
-        this.render();
+        if (this.state.initialized) this.loadData();
+        else this.init();
+    },
+
+    paymentLabels: { efectivo: 'Efectivo', tarjeta: 'Tarjeta', transferencia: 'Transferencia', credito: 'Crédito' },
+
+    // Método de pago y, si es al crédito, lo que falta cobrar.
+    paymentCell(venta) {
+        const label = this.paymentLabels[venta.metodo_pago] || this.capitalize(venta.metodo_pago || 'efectivo');
+        const pendiente = Number(venta.pendiente) || 0;
+        if (venta.metodo_pago !== 'credito') return `<span class="badge badge-success">${label}</span>`;
+        return pendiente > 0
+            ? `<span class="badge badge-warning">${label}</span> <small>Pendiente Q${pendiente.toFixed(2)}</small>`
+            : `<span class="badge badge-success">${label} · pagada</span>`;
+    },
+
+    updateCreditHint() {
+        const hint = document.getElementById('saleCreditHint');
+        if (hint) hint.hidden = document.getElementById('salePaymentMethod').value !== 'credito';
     },
 
     openSaleModal(venta = null) {
@@ -124,6 +142,7 @@ const VentasModule = {
             filtros: { seccion: '', familia: '', subfamilia: '' }
         })) : [{ tipo: 'articulo', concepto_id: '', cantidad: 1, precio_unitario: 0, filtros: { seccion: '', familia: '', subfamilia: '' } }];
         this.renderItems();
+        this.updateCreditHint();
         document.getElementById('saleModal').style.display = 'flex';
         document.body.style.overflow = 'hidden';
     },
@@ -306,9 +325,6 @@ const VentasModule = {
             const families = this.getFilterOptions(item, 'familia');
             const subfamilies = this.getFilterOptions(item, 'subfamilia');
             return `<tr>
-                <td><select class="form-input" onchange="VentasModule.updateItem(${index}, 'tipo', this.value)">
-                    <option value="articulo" ${item.tipo === 'articulo' ? 'selected' : ''}>Artículo</option>
-                </select></td>
                 <td><div class="concept-search"><div class="concept-search-input"><i class="fas fa-search"></i>
                     <input id="saleConceptSearch-${index}" class="form-input" type="search" autocomplete="off" placeholder="Buscar por nombre o código..."
                         value="${this.escapeHtml(selected?.nombre || '')}" oninput="VentasModule.searchConcept(${index}, this.value)">
@@ -359,7 +375,11 @@ const VentasModule = {
         };
         if (this.state.receptorId) payload[`${this.state.receptorTipo}_id`] = this.state.receptorId;
         if (!payload.fecha || payload.items.some(item => !item.concepto_id || !Number.isInteger(item.cantidad) || item.cantidad <= 0 || item.precio_unitario < 0)) {
-            this.notify('Completa la fecha y todos los conceptos de la venta.', 'warning');
+            this.notify('Completa la fecha y selecciona un artículo con cantidad en cada línea.', 'warning');
+            return;
+        }
+        if (payload.metodo_pago === 'credito' && !payload.cliente_id) {
+            this.notify('Selecciona o crea un cliente: las ventas al crédito se cobran después en Cuentas por Cobrar.', 'warning');
             return;
         }
 
@@ -372,7 +392,11 @@ const VentasModule = {
             });
             this.closeSaleModal();
             await this.loadData();
-            this.notify(id ? 'Venta actualizada e inventario recalculado.' : 'Venta registrada y existencias actualizadas.', 'success');
+            const destino = {
+                efectivo: 'el ingreso quedó en Caja',
+                credito: 'el saldo quedó en Cuentas por Cobrar'
+            }[payload.metodo_pago] || 'quedó registrada como pagada';
+            this.notify(`${id ? 'Venta actualizada' : 'Venta registrada'}: existencias descontadas y ${destino}.`, 'success');
         } catch (error) {
             this.notify(error.message, 'error');
         } finally {
@@ -386,7 +410,9 @@ const VentasModule = {
         const details = venta.items.map(item =>
             `${item.concepto_nombre}: ${item.cantidad} × Q${Number(item.precio_unitario).toFixed(2)}`
         ).join('\n');
-        alert(`${venta.numero_venta}\n${venta.receptor_nombre}\n\n${details}\n\nTotal: Q${Number(venta.total).toFixed(2)}`);
+        const pago = this.paymentLabels[venta.metodo_pago] || venta.metodo_pago || 'Efectivo';
+        const pendiente = Number(venta.pendiente) || 0;
+        alert(`${venta.numero_venta}\n${venta.receptor_nombre}\nPago: ${pago}${pendiente > 0 ? ` · pendiente Q${pendiente.toFixed(2)}` : ''}\n\n${details}\n\nTotal: Q${Number(venta.total).toFixed(2)}`);
     },
 
     editSale(id) {
@@ -395,11 +421,11 @@ const VentasModule = {
     },
 
     async deleteSale(id) {
-        if (!confirm('¿Eliminar esta venta y restituir sus existencias?')) return;
+        if (!confirm('¿Eliminar esta venta? Se devolverán las existencias y se anulará su ingreso en caja.')) return;
         try {
             await this.apiRequest(`/api/ventas/${id}`, { method: 'DELETE' });
             await this.loadData();
-            this.notify('Venta eliminada e inventario restituido.', 'success');
+            this.notify('Venta eliminada: existencias devueltas y caja ajustada.', 'success');
         } catch (error) {
             this.notify(error.message, 'error');
         }

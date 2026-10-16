@@ -22,6 +22,7 @@ const createDirectoryModule = (cfg) => ({
             if (!button) return;
             const item = this.state.items.find((entry) => entry.id === button.dataset.id);
             if (button.dataset.action === 'edit' && item) this.openForm(item);
+            if (button.dataset.action === 'history' && item) this.openHistory(item);
             if (button.dataset.action === 'delete' && item) this.remove(item);
         });
     },
@@ -73,6 +74,7 @@ const createDirectoryModule = (cfg) => ({
                 ${cfg.fields.filter((f) => f.column !== false).map((f) => `<td>${e(item[f.key] ?? '')}</td>`).join('')}
                 <td><span class="badge ${item.activo ? 'badge-success' : 'badge-info'}">${item.activo ? 'Activo' : 'Inactivo'}</span></td>
                 <td>
+                    ${cfg.history ? `<button class="btn btn-secondary btn-sm" data-action="history" data-id="${e(item.id)}" title="${e(cfg.history.title)}"><i class="fas fa-clock-rotate-left"></i></button>` : ''}
                     <button class="btn btn-secondary btn-sm" data-action="edit" data-id="${e(item.id)}" title="Editar"><i class="fas fa-edit"></i></button>
                     <button class="btn btn-danger btn-sm" data-action="delete" data-id="${e(item.id)}" title="Dar de baja"><i class="fas fa-user-slash"></i></button>
                 </td>
@@ -132,6 +134,46 @@ const createDirectoryModule = (cfg) => ({
         });
     },
 
+    // Ventas de un cliente o compras a un proveedor, con sus totales.
+    async openHistory(item) {
+        const e = BulkImport.escapeHtml;
+        const { history } = cfg;
+        document.getElementById('directoryModal')?.remove();
+        const modal = document.createElement('div');
+        modal.id = 'directoryModal';
+        modal.className = 'modal active';
+        modal.innerHTML = `
+            <div class="modal-content modal-content-xl">
+                <div class="modal-header">
+                    <h2>${e(history.title)} · ${e(item.nombre)}</h2>
+                    <button class="modal-close" type="button" data-dir="close">&times;</button>
+                </div>
+                <div class="modal-body" id="directoryHistory">Cargando...</div>
+            </div>`;
+        document.body.appendChild(modal);
+        modal.addEventListener('click', (event) => {
+            if (event.target === modal || event.target.closest('[data-dir="close"]')) modal.remove();
+        });
+
+        const container = modal.querySelector('#directoryHistory');
+        try {
+            const data = await this.request(history.path(item.id));
+            const rows = data[history.listKey] || [];
+            if (rows.length === 0) {
+                container.innerHTML = `<p>${e(history.empty)}</p>`;
+                return;
+            }
+            container.innerHTML = `
+                <p>${history.summary(rows)}</p>
+                <div class="table-responsive"><table class="data-table">
+                    <thead><tr>${history.columns.map((c) => `<th>${e(c.label)}</th>`).join('')}</tr></thead>
+                    <tbody>${rows.map((row) => `<tr>${history.columns.map((c) => `<td>${c.render(row, e)}</td>`).join('')}</tr>`).join('')}</tbody>
+                </table></div>`;
+        } catch (error) {
+            container.innerHTML = `<p style="color:var(--danger-color)">${e(error.message)}</p>`;
+        }
+    },
+
     async remove(item) {
         if (!confirm(`¿Dar de baja a "${item.nombre}"?`)) return;
         try {
@@ -155,8 +197,27 @@ const createDirectoryModule = (cfg) => ({
     }
 });
 
+const historyMoney = (value) => `Q${(Number(value) || 0).toFixed(2)}`;
+const historyDate = (value) => (value ? new Date(value).toLocaleDateString('es-GT', { timeZone: 'UTC' }) : '-');
+const historySum = (rows, key) => rows.reduce((total, row) => total + (Number(row[key]) || 0), 0);
+
 const ClientesModule = createDirectoryModule({
     prefix: 'clientes',
+    history: {
+        title: 'Ventas del cliente',
+        path: (id) => `/api/ventas?cliente_id=${encodeURIComponent(id)}`,
+        listKey: 'ventas',
+        empty: 'Este cliente aún no tiene ventas.',
+        summary: (rows) => `${rows.length} venta(s) por <strong>${historyMoney(historySum(rows, 'total'))}</strong> · ` +
+            `pendiente de cobro: <strong>${historyMoney(historySum(rows, 'pendiente'))}</strong>`,
+        columns: [
+            { label: 'Venta', render: (row, e) => `<strong>${e(row.numero_venta)}</strong>` },
+            { label: 'Fecha', render: (row) => historyDate(row.fecha) },
+            { label: 'Pago', render: (row, e) => e(row.metodo_pago || 'efectivo') },
+            { label: 'Total', render: (row) => historyMoney(row.total) },
+            { label: 'Pendiente', render: (row) => historyMoney(row.pendiente) }
+        ]
+    },
     endpoint: '/api/clientes',
     listKey: 'clientes',
     singular: 'cliente',
@@ -175,6 +236,20 @@ const ClientesModule = createDirectoryModule({
 
 const ProveedoresModule = createDirectoryModule({
     prefix: 'proveedores',
+    history: {
+        title: 'Compras al proveedor',
+        path: (id) => `/api/compras?proveedor_id=${encodeURIComponent(id)}`,
+        listKey: 'compras',
+        empty: 'Aún no hay compras a este proveedor.',
+        summary: (rows) => `${rows.length} compra(s) por <strong>${historyMoney(historySum(rows, 'total'))}</strong>`,
+        columns: [
+            { label: 'Compra', render: (row, e) => `<strong>${e(row.numero_compra)}</strong>` },
+            { label: 'Fecha', render: (row) => historyDate(row.fecha) },
+            { label: 'Estado', render: (row, e) => e(row.estado) + (row.inventario_aplicado ? ' · en inventario' : '') },
+            { label: 'Artículos', render: (row, e) => e((row.items || []).map((i) => `${i.concepto_nombre} ×${i.cantidad}`).join(', ')) },
+            { label: 'Total', render: (row) => historyMoney(row.total) }
+        ]
+    },
     endpoint: '/api/proveedores',
     listKey: 'proveedores',
     singular: 'proveedor',

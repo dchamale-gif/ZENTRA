@@ -82,18 +82,25 @@ const CuentasPorCobrarModule = {
             showNotification('Ingresa un monto válido', 'error');
             return;
         }
+        const metodo = prompt('Método de pago (efectivo, tarjeta o transferencia). Los pagos en efectivo se suman a la caja:', 'efectivo');
+        if (metodo === null) return;
+        const metodoPago = metodo.trim().toLowerCase();
+        if (!['efectivo', 'tarjeta', 'transferencia'].includes(metodoPago)) {
+            showNotification('Escribe efectivo, tarjeta o transferencia', 'error');
+            return;
+        }
 
         try {
             const response = await authManager.fetchWithAuth(`/api/receivables/${encodeURIComponent(ventaId)}/payment`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ monto })
+                body: JSON.stringify({ monto, metodo_pago: metodoPago })
             });
             const result = await response.json();
             if (!response.ok || !result.success) {
                 throw new Error(result.message || 'No se pudo registrar el pago');
             }
-            showNotification('Pago registrado correctamente', 'success');
+            showNotification(result.message || 'Pago registrado correctamente', 'success');
             this.refreshTable();
         } catch (error) {
             showNotification(error.message, 'error');

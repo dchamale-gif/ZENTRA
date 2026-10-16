@@ -166,6 +166,13 @@ function navigateToPage(pageId) {
     if (pageId === 'cuentas-por-cobrar') {
         CuentasPorCobrarModule.refreshTable();
     }
+    // Ventas, compras y cobros cambian existencias y caja: recargar al entrar.
+    if (pageId === 'caja' && typeof CajaModule !== 'undefined') {
+        CajaModule.loadData();
+    }
+    if (pageId === 'codigos-articulos' && typeof CodigosArticulosModule !== 'undefined') {
+        CodigosArticulosModule.loadData();
+    }
     if (pageId === 'clientes') {
         ClientesModule.load();
     }
