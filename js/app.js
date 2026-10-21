@@ -1018,7 +1018,7 @@ function switchGastosTab(tabName) {
 function agregarPago() {
     const concepto = document.getElementById('selectConcepto').value;
     const proveedor = document.getElementById('selectProveedor').value;
-    const monto = document.getElementById('inputMonto').value;
+    const monto = parseMonto(document.getElementById('inputMonto').value);
     const fecha = document.getElementById('inputFecha').value;
     const numeroFactura = document.getElementById('inputNumeroFactura').value;
     const requisicion = document.getElementById('inputRequisicion').value;
@@ -1026,6 +1026,10 @@ function agregarPago() {
 
     if (!concepto || !proveedor || !monto || !fecha || !numeroFactura) {
         showNotification('Por favor complete todos los campos requeridos (incluyendo número de factura).', 'warning');
+        return;
+    }
+    if (!isValidMonto(monto)) {
+        showNotification('Escribe un monto mayor que 0, por ejemplo 25.50 (máximo 99,999,999.99).', 'warning');
         return;
     }
 
@@ -1072,13 +1076,17 @@ function agregarProveedor() {
 function agregarCuentaPorPagar() {
     const proveedor = document.getElementById('selectProveedorCPP').value;
     const concepto = document.getElementById('selectConceptoCPP').value;
-    const monto = document.getElementById('inputMontoCPP').value;
+    const monto = parseMonto(document.getElementById('inputMontoCPP').value);
     const numeroFactura = document.getElementById('inputNumeroFacturaCPP').value;
     const fecha = document.getElementById('inputFechaCPP').value;
     const vencimiento = document.getElementById('inputVencimientoCPP').value;
 
     if (!proveedor || !concepto || !monto || !numeroFactura || !fecha || !vencimiento) {
         showNotification('Por favor complete todos los campos requeridos.', 'warning');
+        return;
+    }
+    if (!isValidMonto(monto)) {
+        showNotification('Escribe un monto mayor que 0, por ejemplo 25.50 (máximo 99,999,999.99).', 'warning');
         return;
     }
 
@@ -1151,11 +1159,11 @@ function populateSelectsCuentasPorPagar() {
 
     if (gastosModule && gastosModule.state) {
         gastosModule.state.proveedores.forEach(proveedor => {
-            selectProveedor.innerHTML += `<option value="${proveedor.id}">${proveedor.nombre}</option>`;
+            selectProveedor.innerHTML += `<option value="${escGastos(proveedor.id)}">${escGastos(proveedor.nombre)}</option>`;
         });
 
         gastosModule.state.conceptos.forEach(concepto => {
-            selectConcepto.innerHTML += `<option value="${concepto.id}">${concepto.nombre}</option>`;
+            selectConcepto.innerHTML += `<option value="${escGastos(concepto.id)}">${escGastos(concepto.nombre)}</option>`;
         });
     }
 }

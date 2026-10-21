@@ -285,6 +285,27 @@ function loadLibrary(name) {
     return lazyLibraryLoads[name];
 }
 
+// Lee montos como se escriben en Guatemala ("1,500.50") y también "1,5", "0,500" o "1.5".
+// Devuelve NaN si el texto no es un número, para que el formulario lo marque.
+function parseMonto(value) {
+    const text = String(value ?? '').trim().replace(/\s/g, '');
+    if (!text) return NaN;
+    let normalized;
+    if (/^-?[1-9]\d{0,2}(,\d{3})+(\.\d+)?$/.test(text)) {
+        normalized = text.replace(/,/g, '');           // 1,500 · 1,500.50 → miles con coma
+    } else if (/^-?\d+,\d{1,2}$/.test(text) || /^-?0,\d+$/.test(text)) {
+        normalized = text.replace(',', '.');            // 1,5 · 10,50 · 0,500 → coma decimal
+    } else {
+        normalized = text;
+    }
+    return /^-?\d*\.?\d+$/.test(normalized) ? Number(normalized) : NaN;
+}
+
+// Monto de dinero válido para guardar: número, mayor que 0 y dentro del límite de la base de datos.
+function isValidMonto(amount) {
+    return Number.isFinite(amount) && amount > 0 && amount <= 99999999.99;
+}
+
 // Un solo formato de moneda en toda la app: Q1,234.50
 function formatQ(value) {
     const amount = Number(value);
@@ -394,8 +415,10 @@ function requireAuth() {
 
 // Proteger index.html y otras páginas
 document.addEventListener('DOMContentLoaded', function() {
-    // Solo ejecutar si no estamos en login.html
-    if (!window.location.pathname.includes('login.html')) {
+    // Solo en páginas protegidas: "/" también es el inicio de sesión (Caddy sirve login.html ahí),
+    // y redirigir desde ahí recargaba la página y cerraba el registro recién abierto.
+    const path = window.location.pathname;
+    if (path !== '/' && !path.includes('login.html')) {
         if (!authManager.isAuthenticated()) {
             window.location.href = '/login.html';
         }

@@ -81,6 +81,10 @@ class GastosServiciosModule {
             showNotification('Por favor complete todos los campos requeridos (incluyendo número de factura).', 'warning');
             return false;
         }
+        if (!isValidMonto(Number(monto))) {
+            showNotification('Escribe un monto mayor que 0, por ejemplo 25.50 (máximo 99,999,999.99).', 'warning');
+            return false;
+        }
 
         const newPago = {
             id: 'PAG-' + Date.now(),
@@ -587,6 +591,10 @@ class GastosServiciosModule {
     addCuentaPorPagar(proveedor, concepto, monto, fecha, vencimiento, numeroFactura) {
         if (!proveedor || !concepto || !monto || !fecha || !vencimiento || !numeroFactura) {
             showNotification('Por favor complete todos los campos requeridos.', 'warning');
+            return false;
+        }
+        if (!isValidMonto(Number(monto))) {
+            showNotification('Escribe un monto mayor que 0, por ejemplo 25.50 (máximo 99,999,999.99).', 'warning');
             return false;
         }
 

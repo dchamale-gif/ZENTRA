@@ -646,20 +646,9 @@ const CodigosArticulosModule = {
         }
     },
 
-    // Lee montos como se escriben en Guatemala ("1,500.50") y también "1,5" o "1.5".
-    // Devuelve NaN si el texto no es un número, para que el formulario lo marque.
+    // Misma lectura de montos que el resto de la app (parseMonto en js/auth-utils.js).
     parseDecimal(value) {
-        const text = String(value ?? '').trim().replace(/\s/g, '');
-        if (!text) return NaN;
-        let normalized;
-        if (/^-?[1-9]\d{0,2}(,\d{3})+(\.\d+)?$/.test(text)) {
-            normalized = text.replace(/,/g, '');           // 1,500 · 1,500.50 → miles con coma
-        } else if (/^-?\d+,\d{1,2}$/.test(text) || /^-?0,\d+$/.test(text)) {
-            normalized = text.replace(',', '.');            // 1,5 · 10,50 · 0,500 → coma decimal
-        } else {
-            normalized = text;
-        }
-        return /^-?\d*\.?\d+$/.test(normalized) ? Number(normalized) : NaN;
+        return parseMonto(value);
     },
 
     setFieldError(input, message) {

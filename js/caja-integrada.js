@@ -454,13 +454,17 @@ const CajaIntegradaModule = {
     saveMovimiento() {
         const tipo = document.getElementById('movimientoCajaType').value;
         const clienteId = document.getElementById('movimientoClienteId').value;
-        const monto = parseFloat(document.getElementById('movimientoCajaMonto').value) || 0;
+        const monto = parseMonto(document.getElementById('movimientoCajaMonto').value);
         const descripcion = document.getElementById('movimientoCajaDesc').value.trim();
         const fecha = document.getElementById('movimientoCajaFecha').value;
         const referencia = document.getElementById('movimientoCajaRef').value.trim();
 
-        if (!tipo || !monto || monto <= 0 || !fecha || !descripcion) {
-            this.showNotification('⚠️ Por favor completa todos los campos requeridos', 'warning');
+        if (!tipo || !fecha || !descripcion) {
+            this.showNotification('Completa el tipo, la fecha y la descripción del movimiento.', 'warning');
+            return;
+        }
+        if (!isValidMonto(monto)) {
+            this.showNotification('Escribe un monto mayor que 0, por ejemplo 25.50 (máximo 99,999,999.99).', 'warning');
             return;
         }
 
@@ -524,12 +528,16 @@ const CajaIntegradaModule = {
     // Guardar microfactura
     saveMicrofactura() {
         const clienteId = document.getElementById('microfacturaClienteSelect').value;
-        const monto = parseFloat(document.getElementById('microfacturaMonto').value) || 0;
+        const monto = parseMonto(document.getElementById('microfacturaMonto').value);
         const descripcion = document.getElementById('microfacturaDesc').value.trim();
         const fecha = document.getElementById('microfacturaFecha').value;
 
-        if (!clienteId || !monto || monto <= 0 || !fecha) {
-            this.showNotification('⚠️ Por favor completa todos los campos', 'warning');
+        if (!clienteId || !fecha) {
+            this.showNotification('Elige el cliente y la fecha de la microfactura.', 'warning');
+            return;
+        }
+        if (!isValidMonto(monto)) {
+            this.showNotification('Escribe un monto mayor que 0, por ejemplo 25.50 (máximo 99,999,999.99).', 'warning');
             return;
         }
 

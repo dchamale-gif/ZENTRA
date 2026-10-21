@@ -118,7 +118,7 @@ const CajaModule = {
 
     async addMovement() {
         const tipo = document.getElementById('movimientoCajaType')?.value;
-        const monto = Number(document.getElementById('movimientoCajaMonto')?.value);
+        const monto = parseMonto(document.getElementById('movimientoCajaMonto')?.value);
         const descripcion = document.getElementById('movimientoCajaDesc')?.value.trim();
         const referencia = document.getElementById('movimientoCajaRef')?.value.trim() || null;
         const fecha = document.getElementById('movimientoCajaFecha')?.value;
@@ -128,8 +128,8 @@ const CajaModule = {
             showNotification('Completa el tipo, la fecha y la descripción del movimiento', 'error');
             return;
         }
-        if (!Number.isFinite(monto) || monto <= 0) {
-            showNotification('El monto debe ser mayor a 0', 'error');
+        if (!isValidMonto(monto)) {
+            showNotification('Escribe un monto mayor que 0, por ejemplo 25.50 (máximo 99,999,999.99).', 'error');
             return;
         }
 
@@ -152,7 +152,7 @@ const CajaModule = {
             showNotification('Movimiento registrado', 'success');
             await this.loadData();
         } catch (error) {
-            showNotification(`No se pudo registrar el movimiento: ${error.message}`, 'error');
+            showNotification(`No se pudo registrar el movimiento. ${friendlyError(error)}`, 'error');
         } finally {
             if (saveButton) saveButton.disabled = false;
         }
