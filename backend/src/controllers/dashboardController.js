@@ -9,6 +9,19 @@ const safe = async (query, params = []) => {
   }
 };
 
+// Valor de inventario a costo; si el artículo no tiene costo se usa su precio de venta.
+// Es la misma regla que muestra la página de Artículos.
+const UNIT_VALUE = 'COALESCE(NULLIF(precio_costo, 0), precio_unitario, 0)';
+
+// Costo de lo vendido en un mes (0 = mes actual, 1 = mes anterior).
+const costOfSales = (monthsAgo) => `
+  (SELECT COALESCE(SUM(vi.cantidad * COALESCE(a.precio_costo, 0)), 0)::float
+     FROM venta_items vi
+     JOIN ventas v ON v.id = vi.venta_id
+     LEFT JOIN codigos_articulos a ON a.id = vi.articulo_id
+    WHERE v.estado <> 'anulada'
+      AND date_trunc('month', v.fecha) = date_trunc('month', CURRENT_DATE - INTERVAL '${monthsAgo} month'))`;
+
 const pctChange = (current, previous) => {
   if (!previous) return current ? 100 : 0;
   return ((current - previous) / previous) * 100;
@@ -31,18 +44,22 @@ const getDashboard = async (req, res) => {
           (SELECT COALESCE(SUM(total), 0)::float FROM compras
              WHERE estado <> 'cancelada' AND date_trunc('month', fecha) = date_trunc('month', CURRENT_DATE)) AS gastos,
           (SELECT COALESCE(SUM(total), 0)::float FROM compras
-             WHERE estado <> 'cancelada' AND date_trunc('month', fecha) = date_trunc('month', CURRENT_DATE - INTERVAL '1 month')) AS gastos_prev
+             WHERE estado <> 'cancelada' AND date_trunc('month', fecha) = date_trunc('month', CURRENT_DATE - INTERVAL '1 month')) AS gastos_prev,
+          ${costOfSales(0)} AS costo_ventas,
+          ${costOfSales(1)} AS costo_ventas_prev,
+          (SELECT COUNT(*)::int FROM codigos_articulos WHERE activo = true) AS articulos,
+          (SELECT COUNT(*)::int FROM ventas WHERE estado <> 'anulada') AS ventas
       `),
       safe(`
-        SELECT COALESCE(SUM(COALESCE(precio_unitario, 0) * COALESCE(cantidad_disponible, 0)), 0)::float AS valor
+        SELECT COALESCE(SUM(${UNIT_VALUE} * GREATEST(COALESCE(cantidad_disponible, 0), 0)), 0)::float AS valor
         FROM codigos_articulos WHERE activo = true
       `),
       safe(`
         SELECT COALESCE(NULLIF(categoria, ''), 'Sin categoría') AS category,
-               SUM(COALESCE(precio_unitario, 0) * COALESCE(cantidad_disponible, 0))::float AS value
+               SUM(${UNIT_VALUE} * GREATEST(COALESCE(cantidad_disponible, 0), 0))::float AS value
         FROM codigos_articulos WHERE activo = true
         GROUP BY 1
-        HAVING SUM(COALESCE(precio_unitario, 0) * COALESCE(cantidad_disponible, 0)) > 0
+        HAVING SUM(${UNIT_VALUE} * GREATEST(COALESCE(cantidad_disponible, 0), 0)) > 0
         ORDER BY value DESC
         LIMIT 8
       `),
@@ -70,9 +87,10 @@ const getDashboard = async (req, res) => {
     const m = months[0] || {};
     const ingresos = m.ingresos || 0;
     const gastos = m.gastos || 0;
-    const margen = ingresos > 0 ? ((ingresos - gastos) / ingresos) * 100 : 0;
+    // Margen bruto: lo que queda de las ventas después de su costo.
+    const margen = ingresos > 0 ? ((ingresos - (m.costo_ventas || 0)) / ingresos) * 100 : 0;
     const margenPrev = m.ingresos_prev > 0
-      ? ((m.ingresos_prev - m.gastos_prev) / m.ingresos_prev) * 100
+      ? ((m.ingresos_prev - (m.costo_ventas_prev || 0)) / m.ingresos_prev) * 100
       : 0;
 
     res.json({
@@ -85,7 +103,11 @@ const getDashboard = async (req, res) => {
           gastosChange: pctChange(gastos, m.gastos_prev || 0),
           inventario: (inventory[0] || {}).valor || 0,
           margen,
-          margenChange: margen - margenPrev
+          margenChange: m.ingresos_prev > 0 ? margen - margenPrev : null
+        },
+        onboarding: {
+          articulos: m.articulos || 0,
+          ventas: m.ventas || 0
         },
         salesByDay,
         inventoryByCategory,

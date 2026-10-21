@@ -78,12 +78,16 @@ async function initializeApp() {
     
     if (typeof UsuariosModule !== 'undefined') UsuariosModule.init();
     AccessControl.refresh().then(initializeUserProfile);
+    restorePageFromHash();
     console.log('✅ Sistema inicializado correctamente');
 }
 
 // ============================================
 // NAVEGACIÓN
 // ============================================
+
+// Rutas antiguas que ahora viven en otra página.
+const PAGE_ALIASES = { inventory: 'codigos-articulos' };
 
 function setupNavigation() {
     const navItems = document.querySelectorAll('.nav-item');
@@ -94,9 +98,47 @@ function setupNavigation() {
             navigateToPage(page);
         });
     });
+
+    // Cada sección queda en el historial: "Atrás" cierra el formulario abierto
+    // o vuelve a la sección anterior en lugar de salir de la aplicación.
+    window.addEventListener('popstate', () => {
+        if (closeOpenModals()) return;
+        navigateToPage(pageFromHash(), { fromHistory: true });
+    });
 }
 
-function navigateToPage(pageId) {
+// Se llama al final de initializeApp, cuando los módulos ya están listos.
+function restorePageFromHash() {
+    const initialPage = pageFromHash();
+    history.replaceState(null, '', `#${initialPage}`);
+    if (initialPage !== 'dashboard') navigateToPage(initialPage, { fromHistory: true });
+}
+
+function pageFromHash() {
+    const pageId = decodeURIComponent(location.hash.slice(1)) || 'dashboard';
+    const resolved = PAGE_ALIASES[pageId] || pageId;
+    return document.getElementById(`page-${resolved}`) ? resolved : 'dashboard';
+}
+
+// Cierra los formularios y ventanas abiertos; devuelve true si había alguno.
+function closeOpenModals() {
+    const open = [...document.querySelectorAll('.modal')].filter(modal =>
+        modal.classList.contains('active') || modal.style.display === 'block' || modal.style.display === 'flex');
+    const overlays = document.querySelectorAll('.modal-overlay');
+    if (!open.length && !overlays.length) return false;
+    open.forEach(modal => {
+        modal.classList.remove('active');
+        modal.style.display = 'none';
+    });
+    overlays.forEach(overlay => overlay.remove());
+    document.body.style.overflow = '';
+    // Volver a dejar la sección actual en el historial que se acaba de consumir.
+    history.pushState(null, '', `#${currentPage}`);
+    return true;
+}
+
+function navigateToPage(pageId, { fromHistory = false } = {}) {
+    pageId = PAGE_ALIASES[pageId] || pageId;
     if (!AccessControl.canOpenPage(pageId)) {
         showNotification('Este módulo no está disponible para tu usuario', 'warning');
         pageId = 'dashboard';
@@ -127,14 +169,13 @@ function navigateToPage(pageId) {
 
     // El título superior es el mismo texto del menú.
     const navLabel = document.querySelector(`.nav-item[data-page="${pageId}"] span`)?.textContent;
-    document.getElementById('pageTitle').textContent = navLabel || 'Dashboard';
+    document.getElementById('pageTitle').textContent = navLabel || 'Panel';
 
     currentPage = pageId;
+    if (!fromHistory && location.hash !== `#${pageId}`) history.pushState(null, '', `#${pageId}`);
 
-    // Cerrar el drawer después de navegar en pantallas pequeñas.
-    if (window.innerWidth <= 768) {
-        setSidebarOpen(false);
-    }
+    // Cerrar el drawer después de navegar (en escritorio no hace nada).
+    setSidebarOpen(false);
 
     // Re-initialize charts if on dashboard or financial dashboard
     if (pageId === 'dashboard') {
@@ -174,9 +215,6 @@ function navigateToPage(pageId) {
     }
     if (pageId === 'settings') {
         ClasificacionesConfig.load();
-    }
-    if (pageId === 'inventory') {
-        loadInventory();
     }
     if (pageId === 'transactions') {
         loadTransactions();
@@ -256,12 +294,56 @@ async function setupDashboard() {
         if (result.success) {
             dashboardData = result.data;
             renderDashboardKpis(result.data.kpis);
+            renderOnboarding(result.data.onboarding);
         }
     } catch (error) {
         console.error('Error cargando dashboard:', error);
     }
     populateRecentTransactions();
     initializeDashboardCharts();
+}
+
+function renderOnboarding(progress) {
+    const card = document.getElementById('onboardingCard');
+    if (!card || !progress) return;
+    const steps = { articulo: progress.articulos > 0, venta: progress.ventas > 0 };
+    card.hidden = steps.articulo && steps.venta;
+    Object.entries(steps).forEach(([step, done]) => {
+        const item = document.getElementById(`onboardingStep${step === 'articulo' ? 'Articulo' : 'Venta'}`);
+        item?.classList.toggle('is-done', done);
+        const button = item?.querySelector('button');
+        if (button) button.hidden = done;
+    });
+    if (!card.dataset.bound) {
+        card.dataset.bound = 'true';
+        card.addEventListener('click', event => {
+            const step = event.target.closest('[data-onboarding]')?.dataset.onboarding;
+            if (step === 'articulo') {
+                navigateToPage('codigos-articulos');
+                CodigosArticulosModule.openArticuloModal();
+            } else if (step === 'venta') {
+                navigateToPage('ventas');
+                VentasModule.openSaleModal();
+            }
+        });
+    }
+}
+
+// Reemplaza una gráfica por un mensaje cuando no hay datos o Chart.js no cargó.
+function setChartMessage(canvas, message) {
+    const card = canvas.parentElement;
+    let note = card.querySelector('.chart-empty');
+    canvas.hidden = Boolean(message);
+    if (!message) {
+        note?.remove();
+        return;
+    }
+    if (!note) {
+        note = document.createElement('p');
+        note.className = 'chart-empty';
+        card.appendChild(note);
+    }
+    note.textContent = message;
 }
 
 function renderDashboardKpis(k) {
@@ -289,11 +371,21 @@ function renderDashboardKpis(k) {
 function initializeDashboardCharts() {
     if (charts.sales) charts.sales.destroy();
     if (charts.inventory) charts.inventory.destroy();
+    charts.sales = charts.inventory = null;
+
+    const salesCtx = document.getElementById('salesChart');
+    const inventoryCtx = document.getElementById('inventoryChart');
+    if (typeof Chart === 'undefined') {
+        [salesCtx, inventoryCtx].forEach(canvas => canvas && setChartMessage(canvas, 'No se pudo cargar la gráfica. Recarga la página para intentarlo de nuevo.'));
+        return;
+    }
+    const salesData = dashboardData.salesByDay || [];
+    const inventoryData = dashboardData.inventoryByCategory || [];
+    if (salesCtx) setChartMessage(salesCtx, salesData.some(d => d.sales > 0) ? '' : 'Aún no hay ventas en los últimos 7 días.');
+    if (inventoryCtx) setChartMessage(inventoryCtx, inventoryData.length ? '' : 'Aún no hay existencias registradas.');
 
     // Sales Chart
-    const salesCtx = document.getElementById('salesChart');
-    if (salesCtx) {
-        const salesData = dashboardData.salesByDay;
+    if (salesCtx && !salesCtx.hidden) {
         charts.sales = new Chart(salesCtx, {
             type: 'line',
             data: {
@@ -338,9 +430,7 @@ function initializeDashboardCharts() {
     }
 
     // Inventory Distribution Chart
-    const inventoryCtx = document.getElementById('inventoryChart');
-    if (inventoryCtx) {
-        const inventoryData = dashboardData.inventoryByCategory;
+    if (inventoryCtx && !inventoryCtx.hidden) {
         charts.inventory = new Chart(inventoryCtx, {
             type: 'doughnut',
             data: {
@@ -428,70 +518,13 @@ const legacyStatusClass = status => {
     if (['anulada', 'cancelada', 'failed'].includes(s)) return 'status-failed';
     return 'status-pending';
 };
-let inventoryItems = [];
 let transactionItems = [];
 
 function setupInventory() {
-    ['addProductBtn', 'addTransactionBtn', 'bulkTransactionBtn'].forEach(id => {
+    ['addTransactionBtn', 'bulkTransactionBtn'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.style.display = 'none';
     });
-    document.getElementById('searchProduct')?.addEventListener('keyup', renderInventoryTable);
-    document.getElementById('categoryFilter')?.addEventListener('change', renderInventoryTable);
-}
-
-async function loadInventory() {
-    try {
-        const response = await authManager.fetchWithAuth('/api/codigos-articulos?activo=true');
-        const result = await response.json();
-        inventoryItems = result.articulos || [];
-    } catch (error) {
-        console.error('Error cargando inventario:', error);
-        inventoryItems = [];
-    }
-    const filter = document.getElementById('categoryFilter');
-    if (filter) {
-        const current = filter.value;
-        const categories = [...new Set(inventoryItems.map(a => a.categoria).filter(Boolean))].sort();
-        filter.innerHTML = '<option value="">Todas las categorías</option>' +
-            categories.map(c => `<option value="${legacyEsc(c)}">${legacyEsc(c)}</option>`).join('');
-        filter.value = current;
-    }
-    renderInventoryTable();
-}
-
-function renderInventoryTable() {
-    const tbody = document.getElementById('inventoryTable');
-    if (!tbody) return;
-    const term = (document.getElementById('searchProduct')?.value || '').toLowerCase();
-    const category = document.getElementById('categoryFilter')?.value || '';
-
-    const items = inventoryItems.filter(a =>
-        (!category || a.categoria === category) &&
-        (!term || `${a.nombre_articulo} ${a.codigo}`.toLowerCase().includes(term)));
-
-    if (items.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 30px;">No se encontraron productos</td></tr>';
-        return;
-    }
-
-    tbody.innerHTML = items.map(a => {
-        const stock = Number(a.cantidad_disponible) || 0;
-        const price = Number(a.precio_unitario) || 0;
-        const status = stock <= 0 ? 'Agotado' : stock < 10 ? 'Stock bajo' : 'Disponible';
-        const cls = stock <= 0 ? 'status-failed' : stock < 10 ? 'status-pending' : 'status-completed';
-        return `
-            <tr>
-                <td><strong>${legacyEsc(a.codigo)}</strong></td>
-                <td>${legacyEsc(a.nombre_articulo)}</td>
-                <td>${legacyEsc(a.categoria || '-')}</td>
-                <td>${stock} unidades</td>
-                <td>${legacyMoney(price)}</td>
-                <td><strong>${legacyMoney(price * stock)}</strong></td>
-                <td><span class="status-badge ${cls}">${status}</span></td>
-                <td></td>
-            </tr>`;
-    }).join('');
 }
 
 function setupTransactions() {
@@ -597,23 +630,28 @@ function showNotification(message, type = 'info') {
     notification.innerHTML = `
         <div class="notification-content">
             <span class="notification-icon">${style.icon}</span>
-            <span class="notification-text">${message}</span>
-            <button class="notification-close">×</button>
+            <span class="notification-text"></span>
+            <button type="button" class="notification-close" aria-label="Cerrar aviso">×</button>
         </div>
     `;
+    // Los mensajes pueden incluir nombres escritos por usuarios: siempre como texto.
+    notification.querySelector('.notification-text').textContent = String(message ?? '');
+    notification.setAttribute('role', type === 'error' ? 'alert' : 'status');
+    const narrow = window.innerWidth < 480;
 
     notification.style.cssText = `
         position: fixed;
-        bottom: 20px;
-        right: 20px;
+        bottom: ${narrow ? '16px' : '20px'};
+        right: ${narrow ? '16px' : '20px'};
+        left: ${narrow ? '16px' : 'auto'};
         padding: 0;
         background: ${style.bg};
         color: white;
         border-radius: 12px;
         box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2), 0 0 1px rgba(0, 0, 0, 0.1);
         z-index: 10000;
-        animation: slideInRight 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
-        min-width: 320px;
+        animation: ${narrow ? 'none' : 'slideInRight 0.3s ease-out'};
+        min-width: ${narrow ? '0' : '320px'};
         max-width: 450px;
         border-left: 4px solid ${style.border};
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -660,8 +698,8 @@ function showNotification(message, type = 'info') {
         font-size: 24px;
         cursor: pointer;
         padding: 0;
-        width: 24px;
-        height: 24px;
+        width: 44px;
+        height: 44px;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -687,7 +725,7 @@ function showNotification(message, type = 'info') {
 
     document.body.appendChild(notification);
 
-    // Auto-remover después de 4 segundos
+    // Auto-remover después de 4 segundos (los errores se quedan 8 para poder leerlos)
     const autoRemoveTimeout = setTimeout(() => {
         if (notification.parentNode) {
             notification.style.animation = 'slideOutRight 0.3s cubic-bezier(0.6, -0.28, 0.735, 0.045)';
@@ -695,7 +733,7 @@ function showNotification(message, type = 'info') {
                 if (notification.parentNode) notification.remove();
             }, 300);
         }
-    }, 4000);
+    }, type === 'error' ? 8000 : 4000);
 
     // Cancelar auto-remover si el usuario cierra manualmente
     notification.addEventListener('click', (e) => {

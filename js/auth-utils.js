@@ -51,7 +51,7 @@ class AuthManager {
             console.error('Error en login:', error);
             return {
                 success: false,
-                error: error.message
+                error: friendlyError(error)
             };
         }
     }
@@ -107,7 +107,7 @@ class AuthManager {
             console.error('Error en registro:', error);
             return {
                 success: false,
-                error: error.message
+                error: friendlyError(error)
             };
         }
     }
@@ -135,7 +135,7 @@ class AuthManager {
             return { success: true, user: data.user };
         } catch (error) {
             console.error('Error obteniendo perfil:', error);
-            return { success: false, error: error.message };
+            return { success: false, error: friendlyError(error) };
         }
     }
 
@@ -259,26 +259,40 @@ const authManager = new AuthManager();
 // ============================================
 
 /**
+ * Traduce errores de red del navegador ("Failed to fetch") a un mensaje accionable.
+ */
+function friendlyError(error) {
+    const message = error?.message || String(error || '');
+    if (error instanceof TypeError || /failed to fetch|networkerror|load failed|network request failed/i.test(message)) {
+        return 'Sin conexión con el servidor. Revisa tu internet e inténtalo de nuevo.';
+    }
+    return message || 'Ocurrió un error inesperado. Inténtalo de nuevo.';
+}
+
+/**
  * Mostrar alerta
  */
 function showAlert(message, type = 'info', duration = 5000) {
     const alertContainer = document.getElementById('alertContainer');
     if (!alertContainer) return;
 
+    // Un solo aviso a la vez: los anteriores pueden contradecir al nuevo.
+    alertContainer.innerHTML = '';
     const alert = document.createElement('div');
     alert.className = `alert ${type}`;
+    alert.setAttribute('role', type === 'error' ? 'alert' : 'status');
     
     let icon = 'fas fa-info-circle';
     if (type === 'error') icon = 'fas fa-exclamation-circle';
     if (type === 'success') icon = 'fas fa-check-circle';
     if (type === 'warning') icon = 'fas fa-exclamation-triangle';
 
-    alert.innerHTML = `
-        <i class="${icon}"></i>
-        <span>${message}</span>
-    `;
+    alert.innerHTML = `<i class="${icon}" aria-hidden="true"></i><span></span>`;
+    alert.querySelector('span').textContent = message;
 
     alertContainer.appendChild(alert);
+    const { top, bottom } = alert.getBoundingClientRect();
+    if (top < 0 || bottom > window.innerHeight) alert.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
     if (duration > 0) {
         setTimeout(() => {

@@ -123,18 +123,22 @@ const register = async (req, res) => {
     const normalizedCompanyEmail = String(empresaCorreo || normalizedEmail).trim().toLowerCase();
     const normalizedSector = String(empresaSector || '').trim();
 
-    if (!normalizedEmail || !password || !nombre?.trim() || !apellido?.trim() ||
-        !normalizedCompanyName || !normalizedSector || !normalizedCompanyEmail) {
-      return res.status(400).json({
-        error: 'Campos requeridos: empresaNombre, empresaSector, empresaCorreo, email, password, nombre, apellido'
-      });
+    const missing = [
+      [normalizedCompanyName, 'nombre de la empresa'],
+      [nombre?.trim(), 'nombre'],
+      [apellido?.trim(), 'apellido'],
+      [normalizedEmail, 'correo para iniciar sesión'],
+      [password, 'contraseña']
+    ].filter(([value]) => !value).map(([, label]) => label);
+    if (missing.length) {
+      return res.status(400).json({ error: `Falta completar: ${missing.join(', ')}.` });
     }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail) ||
         !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedCompanyEmail)) {
       return res.status(400).json({ error: 'El correo electrónico no es válido' });
     }
-    if (password.length < 8) {
-      return res.status(400).json({ error: 'La contraseña debe tener al menos 8 caracteres' });
+    if (typeof password !== 'string' || password.length < 8 || !/[a-zA-Z]/.test(password) || !/\d/.test(password)) {
+      return res.status(400).json({ error: 'La contraseña necesita al menos 8 caracteres, con letras y números.' });
     }
 
     client = await pool.connect();
@@ -162,7 +166,7 @@ const register = async (req, res) => {
         normalizedCompanyName,
         buildSlug(normalizedCompanyName),
         empresaNit?.trim() || null,
-        normalizedSector,
+        normalizedSector || null,
         normalizedCompanyEmail,
         empresaTelefono?.trim() || null,
         empresaDireccion?.trim() || null,
@@ -272,7 +276,7 @@ const login = async (req, res) => {
     );
 
     if (result.rows.length === 0) {
-      return res.status(401).json({ error: 'Credenciales inválidas' });
+      return res.status(401).json({ error: 'Correo o contraseña incorrectos. Revisa los dos e inténtalo de nuevo.' });
     }
 
     const user = result.rows[0];
@@ -286,7 +290,7 @@ const login = async (req, res) => {
     const passwordMatch = isBcryptHash && await bcrypt.compare(password, user.password_hash);
 
     if (!passwordMatch) {
-      return res.status(401).json({ error: 'Credenciales inválidas' });
+      return res.status(401).json({ error: 'Correo o contraseña incorrectos. Revisa los dos e inténtalo de nuevo.' });
     }
 
     const organization = getOrganizationPayload(user);

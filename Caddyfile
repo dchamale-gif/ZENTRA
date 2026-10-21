@@ -25,15 +25,24 @@
         # CSS, JS e imágenes se guardan en caché una hora.
         @html path / *.html
         header @html Cache-Control "no-cache"
-        @assets path /css/* /js/* /img/* /data/*
+        @assets path /css/* /js/* /img/* /data/* /vendor/*
         header @assets Cache-Control "public, max-age=3600"
 
         # La raíz abre el login; login.js redirige al panel si ya hay sesión.
         @root path /
         rewrite @root /login.html
 
-        try_files {path} /index.html
+        # Las rutas que no existen devuelven 404 en lugar de mostrar el panel.
         file_server
+    }
+
+    handle_errors {
+        @notfound expression {err.status_code} == 404
+        handle @notfound {
+            root * /srv
+            rewrite * /404.html
+            file_server
+        }
     }
 
     header {

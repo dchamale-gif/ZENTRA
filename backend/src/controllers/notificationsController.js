@@ -1,6 +1,6 @@
 const pool = require('../db/connection');
 
-const LOW_STOCK_THRESHOLD = 10;
+const { LOW_STOCK_THRESHOLD } = require('../utils/inventory');
 
 const safe = async (query, params = []) => {
   try {
@@ -22,7 +22,7 @@ const getNotifications = async (req, res) => {
         `SELECT COUNT(*)::int AS total,
                 COUNT(*) FILTER (WHERE cantidad_disponible <= 0)::int AS agotados
          FROM codigos_articulos
-         WHERE activo = true AND cantidad_disponible < $1`,
+         WHERE activo = true AND cantidad_disponible <= $1`,
         [LOW_STOCK_THRESHOLD]
       ),
       safe(
@@ -48,8 +48,8 @@ const getNotifications = async (req, res) => {
         id: 'low-stock',
         type: agotados > 0 ? 'danger' : 'warning',
         icon: 'fa-boxes-stacked',
-        title: 'Stock bajo',
-        message: `${total} artículo(s) con menos de ${LOW_STOCK_THRESHOLD} unidades` +
+        title: 'Existencia baja',
+        message: `${total} artículo(s) con ${LOW_STOCK_THRESHOLD} unidades o menos` +
           (agotados > 0 ? ` (${agotados} agotados)` : ''),
         page: 'codigos-articulos'
       });

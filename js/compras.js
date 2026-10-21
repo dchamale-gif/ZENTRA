@@ -449,10 +449,6 @@ const ComprasModule = {
     },
 
     notify(message, type) {
-        if (window.NotificationsModule?.show) {
-            window.NotificationsModule.show(message, type);
-        } else {
-            alert(message);
-        }
+        showNotification(message, type);
     }
 };

@@ -341,7 +341,7 @@ a,
     color: var(--primary-color);
 }
 
-.badge {
+.btn-icon > .badge {
     position: absolute;
     top: -5px;
     right: -5px;
@@ -1255,9 +1255,9 @@ select:disabled {
     min-width: 110px;
 }
 
-.purchase-items-table th:nth-child(2),
-.purchase-items-table td:nth-child(2) {
-    min-width: 300px;
+.purchase-items-table th:nth-child(1),
+.purchase-items-table td:nth-child(1) {
+    min-width: 260px;
 }
 
 .concept-search-input {
@@ -4937,7 +4937,7 @@ textarea.form-input {
 }
 
 @media (hover: none), (pointer: coarse) {
-    *:hover {
+    *:not(.sidebar):hover {
         transform: none !important;
     }
 

@@ -77,7 +77,7 @@ const UsuariosModule = {
         const seats = this.state.seats;
         const rows = [
             ['Empresa', organization.name],
-            ['Plan', organization.plan || '—'],
+            ['Plan', organization.plan === 'Trial' ? 'Prueba gratuita (30 días)' : (organization.plan || '—')],
             ['Estado', this.statusLabels[organization.status] || organization.status || '—'],
             [organization.status === 'trial' ? 'Prueba vence' : 'Licencia vence', this.formatDate(endsAt)],
             ['Clave de licencia', organization.licenseKey ? `<code>${this.escape(organization.licenseKey)}</code>` : '—'],
