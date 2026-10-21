@@ -9,7 +9,7 @@ const CajaIntegradaModule = {
         movimientosCaja: [],
         clientes: [],
         saldosClientes: [],
-        tiposMovimiento: ['Ingreso por Cobro', 'Egreso', 'Devolución', 'Transferencia', 'Microfactura'],
+        tiposMovimiento: ['Ingreso por Venta', 'Ingreso por Cobro', 'Egreso', 'Devolución', 'Transferencia', 'Microfactura'],
         searchTerm: '',
         filterTipo: 'todos',
         selectedCliente: null,
@@ -34,7 +34,7 @@ const CajaIntegradaModule = {
         const searchInput = document.getElementById('searchCaja');
         if (searchInput) {
             searchInput.addEventListener('input', (e) => {
-                this.searchTerm = e.target.value.toLowerCase();
+                this.state.searchTerm = e.target.value.toLowerCase();
                 this.renderMovimientosCaja();
             });
         }
@@ -42,7 +42,7 @@ const CajaIntegradaModule = {
         const filterTipo = document.getElementById('filterTipoCaja');
         if (filterTipo) {
             filterTipo.addEventListener('change', (e) => {
-                this.filterTipo = e.target.value;
+                this.state.filterTipo = e.target.value;
                 this.renderMovimientosCaja();
             });
         }
@@ -79,20 +79,30 @@ const CajaIntegradaModule = {
         }
     },
 
+    // Copia local separada por empresa: en un equipo compartido una empresa
+    // nunca debe ver los movimientos de otra.
+    storageKey(name) {
+        const organizationId = authManager.getUser()?.organization?.id || 'sin-empresa';
+        return `${name}:${organizationId}`;
+    },
+
     // Cargar datos
     loadData() {
+        // Quitar copias antiguas sin empresa (versiones anteriores las compartían).
+        localStorage.removeItem('movimientosCaja');
+        localStorage.removeItem('saldosClientes');
         authManager.fetchWithAuth('/api/clientes?activo=true')
             .then((response) => (response && response.ok ? response.json() : { clientes: [] }))
             .then((data) => { this.state.clientes = data.clientes || []; })
             .catch((error) => console.warn('No se pudieron cargar los clientes:', error));
 
         // Restaurar desde localStorage
-        const saldosFromStorage = localStorage.getItem('saldosClientes');
+        const saldosFromStorage = localStorage.getItem(this.storageKey('saldosClientes'));
         if (saldosFromStorage) {
             this.state.saldosClientes = JSON.parse(saldosFromStorage);
         }
 
-        const movFromStorage = localStorage.getItem('movimientosCaja');
+        const movFromStorage = localStorage.getItem(this.storageKey('movimientosCaja'));
         if (movFromStorage) {
             this.state.movimientosCaja = JSON.parse(movFromStorage);
         }
@@ -104,7 +114,7 @@ const CajaIntegradaModule = {
 
     async loadMovimientosFromAPI() {
         const token = authManager?.getToken?.();
-        const apiHost = authManager?.apiBaseUrl || 'http://178.128.72.110:3011';
+        const apiHost = authManager?.apiBaseUrl || window.location.origin;
         const apiBase = apiHost.endsWith('/api') ? apiHost : `${apiHost}/api`;
         if (!token) return;
 
@@ -123,7 +133,7 @@ const CajaIntegradaModule = {
                 fecha: String(movimiento.fecha).slice(0, 10),
                 hora: movimiento.hora ? String(movimiento.hora).slice(0, 8) : ''
             }));
-            localStorage.setItem('movimientosCaja', JSON.stringify(this.state.movimientosCaja));
+            localStorage.setItem(this.storageKey('movimientosCaja'), JSON.stringify(this.state.movimientosCaja));
             this.renderMovimientosCaja();
             this.renderResumenCaja();
         } catch (error) {
@@ -189,7 +199,7 @@ const CajaIntegradaModule = {
         let egresos = 0;
 
         this.state.movimientosCaja.forEach(mov => {
-            if (mov.tipo === 'Ingreso por Cobro' || mov.tipo === 'Microfactura') {
+            if (['Ingreso por Cobro', 'Ingreso por Venta', 'Microfactura'].includes(mov.tipo)) {
                 ingresos += mov.monto;
             } else if (mov.tipo === 'Egreso') {
                 egresos += mov.monto;
@@ -212,16 +222,17 @@ const CajaIntegradaModule = {
         let filtered = [...this.state.movimientosCaja];
 
         // Filtro por tipo
-        if (this.filterTipo !== 'todos') {
-            filtered = filtered.filter(m => m.tipo === this.filterTipo);
+        if (this.state.filterTipo !== 'todos') {
+            filtered = filtered.filter(m => m.tipo === this.state.filterTipo);
         }
 
         // Búsqueda
-        if (this.searchTerm) {
+        if (this.state.searchTerm) {
+            const term = this.state.searchTerm;
             filtered = filtered.filter(m =>
-                m.descripcion.toLowerCase().includes(this.searchTerm) ||
-                (m.clienteId && this.getClienteName(m.clienteId).toLowerCase().includes(this.searchTerm)) ||
-                m.referencia.toLowerCase().includes(this.searchTerm)
+                String(m.descripcion || '').toLowerCase().includes(term) ||
+                (m.clienteId && String(this.getClienteName(m.clienteId) || '').toLowerCase().includes(term)) ||
+                String(m.referencia || '').toLowerCase().includes(term)
             );
         }
 
@@ -259,7 +270,7 @@ const CajaIntegradaModule = {
     renderMovimientoRow(movimiento) {
         const tipoBadge = this.getTipoBadge(movimiento.tipo);
         const clienteName = movimiento.clienteId ? this.getClienteName(movimiento.clienteId) : movimiento.referencia;
-        const montoClass = (movimiento.tipo === 'Ingreso por Cobro' || movimiento.tipo === 'Microfactura') ? 'positive' : 'negative';
+        const montoClass = ['Ingreso por Cobro', 'Ingreso por Venta', 'Microfactura'].includes(movimiento.tipo) ? 'positive' : 'negative';
 
         return `
             <tr>
@@ -551,14 +562,14 @@ const CajaIntegradaModule = {
 
     // Guardar en DB
     saveToDB(movimiento = null) {
-        localStorage.setItem('movimientosCaja', JSON.stringify(this.state.movimientosCaja));
-        localStorage.setItem('saldosClientes', JSON.stringify(this.state.saldosClientes));
+        localStorage.setItem(this.storageKey('movimientosCaja'), JSON.stringify(this.state.movimientosCaja));
+        localStorage.setItem(this.storageKey('saldosClientes'), JSON.stringify(this.state.saldosClientes));
         if (movimiento) this.saveMovimientoToAPI(movimiento);
     },
 
     async saveMovimientoToAPI(movimiento) {
         const token = authManager?.getToken?.();
-        const apiHost = authManager?.apiBaseUrl || 'http://178.128.72.110:3011';
+        const apiHost = authManager?.apiBaseUrl || window.location.origin;
         const apiBase = apiHost.endsWith('/api') ? apiHost : `${apiHost}/api`;
         if (!token) return;
 
@@ -576,27 +587,15 @@ const CajaIntegradaModule = {
             }
 
             if (result.data?.id) movimiento.id = result.data.id;
-            localStorage.setItem('movimientosCaja', JSON.stringify(this.state.movimientosCaja));
+            localStorage.setItem(this.storageKey('movimientosCaja'), JSON.stringify(this.state.movimientosCaja));
         } catch (error) {
             console.warn('Movimiento conservado localmente; falló la API de Caja:', error);
             this.showNotification('El movimiento quedó guardado localmente y se sincronizará al restablecer la conexión', 'warning');
         }
     },
 
-    // Notificación
+    // Mismo aviso que el resto del sistema (js/app.js).
     showNotification(message, type = 'info') {
-        const notification = document.createElement('div');
-        notification.className = `notification notification-${type}`;
-        notification.textContent = message;
-        document.body.appendChild(notification);
-
-        setTimeout(() => {
-            notification.classList.add('show');
-        }, 10);
-
-        setTimeout(() => {
-            notification.classList.remove('show');
-            setTimeout(() => notification.remove(), 300);
-        }, 3000);
+        showNotification(message, type);
     }
 };

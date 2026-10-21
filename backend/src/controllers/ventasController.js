@@ -1,4 +1,5 @@
 const pool = require('../db/connection');
+const { dbInputErrorMessage } = require('../utils/inventory');
 const { registrarMovimientoCaja, anularMovimientosDeVenta } = require('../utils/cajaLedger');
 
 const METODOS_PAGO = new Set(['efectivo', 'tarjeta', 'transferencia', 'credito']);
@@ -107,7 +108,7 @@ const validateAndDiscountStock = async (client, items) => {
     }
     const { stock, nombre } = result.rows[0];
     if (Number(stock) < item.cantidad) {
-      throw httpError(409, `Existencia insuficiente de "${nombre}": hay ${Number(stock) || 0} y se quieren vender ${item.cantidad}`);
+      throw httpError(409, `No hay suficiente existencia de «${nombre}»: hay ${Number(stock) || 0} y quieres vender ${item.cantidad}. Baja la cantidad o registra una compra.`);
     }
     await client.query(
       `UPDATE ${table} SET ${stockColumn} = ${stockColumn} - $1, updated_at = NOW() WHERE id = $2`,
@@ -199,6 +200,8 @@ const revertirPago = async (client, ventaId) => {
 };
 
 const sendError = (res, error, fallback) => {
+  const inputError = dbInputErrorMessage(error);
+  if (inputError) return res.status(400).json({ error: inputError });
   console.error(fallback, error);
   const status = error.status || (error.code === '23503' ? 400 : 500);
   res.status(status).json({ error: status === 500 ? fallback : error.message });

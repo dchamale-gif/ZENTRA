@@ -164,6 +164,10 @@ const DashboardFinancieroModule = {
 
     // Renderizar gráficos
     renderCharts() {
+        if (typeof Chart === 'undefined') {
+            loadLibrary('chart').then(() => this.renderCharts()).catch(error => console.warn(error.message));
+            return;
+        }
         // Inicializar datos vacíos si no existen
         if (!this.state.historico) this.state.historico = [];
         if (!this.state.categoriaGastos) this.state.categoriaGastos = [];
@@ -513,7 +517,17 @@ const DashboardFinancieroModule = {
             }
         }
 
-        const claseEgreso = cambioEgresos < 0 ? 'positive' : 'negative';
+        // Variación vs mes anterior; sin datos previos se dice en palabras en lugar de "N/A%".
+        const change = (value, unit, goodWhenUp = true) => {
+            if (value === 'N/A') return '<div class="kpi-change">Sin datos del mes anterior</div>';
+            const number = Number(value);
+            if (Math.abs(number) < 0.05) return '<div class="kpi-change">Sin cambio vs mes anterior</div>';
+            const up = number > 0;
+            const good = goodWhenUp ? up : !up;
+            return `<div class="kpi-change ${good ? 'positive' : 'negative'}">
+                    <i class="fas fa-arrow-${up ? 'up' : 'down'}" aria-hidden="true"></i> ${Math.abs(number).toFixed(1)}${unit} vs mes anterior
+                </div>`;
+        };
 
         container.innerHTML = `
             <div class="kpi-card kpi-ingresos">
@@ -522,9 +536,7 @@ const DashboardFinancieroModule = {
                     <i class="fas fa-arrow-up"></i>
                 </div>
                 <div class="kpi-value">${this.formatCurrency(this.state.datos.ingresos)}</div>
-                <div class="kpi-change ${cambioIngresos >= 0 ? 'positive' : 'negative'}">
-                    <i class="fas fa-arrow-${cambioIngresos >= 0 ? 'up' : 'down'}"></i> ${cambioIngresos}% vs mes anterior
-                </div>
+                ${change(cambioIngresos, '%')}
             </div>
 
             <div class="kpi-card kpi-ingresos">
@@ -533,9 +545,7 @@ const DashboardFinancieroModule = {
                     <i class="fas fa-hand-holding-usd"></i>
                 </div>
                 <div class="kpi-value">${this.formatCurrency(this.state.datos.cobrosRecibidos)}</div>
-                <div class="kpi-change ${cambioCobros >= 0 ? 'positive' : 'negative'}">
-                    <i class="fas fa-arrow-${cambioCobros >= 0 ? 'up' : 'down'}"></i> ${cambioCobros}% vs mes anterior
-                </div>
+                ${change(cambioCobros, '%')}
             </div>
 
             <div class="kpi-card kpi-margen">
@@ -544,7 +554,7 @@ const DashboardFinancieroModule = {
                     <i class="fas fa-file-invoice-dollar"></i>
                 </div>
                 <div class="kpi-value">${this.formatCurrency(this.state.datos.saldoPorCobrar)}</div>
-                <div class="kpi-change">Cartera actual en GTQ</div>
+                <div class="kpi-change">Lo que tus clientes aún te deben</div>
             </div>
 
             <div class="kpi-card kpi-egresos">
@@ -553,9 +563,7 @@ const DashboardFinancieroModule = {
                     <i class="fas fa-arrow-down"></i>
                 </div>
                 <div class="kpi-value">${this.formatCurrency(this.state.datos.egresos)}</div>
-                <div class="kpi-change ${claseEgreso}">
-                    <i class="fas fa-arrow-${cambioEgresos < 0 ? 'down' : 'up'}"></i> ${typeof cambioEgresos === 'string' ? cambioEgresos : Math.abs(cambioEgresos)}% vs mes anterior
-                </div>
+                ${change(cambioEgresos, '%', false)}
             </div>
 
             <div class="kpi-card kpi-ganancia">
@@ -564,20 +572,16 @@ const DashboardFinancieroModule = {
                     <i class="fas fa-money-bill-wave"></i>
                 </div>
                 <div class="kpi-value">${this.formatCurrency(this.state.datos.flujoCaja)}</div>
-                <div class="kpi-change ${cambioGanancia >= 0 ? 'positive' : 'negative'}">
-                    Cobros menos egresos
-                </div>
+                <div class="kpi-change">Cobros menos egresos</div>
             </div>
 
             <div class="kpi-card kpi-margen">
                 <div class="kpi-header">
-                    <h3>Margen Neto</h3>
+                    <h3>Margen (facturación − egresos)</h3>
                     <i class="fas fa-percentage"></i>
                 </div>
-                <div class="kpi-value">${margenActual}%</div>
-                <div class="kpi-change ${cambioMargen !== 'N/A' && cambioMargen > 0 ? 'positive' : 'negative'}">
-                    <i class="fas fa-arrow-${cambioMargen !== 'N/A' && cambioMargen > 0 ? 'up' : 'down'}"></i> ${cambioMargen}pp vs mes anterior
-                </div>
+                <div class="kpi-value">${margenActual === 'N/A' ? '—' : `${margenActual}%`}</div>
+                ${change(cambioMargen, ' pts')}
             </div>
         `;
     },
@@ -586,7 +590,7 @@ const DashboardFinancieroModule = {
     async refresh() {
         await this.loadData();
         this.renderCharts();
-        alert('Dashboard financiero actualizado');
+        showNotification('Panel ejecutivo actualizado.', 'success');
     },
 
     // Exportar reporte

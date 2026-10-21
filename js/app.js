@@ -107,6 +107,15 @@ function setupNavigation() {
     });
 }
 
+window.addEventListener('beforeunload', event => {
+    const formOpen = ['saleModal', 'articuloModal', 'purchaseModal']
+        .some(id => ['flex', 'block'].includes(document.getElementById(id)?.style.display));
+    if (formOpen) {
+        event.preventDefault();
+        event.returnValue = '';
+    }
+});
+
 // Se llama al final de initializeApp, cuando los módulos ya están listos.
 function restorePageFromHash() {
     const initialPage = pageFromHash();
@@ -115,7 +124,12 @@ function restorePageFromHash() {
 }
 
 function pageFromHash() {
-    const pageId = decodeURIComponent(location.hash.slice(1)) || 'dashboard';
+    let pageId;
+    try {
+        pageId = decodeURIComponent(location.hash.slice(1)) || 'dashboard';
+    } catch {
+        pageId = 'dashboard';
+    }
     const resolved = PAGE_ALIASES[pageId] || pageId;
     return document.getElementById(`page-${resolved}`) ? resolved : 'dashboard';
 }
@@ -126,6 +140,11 @@ function closeOpenModals() {
         modal.classList.contains('active') || modal.style.display === 'block' || modal.style.display === 'flex');
     const overlays = document.querySelectorAll('.modal-overlay');
     if (!open.length && !overlays.length) return false;
+    const formOpen = open.some(modal => ['saleModal', 'articuloModal', 'purchaseModal'].includes(modal.id));
+    if (formOpen && !confirm('¿Salir del formulario? Se perderá lo que escribiste.')) {
+        history.pushState(null, '', `#${currentPage}`);
+        return true;
+    }
     open.forEach(modal => {
         modal.classList.remove('active');
         modal.style.display = 'none';
@@ -203,6 +222,9 @@ function navigateToPage(pageId, { fromHistory = false } = {}) {
     // Ventas, compras y cobros cambian existencias y caja: recargar al entrar.
     if (pageId === 'caja' && typeof CajaModule !== 'undefined') {
         CajaModule.loadData();
+    }
+    if (pageId === 'caja-integrada' && typeof CajaIntegradaModule !== 'undefined') {
+        CajaIntegradaModule.loadMovimientosFromAPI();
     }
     if (pageId === 'codigos-articulos' && typeof CodigosArticulosModule !== 'undefined') {
         CodigosArticulosModule.loadData();
@@ -352,11 +374,16 @@ function renderDashboardKpis(k) {
     const change = (id, value, goodWhenUp, suffix) => {
         const el = document.getElementById(id);
         if (!el) return;
-        if (value === null) { el.innerHTML = ''; return; }
-        const up = value >= 0;
+        if (value === null || value === undefined) { el.innerHTML = ''; return; }
+        if (Math.abs(value) < 0.05) {
+            el.className = 'kpi-change';
+            el.textContent = 'Sin cambio vs mes anterior';
+            return;
+        }
+        const up = value > 0;
         const good = goodWhenUp ? up : !up;
         el.className = 'kpi-change ' + (good ? 'positive' : 'negative');
-        el.innerHTML = `<i class="fas fa-arrow-${up ? 'up' : 'down'}"></i> ${Math.abs(value).toFixed(1)}${suffix}`;
+        el.innerHTML = `<i class="fas fa-arrow-${up ? 'up' : 'down'}" aria-hidden="true"></i> ${Math.abs(value).toFixed(1)}${suffix}`;
     };
     set('kpiIngresos', money(k.ingresos));
     set('kpiGastos', money(k.gastos));
@@ -376,7 +403,10 @@ function initializeDashboardCharts() {
     const salesCtx = document.getElementById('salesChart');
     const inventoryCtx = document.getElementById('inventoryChart');
     if (typeof Chart === 'undefined') {
-        [salesCtx, inventoryCtx].forEach(canvas => canvas && setChartMessage(canvas, 'No se pudo cargar la gráfica. Recarga la página para intentarlo de nuevo.'));
+        // Chart.js se descarga después de que el panel ya es usable.
+        loadLibrary('chart').then(initializeDashboardCharts).catch(() => {
+            [salesCtx, inventoryCtx].forEach(canvas => canvas && setChartMessage(canvas, 'No se pudo cargar la gráfica. Recarga la página para intentarlo de nuevo.'));
+        });
         return;
     }
     const salesData = dashboardData.salesByDay || [];
@@ -389,7 +419,7 @@ function initializeDashboardCharts() {
         charts.sales = new Chart(salesCtx, {
             type: 'line',
             data: {
-                labels: salesData.map(d => d.day),
+                labels: salesData.map(d => d.day.slice(8, 10) + '/' + d.day.slice(5, 7)),
                 datasets: [{
                     label: 'Ventas (Q)',
                     data: salesData.map(d => d.sales),
@@ -420,7 +450,7 @@ function initializeDashboardCharts() {
                         beginAtZero: true,
                         ticks: {
                             callback: function(value) {
-                                return 'Q.' + value.toLocaleString();
+                                return legacyMoney(value);
                             }
                         }
                     }
@@ -450,6 +480,7 @@ function initializeDashboardCharts() {
             options: {
                 responsive: true,
                 maintainAspectRatio: true,
+                aspectRatio: 2,
                 plugins: {
                     legend: {
                         position: 'bottom'
@@ -635,13 +666,17 @@ function showNotification(message, type = 'info') {
         </div>
     `;
     // Los mensajes pueden incluir nombres escritos por usuarios: siempre como texto.
-    notification.querySelector('.notification-text').textContent = String(message ?? '');
+    // El aviso ya trae su propio icono, así que se quita un emoji inicial repetido.
+    notification.querySelector('.notification-text').textContent =
+        String(message ?? '').replace(/^\s*(?:✅|❌|⚠️|⚠|ℹ️)\s*/u, '');
     notification.setAttribute('role', type === 'error' ? 'alert' : 'status');
     const narrow = window.innerWidth < 480;
 
     notification.style.cssText = `
         position: fixed;
-        bottom: ${narrow ? '16px' : '20px'};
+        top: ${narrow ? '16px' : '72px'};
+        bottom: auto;
+        height: auto;
         right: ${narrow ? '16px' : '20px'};
         left: ${narrow ? '16px' : 'auto'};
         padding: 0;
@@ -723,6 +758,8 @@ function showNotification(message, type = 'info') {
         setTimeout(() => notification.remove(), 300);
     });
 
+    // Un aviso a la vez: los anteriores pueden contradecir al nuevo.
+    document.querySelectorAll('body > .notification').forEach(previous => previous.remove());
     document.body.appendChild(notification);
 
     // Auto-remover después de 4 segundos (los errores se quedan 8 para poder leerlos)
@@ -828,7 +865,8 @@ function labelMobileListTables(root) {
         'table.data-table',
         'table.tabla-datos',
         'table.report-table',
-        'table.statement-table'
+        'table.statement-table',
+        '.transactions-table table'
     ].join(', ');
     const excludedSelector = [
         '.bulk-table',
@@ -1201,8 +1239,31 @@ function setupLogout() {
                 toggleUserMenu(e);
             }
         });
-        document.getElementById('userDropdown')?.addEventListener('click', e => e.stopPropagation());
+        document.getElementById('userDropdown')?.addEventListener('click', e => {
+            e.stopPropagation();
+            const action = e.target.closest('[data-user-action]')?.dataset.userAction;
+            if (!action) return;
+            e.preventDefault();
+            closeUserMenu();
+            navigateToPage('settings');
+            if (action === 'password') {
+                const field = document.getElementById('currentPassword');
+                field?.scrollIntoView({ block: 'center' });
+                field?.focus();
+            }
+        });
     }
+
+    const closeUserMenu = () => {
+        document.getElementById('userDropdown')?.classList.remove('active');
+        userMenu?.setAttribute('aria-expanded', 'false');
+    };
+    document.addEventListener('keydown', e => {
+        if (e.key === 'Escape' && document.getElementById('userDropdown')?.classList.contains('active')) {
+            closeUserMenu();
+            userMenu?.focus();
+        }
+    });
 
     // Cerrar menú al hacer click fuera
     document.addEventListener('click', function() {

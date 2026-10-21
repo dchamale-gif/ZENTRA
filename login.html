@@ -14,8 +14,11 @@
     <meta property="og:image" content="img/og-image.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
-    <link rel="stylesheet" href="vendor/fontawesome/css/all.min.css">
+    <!-- Fuente e iconos no bloquean el primer pintado (importante en 3G) -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" media="print" onload="this.media='all'">
+    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"></noscript>
+    <link rel="stylesheet" href="vendor/fontawesome/css/all.min.css" media="print" onload="this.media='all'">
+    <noscript><link rel="stylesheet" href="vendor/fontawesome/css/all.min.css"></noscript>
     <style>
         :root {
             --navy: #0b1b33;
@@ -542,8 +545,8 @@
 
         .support-btn {
             width: 100%;
-            height: 42px;
-            margin-top: 10px;
+            height: 44px;
+            margin-top: 24px;
             border: 1px solid var(--border);
             border-radius: 8px;
             background: #fff;
@@ -738,7 +741,7 @@
 
         <div id="registerPanel" class="hidden">
             <h2 class="register-title">Crea tu empresa</h2>
-            <p class="register-subtitle">Solo necesitas 5 datos. Lo demás puedes completarlo después.</p>
+            <p class="register-subtitle">Solo necesitas tu nombre, el de tu empresa, tu correo y una contraseña. Lo demás puedes completarlo después.</p>
             <div class="trial-note">
                 <i class="fas fa-circle-info" aria-hidden="true"></i>
                 <div><strong>30 días gratis, hasta 3 usuarios. Sin tarjeta.</strong> Al finalizar, el acceso se bloquea hasta activar una suscripción.
@@ -807,11 +810,11 @@
                     <span>Crear empresa e iniciar prueba</span>
                     <div class="spinner"></div>
                 </button>
-                <button type="button" class="support-btn" onclick="openSupportWhatsApp()">
-                    <i class="fab fa-whatsapp" aria-hidden="true"></i> ¿Dudas? Escríbenos por WhatsApp
-                </button>
             </form>
             <button type="button" class="back-btn" onclick="showLogin()">Ya tengo cuenta, iniciar sesión</button>
+            <button type="button" class="support-btn" onclick="openSupportWhatsApp()">
+                <i class="fab fa-whatsapp" aria-hidden="true"></i> ¿Dudas? Escríbenos por WhatsApp
+            </button>
         </div>
         <footer class="legal">
             <nav aria-label="Información legal">

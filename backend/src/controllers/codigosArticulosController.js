@@ -1,5 +1,5 @@
 const pool = require('../db/connection');
-const { LOW_STOCK_THRESHOLD, validateArticleNumbers } = require('../utils/inventory');
+const { LOW_STOCK_THRESHOLD, validateArticleNumbers, dbInputErrorMessage } = require('../utils/inventory');
 
 const ARTICLE_COLUMNS = `
   id, codigo, nombre_articulo, descripcion, categoria, familia,
@@ -205,6 +205,8 @@ const createArticulo = async (req, res) => {
     });
   } catch (error) {
     if (client) await client.query('ROLLBACK');
+    const inputError = dbInputErrorMessage(error);
+    if (inputError) return res.status(400).json({ error: inputError });
     console.error('Error en createArticulo:', error);
     res.status(500).json({ error: 'Error creando artículo' });
   } finally {
@@ -284,6 +286,8 @@ const updateArticulo = async (req, res) => {
       articulo: result.rows[0]
     });
   } catch (error) {
+    const inputError = dbInputErrorMessage(error);
+    if (inputError) return res.status(400).json({ error: inputError });
     console.error('Error en updateArticulo:', error);
     res.status(500).json({ error: 'Error actualizando artículo' });
   }

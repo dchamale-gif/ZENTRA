@@ -807,3 +807,38 @@ tr.is-inactive td { color: var(--text-gray); }
         overflow: visible;
     }
 }
+
+/* Ronda 2 de QA */
+.transactions-table {
+    overflow-x: auto;
+}
+
+@media (max-width: 768px) {
+    .page-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+}
+
+#companyInfo dd {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+@media (pointer: coarse) {
+    .row-actions .icon-btn,
+    .nav-item,
+    .btn {
+        min-height: 44px;
+    }
+
+    .row-actions .icon-btn {
+        min-width: 44px;
+    }
+
+    .form-input,
+    .form-group input,
+    .form-group select {
+        min-height: 44px;
+    }
+}

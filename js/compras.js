@@ -442,10 +442,11 @@ const ComprasModule = {
         return value.charAt(0).toUpperCase() + value.slice(1);
     },
 
+    // Se usa también dentro de atributos (value="..."), así que escapa comillas.
     escapeHtml(value = '') {
-        const element = document.createElement('div');
-        element.textContent = String(value ?? '');
-        return element.innerHTML;
+        return String(value ?? '').replace(/[&<>"']/g, char => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'
+        }[char]));
     },
 
     notify(message, type) {

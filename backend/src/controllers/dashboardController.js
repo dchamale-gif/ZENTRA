@@ -22,8 +22,9 @@ const costOfSales = (monthsAgo) => `
     WHERE v.estado <> 'anulada'
       AND date_trunc('month', v.fecha) = date_trunc('month', CURRENT_DATE - INTERVAL '${monthsAgo} month'))`;
 
+// Sin datos del mes anterior no hay con qué comparar: null oculta la variación.
 const pctChange = (current, previous) => {
-  if (!previous) return current ? 100 : 0;
+  if (!previous) return null;
   return ((current - previous) / previous) * 100;
 };
 
@@ -129,13 +130,15 @@ const getTransactions = async (req, res) => {
     const { type, from, to } = req.query;
     const rows = await pool.query(`
       SELECT * FROM (
-        SELECT id, fecha, created_at, 'Venta' AS type, numero_venta AS number,
-               'Venta ' || numero_venta AS description, total::float AS amount, estado AS status
-        FROM ventas
+        SELECT v.id, v.fecha, v.created_at, 'Venta' AS type, v.numero_venta AS number,
+               'Venta ' || v.numero_venta AS description, v.total::float AS amount, v.estado AS status,
+               (SELECT COALESCE(SUM(cantidad), 0)::int FROM venta_items WHERE venta_id = v.id) AS quantity
+        FROM ventas v
         UNION ALL
-        SELECT id, fecha, created_at, 'Compra', numero_compra,
-               'Compra ' || numero_compra, total::float, estado
-        FROM compras
+        SELECT c.id, c.fecha, c.created_at, 'Compra', c.numero_compra,
+               'Compra ' || c.numero_compra, c.total::float, c.estado,
+               (SELECT COALESCE(SUM(cantidad), 0)::int FROM compra_items WHERE compra_id = c.id)
+        FROM compras c
       ) t
       WHERE ($1::text IS NULL OR type = $1)
         AND ($2::date IS NULL OR fecha >= $2::date)

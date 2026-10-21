@@ -19,8 +19,14 @@ class GastosServiciosModule {
     }
 
     init() {
-        // Cargar datos del localStorage
-        const savedData = localStorage.getItem('gastosServiciosData');
+        // Cargar datos del localStorage (las versiones anteriores usaban una clave sin empresa:
+        // se pasa a la empresa que abre la app primero para no perder lo registrado).
+        const legacyData = localStorage.getItem('gastosServiciosData');
+        if (legacyData && !localStorage.getItem(this.storageKey())) {
+            localStorage.setItem(this.storageKey(), legacyData);
+        }
+        localStorage.removeItem('gastosServiciosData');
+        const savedData = localStorage.getItem(this.storageKey());
         if (savedData) {
             try {
                 const data = JSON.parse(savedData);
@@ -52,8 +58,15 @@ class GastosServiciosModule {
         this.state.fechaFin = lastDay.toISOString().split('T')[0];
     }
 
+    // Estos datos solo viven en el navegador: se separan por empresa para que en un
+    // equipo compartido una empresa no vea los gastos de otra.
+    storageKey() {
+        const organizationId = authManager.getUser()?.organization?.id || 'sin-empresa';
+        return `gastosServiciosData:${organizationId}`;
+    }
+
     save() {
-        localStorage.setItem('gastosServiciosData', JSON.stringify(this.state));
+        localStorage.setItem(this.storageKey(), JSON.stringify(this.state));
     }
 
     // ==================== PAGOS ====================

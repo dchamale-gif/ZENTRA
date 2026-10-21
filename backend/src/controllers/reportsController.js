@@ -68,16 +68,27 @@ class ReportsController {
                     AND COALESCE(estado, 'activo') = 'activo'
             `;
 
+            // Costo de lo vendido en el período (unidades × precio de compra del artículo).
+            const costoVentasQuery = `
+                SELECT COALESCE(SUM(vi.cantidad * COALESCE(a.precio_costo, 0)), 0) as costo_ventas
+                FROM venta_items vi
+                JOIN ventas v ON v.id = vi.venta_id
+                LEFT JOIN codigos_articulos a ON a.id = vi.articulo_id
+                ${whereCondition.replace(/fecha/g, 'v.fecha')}
+                ${whereCondition ? 'AND' : 'WHERE'} v.estado <> 'anulada'
+            `;
+
             const saldosQuery = `
                 SELECT COALESCE(SUM(monto_pendiente), 0) as saldo_por_cobrar
                 FROM cuentas_por_cobrar
             `;
 
-            const [ingresoResult, egresoResult, pagosResult, saldosResult] = await Promise.all([
+            const [ingresoResult, egresoResult, pagosResult, saldosResult, costoResult] = await Promise.all([
                 db.query(ingresoQuery, params),
                 db.query(egresoQuery, params),
                 db.query(pagosQuery, params),
-                db.query(saldosQuery)
+                db.query(saldosQuery),
+                db.query(costoVentasQuery, params)
             ]);
 
             const ingresos = parseFloat(ingresoResult.rows[0]?.total_ingresos || 0);
@@ -86,6 +97,8 @@ class ReportsController {
             const saldoPorCobrar = parseFloat(saldosResult.rows[0]?.saldo_por_cobrar || 0);
             const ganancia = ingresos - egresos;
             const margen = ingresos > 0 ? ((ganancia / ingresos) * 100).toFixed(2) : 0;
+            const costoVentas = parseFloat(costoResult.rows[0]?.costo_ventas || 0);
+            const gananciaBruta = ingresos - costoVentas;
 
             res.json({
                 success: true,
@@ -97,9 +110,13 @@ class ReportsController {
                     saldoPorCobrar,
                     flujoCaja: cobrosRecibidos - egresos,
                     margenNeto: parseFloat(margen),
-                    numeroTransacciones: ingresoResult.rows[0]?.numero_transacciones || 0,
-                    numeroPagos: parseInt(pagosResult.rows[0]?.numero_pagos || 0),
-                    numeroCompras: egresoResult.rows[0]?.numero_compras || 0,
+                    costoVentas,
+                    gananciaBruta,
+                    margenBruto: ingresos > 0 ? Number(((gananciaBruta / ingresos) * 100).toFixed(2)) : 0,
+                    // COUNT(*) llega como texto desde pg: se convierte para no concatenar ("1" + 0 = "10").
+                    numeroTransacciones: parseInt(ingresoResult.rows[0]?.numero_transacciones || 0, 10),
+                    numeroPagos: parseInt(pagosResult.rows[0]?.numero_pagos || 0, 10),
+                    numeroCompras: parseInt(egresoResult.rows[0]?.numero_compras || 0, 10),
                     descuentosTotales: parseFloat(ingresoResult.rows[0]?.descuentos_totales || 0),
                     impuestosTotales: parseFloat(ingresoResult.rows[0]?.impuestos_totales || 0),
                     subtotal: parseFloat(ingresoResult.rows[0]?.subtotal || 0),

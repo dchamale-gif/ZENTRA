@@ -516,8 +516,21 @@ const CodigosArticulosModule = {
             }
         });
 
+        const closeOnEscape = (event) => {
+            if (event.key !== 'Escape' || !overlay.isConnected) return;
+            overlay.remove();
+            document.body.style.overflow = 'auto';
+        };
+        document.addEventListener('keydown', closeOnEscape);
+        new MutationObserver((_, observer) => {
+            if (overlay.isConnected) return;
+            document.removeEventListener('keydown', closeOnEscape);
+            observer.disconnect();
+        }).observe(document.body, { childList: true });
+
         document.body.appendChild(overlay);
         document.body.style.overflow = 'hidden';
+        overlay.querySelector('.close-btn').focus();
         return overlay;
     },
 
@@ -632,11 +645,19 @@ const CodigosArticulosModule = {
         }
     },
 
-    // Acepta "1,5" y "1.5"; devuelve NaN si el texto no es un número.
+    // Lee montos como se escriben en Guatemala ("1,500.50") y también "1,5" o "1.5".
+    // Devuelve NaN si el texto no es un número, para que el formulario lo marque.
     parseDecimal(value) {
         const text = String(value ?? '').trim().replace(/\s/g, '');
         if (!text) return NaN;
-        const normalized = text.includes(',') && !text.includes('.') ? text.replace(',', '.') : text.replace(/,/g, '');
+        let normalized;
+        if (/^-?\d{1,3}(,\d{3})+(\.\d+)?$/.test(text)) {
+            normalized = text.replace(/,/g, '');           // 1,500 · 1,500.50 → miles con coma
+        } else if (/^-?\d+,\d{1,2}$/.test(text)) {
+            normalized = text.replace(',', '.');            // 1,5 · 10,50 → coma decimal
+        } else {
+            normalized = text;
+        }
         return /^-?\d*\.?\d+$/.test(normalized) ? Number(normalized) : NaN;
     },
 
@@ -757,10 +778,13 @@ const CodigosArticulosModule = {
 
             await response.json();
 
-            if (cantidad === 0) {
+            const primerArticulo = !id && this.state.articulos.length === 0;
+            if (primerArticulo && cantidad > 0) {
+                this.showNotification('Artículo creado. Siguiente paso: registra tu primera venta en Ventas → Nueva venta.', 'success');
+            } else if (cantidad === 0) {
                 this.showNotification(`${id ? 'Artículo actualizado' : 'Artículo creado'} con existencia 0: para venderlo, edítalo y escribe cuántas unidades tienes o registra una compra.`, 'warning');
             } else {
-                this.showNotification(id ? '✅ Artículo actualizado correctamente' : '✅ Artículo creado correctamente', 'success');
+                this.showNotification(id ? 'Artículo actualizado correctamente.' : 'Artículo creado correctamente.', 'success');
             }
 
             this.closeArticuloModal();
@@ -809,14 +833,6 @@ const CodigosArticulosModule = {
     generateId(prefix) {
         const timestamp = Date.now().toString(36);
         return `${prefix}-${timestamp}`;
-    },
-
-    // Guardar en DB
-    saveToDB() {
-        localStorage.setItem('articulos', JSON.stringify(this.state.articulos));
-        localStorage.setItem('secciones', JSON.stringify(this.state.secciones));
-        localStorage.setItem('familias', JSON.stringify(this.state.familias));
-        localStorage.setItem('subfamilias', JSON.stringify(this.state.subfamilias));
     },
 
     // Mismo aviso que el resto del sistema (js/app.js).

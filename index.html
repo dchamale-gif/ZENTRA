@@ -10,11 +10,14 @@
     <link rel="apple-touch-icon" href="img/apple-touch-icon.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+    <!-- Fuente e iconos no bloquean el primer pintado (importante en 3G) -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" media="print" onload="this.media='all'">
+    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"></noscript>
     <link rel="stylesheet" href="css/style.css">
     <link rel="stylesheet" href="css/theme.css">
     <link rel="stylesheet" href="css/refresh.css">
-    <link rel="stylesheet" href="vendor/fontawesome/css/all.min.css">
+    <link rel="stylesheet" href="vendor/fontawesome/css/all.min.css" media="print" onload="this.media='all'">
+    <noscript><link rel="stylesheet" href="vendor/fontawesome/css/all.min.css"></noscript>
 </head>
 <body>
     <div class="container-fluid">
@@ -115,11 +118,11 @@
                 <div class="user-dropdown-header">
                     <p class="user-dropdown-email" id="userEmail">Email</p>
                 </div>
-                <a href="#" class="user-dropdown-item" role="menuitem" onclick="event.preventDefault(); alert('Funcionalidad próximamente')">
-                    <i class="fas fa-user"></i> Mi Perfil
+                <a href="#settings" class="user-dropdown-item" role="menuitem" data-user-action="settings">
+                    <i class="fas fa-user" aria-hidden="true"></i> Mi cuenta y empresa
                 </a>
-                <a href="#" class="user-dropdown-item" role="menuitem" onclick="event.preventDefault(); alert('Funcionalidad próximamente')">
-                    <i class="fas fa-key"></i> Cambiar Contraseña
+                <a href="#settings" class="user-dropdown-item" role="menuitem" data-user-action="password">
+                    <i class="fas fa-key" aria-hidden="true"></i> Cambiar contraseña
                 </a>
                 <a href="#" class="user-dropdown-item danger" role="menuitem" id="logoutBtn">
                     <i class="fas fa-sign-out-alt"></i> Cerrar Sesión
@@ -135,7 +138,8 @@
             <header class="header">
                 <div class="header-left">
                     <button type="button" class="btn-menu" id="toggleSidebar" aria-controls="mainSidebar" aria-expanded="false" aria-label="Abrir menú" title="Abrir menú">
-                        <i class="fas fa-bars" aria-hidden="true"></i>
+                        <!-- SVG en línea: el botón del menú se ve aunque la fuente de iconos aún no cargue -->
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
                     </button>
                     <h2 class="page-title" id="pageTitle">Panel</h2>
                 </div>
@@ -374,7 +378,8 @@
                         <input type="text" id="searchCaja" class="form-input" placeholder="Buscar movimiento...">
                         <select id="filterTipoCaja" class="form-input">
                             <option value="todos">Todos los Movimientos</option>
-                            <option value="Ingreso por Cobro">Ingreso por Cobro</option>
+                            <option value="Ingreso por Venta">Ingresos por venta</option>
+                            <option value="Ingreso por Cobro">Ingresos por cobro</option>
                             <option value="Egreso">Egresos</option>
                             <option value="Microfactura">Microfacturas</option>
                             <option value="Devolución">Devoluciones</option>
@@ -1222,7 +1227,7 @@
 
                     <div class="form-group full-width">
                         <label for="articuloNombre">Nombre del artículo <span class="required">*</span></label>
-                        <input type="text" id="articuloNombre" class="form-input" maxlength="200" required placeholder="Ej: Camiseta azul talla M">
+                        <input type="text" id="articuloNombre" class="form-input" maxlength="150" required placeholder="Ej: Camiseta azul talla M">
                     </div>
 
                     <div class="form-row">
@@ -1246,7 +1251,7 @@
                         </div>
                         <div class="form-group">
                             <label for="articuloUnidadMedida">Unidad de medida</label>
-                            <input type="text" id="articuloUnidadMedida" class="form-input" placeholder="Ej: unidad, caja, litro">
+                            <input type="text" id="articuloUnidadMedida" class="form-input" maxlength="50" placeholder="Ej: unidad, caja, litro">
                         </div>
                     </div>
 
@@ -1261,7 +1266,7 @@
                             </div>
                             <div class="form-group">
                                 <label for="codigoCompra">Código de barras o del proveedor</label>
-                                <input type="text" id="codigoCompra" class="form-input" placeholder="Ej: 7401234567890">
+                                <input type="text" id="codigoCompra" class="form-input" maxlength="100" placeholder="Ej: 7401234567890">
                                 <small>Opcional.</small>
                             </div>
                         </div>
@@ -1297,7 +1302,7 @@
                         <div class="form-row">
                             <div class="form-group">
                                 <label for="articuloTipo">Tipo</label>
-                                <input type="text" id="articuloTipo" class="form-input" placeholder="Ej: producto, servicio">
+                                <input type="text" id="articuloTipo" class="form-input" maxlength="50" placeholder="Ej: producto, servicio">
                             </div>
                             <div class="form-group">
                                 <label for="articuloEstado">Estado</label>
@@ -1338,7 +1343,8 @@
                             <label>Tipo de Movimiento <span class="required">*</span></label>
                             <select id="movimientoCajaType" class="form-input" required>
                                 <option value="">-- Selecciona tipo --</option>
-                                <option value="Ingreso por Cobro">Ingreso por Cobro</option>
+                                <option value="Ingreso por Venta">Ingresos por venta</option>
+                            <option value="Ingreso por Cobro">Ingresos por cobro</option>
                                 <option value="Egreso">Egreso</option>
                                 <option value="Devolución">Devolución</option>
                                 <option value="Transferencia">Transferencia</option>
@@ -1671,12 +1677,6 @@
 
 
     <!-- Script imports -->
-    <script src="vendor/chartjs/chart.umd.js"></script>
-    <!-- Solo se usan al exportar: no bloquean la carga del panel -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" defer></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" defer></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" defer></script>
-    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" defer></script>
     <script src="js/config.js"></script>
     <script src="data/demo-data.js"></script>
     <script src="js/api-helper.js"></script>

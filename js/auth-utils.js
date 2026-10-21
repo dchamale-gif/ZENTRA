@@ -258,6 +258,33 @@ const authManager = new AuthManager();
 // UTILIDADES DE UI
 // ============================================
 
+// Librerías pesadas que solo se usan en algunas acciones: se descargan al necesitarlas
+// para que el panel cargue rápido en conexiones lentas.
+const LAZY_LIBRARIES = {
+    chart: '/vendor/chartjs/chart.umd.js',
+    xlsx: 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js',
+    pdf: 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js'
+};
+const lazyLibraryLoads = {};
+
+function loadLibrary(name) {
+    if (!lazyLibraryLoads[name]) {
+        lazyLibraryLoads[name] = new Promise((resolve, reject) => {
+            const script = document.createElement('script');
+            script.src = LAZY_LIBRARIES[name];
+            script.async = true;
+            script.onload = resolve;
+            script.onerror = () => {
+                delete lazyLibraryLoads[name];
+                script.remove();
+                reject(new Error('No se pudo descargar un componente necesario. Revisa tu conexión e inténtalo de nuevo.'));
+            };
+            document.head.appendChild(script);
+        });
+    }
+    return lazyLibraryLoads[name];
+}
+
 /**
  * Traduce errores de red del navegador ("Failed to fetch") a un mensaje accionable.
  */

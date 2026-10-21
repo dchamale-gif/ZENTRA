@@ -48,25 +48,25 @@ async function handleLogin(event) {
 
     // Validaciones
     if (!email) {
-        showAlert('Por favor ingresa tu email', 'error');
+        showAlert('Escribe tu correo electrónico.', 'error');
         document.getElementById('email').focus();
         return;
     }
 
     if (!isValidEmail(email)) {
-        showAlert('Por favor ingresa un email válido', 'error');
+        showAlert('Escribe un correo válido, por ejemplo nombre@empresa.com.', 'error');
         document.getElementById('email').focus();
         return;
     }
 
     if (!password) {
-        showAlert('Por favor ingresa tu contraseña', 'error');
+        showAlert('Escribe tu contraseña.', 'error');
         document.getElementById('password').focus();
         return;
     }
 
     if (password.length < 6) {
-        showAlert('La contraseña debe tener al menos 6 caracteres', 'error');
+        showAlert('La contraseña tiene al menos 6 caracteres. Revísala.', 'error');
         document.getElementById('password').focus();
         return;
     }

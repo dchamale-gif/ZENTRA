@@ -32,4 +32,14 @@ const validateArticleNumbers = (body) => {
   return null;
 };
 
-module.exports = { LOW_STOCK_THRESHOLD, validateArticleNumbers };
+// Errores de PostgreSQL causados por datos del usuario: se responden con 400 y un
+// mensaje que dice qué corregir, en lugar de un 500 genérico.
+const DB_INPUT_ERRORS = {
+  '22001': 'Uno de los textos es demasiado largo. Acórtalo e inténtalo de nuevo.',
+  '22003': 'Uno de los montos o cantidades es demasiado grande.',
+  '22P02': 'Uno de los valores no tiene el formato correcto.'
+};
+
+const dbInputErrorMessage = (error) => DB_INPUT_ERRORS[error?.code] || null;
+
+module.exports = { LOW_STOCK_THRESHOLD, validateArticleNumbers, dbInputErrorMessage };

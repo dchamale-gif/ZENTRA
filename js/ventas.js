@@ -63,6 +63,7 @@ const VentasModule = {
                 nombre: articulo.nombre_articulo,
                 codigo: articulo.codigo || articulo.codigo_barras || articulo.codigo_alternativo || '',
                 precio: Number(articulo.precio_unitario ?? 0),
+                costo: Number(articulo.precio_costo ?? 0),
                 stock: Number(articulo.cantidad_disponible ?? 0),
                 seccion: articulo.categoria || articulo.seccion || '',
                 familia: articulo.familia || '',
@@ -210,10 +211,12 @@ const VentasModule = {
     },
 
     async saveQuickClient() {
+        if (this.state.savingClient) return;
         const nombre = document.getElementById('quickClientName').value.trim();
         const nit = document.getElementById('quickClientNit').value.trim() || 'CF';
         const dpi = document.getElementById('quickClientDpi').value.trim();
-        if (!nombre) return this.notify('El nombre del cliente es requerido', 'error');
+        if (!nombre) return this.notify('Escribe el nombre del cliente.', 'error');
+        this.state.savingClient = true;
         try {
             const result = await this.apiRequest('/api/ventas/receptores', {
                 method: 'POST',
@@ -223,9 +226,11 @@ const VentasModule = {
             this.state.receptores.push({ id: cliente.id, nombre: cliente.nombre, nit: cliente.nit, dpi: cliente.dpi, telefono: cliente.telefono, tipo: 'cliente' });
             this.selectRecipient(cliente.id, 'cliente');
             this.toggleQuickClient(false);
-            this.notify('Cliente creado y seleccionado', 'success');
+            this.notify('Cliente creado y seleccionado.', 'success');
         } catch (error) {
             this.notify(error.message, 'error');
+        } finally {
+            this.state.savingClient = false;
         }
     },
 
@@ -259,6 +264,8 @@ const VentasModule = {
             item.filtros = { seccion: '', familia: '', subfamilia: '' };
         } else {
             item[field] = CodigosArticulosModule.parseDecimal(value);
+            item.texto ||= {};
+            item.texto[field] = Number.isNaN(item[field]) ? String(value) : null;
         }
         this.renderItems();
     },
@@ -350,7 +357,7 @@ const VentasModule = {
         tbody.innerHTML = this.state.items.map((item, index) => {
             item.filtros ||= { seccion: '', familia: '', subfamilia: '' };
             const selected = this.getCatalog(item.tipo).find(entry => entry.id === String(item.concepto_id));
-            const subtotal = (Number(item.cantidad) || 0) * (Number(item.precio_unitario) || 0);
+            const subtotal = Math.max(0, Number(item.cantidad) || 0) * Math.max(0, Number(item.precio_unitario) || 0);
             const sections = this.getFilterOptions(item, 'seccion');
             const families = this.getFilterOptions(item, 'familia');
             const subfamilies = this.getFilterOptions(item, 'subfamilia');
@@ -376,18 +383,22 @@ const VentasModule = {
                         </select>
                     </div>
                     <div id="saleConceptResults-${index}" class="concept-search-results" hidden></div></div></td>
-                <td><input class="form-input" type="text" inputmode="numeric" autocomplete="off" aria-label="Cantidad de la línea ${index + 1}" value="${item.cantidad}" onchange="VentasModule.updateItem(${index}, 'cantidad', this.value)"></td>
-                <td><input class="form-input" type="text" inputmode="decimal" autocomplete="off" aria-label="Precio unitario de la línea ${index + 1}" value="${item.precio_unitario}" onchange="VentasModule.updateItem(${index}, 'precio_unitario', this.value)"></td>
-                <td><strong>Q${subtotal.toFixed(2)}</strong></td>
+                <td><input class="form-input" type="text" inputmode="numeric" autocomplete="off" aria-label="Cantidad de la línea ${index + 1}" value="${this.escapeHtml(this.inputValue(item, 'cantidad'))}" onchange="VentasModule.updateItem(${index}, 'cantidad', this.value)"></td>
+                <td><input class="form-input" type="text" inputmode="decimal" autocomplete="off" aria-label="Precio unitario de la línea ${index + 1}" value="${this.escapeHtml(this.inputValue(item, 'precio_unitario'))}" onchange="VentasModule.updateItem(${index}, 'precio_unitario', this.value)"></td>
+                <td><strong>${Number.isFinite(subtotal) ? `Q${subtotal.toFixed(2)}` : '—'}</strong></td>
                 <td><button class="btn-icon btn-delete" type="button" title="Quitar artículo" aria-label="Quitar la línea ${index + 1}" onclick="VentasModule.removeItem(${index})" ${this.state.items.length === 1 ? 'disabled' : ''}><i class="fas fa-trash" aria-hidden="true"></i></button></td>
             </tr>`;
         }).join('');
         this.updateTotalsOnly();
     },
 
+    inputValue(item, field) {
+        return item.texto?.[field] ?? item[field];
+    },
+
     updateTotalsOnly() {
         const total = this.state.items.reduce((sum, item) =>
-            sum + (Number(item.cantidad) || 0) * (Number(item.precio_unitario) || 0), 0);
+            sum + Math.max(0, Number(item.cantidad) || 0) * Math.max(0, Number(item.precio_unitario) || 0), 0);
         document.getElementById('saleCalculatedTotal').textContent = `Q${total.toFixed(2)}`;
     },
 
@@ -429,31 +440,39 @@ const VentasModule = {
                 body: JSON.stringify(payload)
             });
             this.closeSaleModal();
-            await this.loadData();
             const destino = {
                 efectivo: 'el ingreso quedó en Caja',
                 credito: 'el saldo quedó en Cuentas por Cobrar'
             }[payload.metodo_pago] || 'quedó registrada como pagada';
             this.notify(`${id ? 'Venta actualizada' : 'Venta registrada'}: existencias descontadas y ${destino}.`, 'success');
+            await this.loadData();
         } catch (error) {
             this.notify(error.message, 'error');
+            // Otra venta pudo cambiar las existencias: actualizar lo que se muestra al buscar.
+            this.loadData();
         } finally {
             button.disabled = false;
         }
     },
 
     findLineError(items) {
-        const line = (index) => items.length > 1 ? `Línea ${index + 1}: ` : '';
+        const MAX_PRICE = 99999999.99;
+        const line = (index, text) => items.length > 1
+            ? `Línea ${index + 1}: ${text.charAt(0).toLowerCase()}${text.slice(1)}`
+            : text;
         for (const [index, item] of items.entries()) {
             const articulo = this.getCatalog().find(entry => entry.id === String(item.concepto_id));
             if (!item.concepto_id || !articulo) {
-                return { message: `${line(index)}busca y elige un artículo de la lista.`, focusId: `saleConceptSearch-${index}` };
+                return { message: line(index, 'Busca y elige un artículo de la lista.'), focusId: `saleConceptSearch-${index}` };
             }
             if (!Number.isInteger(item.cantidad) || item.cantidad <= 0) {
-                return { message: `${line(index)}la cantidad debe ser un número entero mayor que 0.` };
+                return { message: line(index, 'La cantidad debe ser un número entero mayor que 0.') };
             }
-            if (Number.isNaN(item.precio_unitario) || item.precio_unitario < 0) {
-                return { message: `${line(index)}escribe un precio válido, por ejemplo 25.50.` };
+            if (item.cantidad > articulo.stock && !document.getElementById('saleId').value) {
+                return { message: line(index, `Solo hay ${articulo.stock} unidades de «${articulo.nombre}». Baja la cantidad o registra una compra para tener más existencia.`) };
+            }
+            if (Number.isNaN(item.precio_unitario) || item.precio_unitario < 0 || item.precio_unitario > MAX_PRICE) {
+                return { message: line(index, 'Escribe un precio válido, por ejemplo 25.50.') };
             }
         }
         return null;
@@ -475,7 +494,8 @@ const VentasModule = {
                 <thead><tr><th>Artículo</th><th class="text-right">Cantidad</th><th class="text-right">Precio</th><th class="text-right">Subtotal</th></tr></thead>
                 <tbody>${rows}</tbody>
             </table></div>
-            <p class="text-right"><strong>Total: Q${Number(venta.total).toFixed(2)}</strong></p>`);
+            <p class="text-right"><strong>Total: Q${Number(venta.total).toFixed(2)}</strong></p>
+            ${venta.observaciones ? `<p><strong>Observaciones:</strong> ${esc(venta.observaciones)}</p>` : ''}`);
     },
 
     editSale(id) {
@@ -511,10 +531,11 @@ const VentasModule = {
         return value.charAt(0).toUpperCase() + value.slice(1);
     },
 
+    // Se usa también dentro de atributos (value="..."), así que escapa comillas.
     escapeHtml(value = '') {
-        const element = document.createElement('div');
-        element.textContent = String(value ?? '');
-        return element.innerHTML;
+        return String(value ?? '').replace(/[&<>"']/g, char => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'
+        }[char]));
     },
 
     notify(message, type) {

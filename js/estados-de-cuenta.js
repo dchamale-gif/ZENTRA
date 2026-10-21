@@ -40,7 +40,7 @@ const EstadosDeCuentaModule = {
         try {
             const response = await authManager.fetchWithAuth('/api/clientes?activo=true');
             const result = await response.json();
-            const clientes = result.success ? result.data : [];
+            const clientes = result.success ? (result.clientes || result.data || []) : [];
             select.innerHTML = '<option value="">Selecciona un cliente...</option>' +
                 clientes.map(c => `<option value="${BulkImport.escapeHtml(c.id)}">${BulkImport.escapeHtml(c.nombre)}</option>`).join('');
             select.value = current;
