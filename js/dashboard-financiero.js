@@ -155,17 +155,17 @@ const DashboardFinancieroModule = {
     },
 
     formatCurrency(value) {
-        return new Intl.NumberFormat('es-GT', {
-            style: 'currency',
-            currency: 'GTQ',
-            minimumFractionDigits: 2
-        }).format(Number(value) || 0);
+        return formatQ(value);
     },
 
     // Renderizar gráficos
     renderCharts() {
         if (typeof Chart === 'undefined') {
-            loadLibrary('chart').then(() => this.renderCharts()).catch(error => console.warn(error.message));
+            loadLibrary('chart').then(() => this.renderCharts()).catch(() => {
+                document.querySelectorAll('#page-dashboard-financiero canvas').forEach(canvas => {
+                    if (typeof setChartMessage === 'function') setChartMessage(canvas, 'No se pudo cargar la gráfica. Recarga la página para intentarlo de nuevo.');
+                });
+            });
             return;
         }
         // Inicializar datos vacíos si no existen
@@ -319,7 +319,7 @@ const DashboardFinancieroModule = {
         window.marginChart = new Chart(ctx, {
             type: 'doughnut',
             data: {
-                labels: ['Ganancia Neta', 'Costo de Venta'],
+                labels: ['Facturación − egresos', 'Egresos (compras y gastos)'],
                 datasets: [
                     {
                         data: [this.state.datos.ganancia || 0, this.state.datos.egresos || 0],
@@ -332,7 +332,7 @@ const DashboardFinancieroModule = {
                 responsive: true,
                 plugins: {
                     legend: { display: true },
-                    title: { display: true, text: 'Distribución de Ganancia' },
+                    title: { display: true, text: 'Facturación frente a egresos del mes' },
                     tooltip: {
                         callbacks: {
                             label: function(context) {
@@ -490,7 +490,11 @@ const DashboardFinancieroModule = {
         let margenActual = 'N/A';
         let cambioMargen = 'N/A';
 
-        // Solo calcular si hay al menos 2 meses en el histórico
+        if (this.state.datos.ingresos > 0) {
+            margenActual = ((this.state.datos.ingresos - (this.state.datos.egresos || 0)) / this.state.datos.ingresos * 100).toFixed(1);
+        }
+
+        // Variaciones: solo si hay al menos 2 meses en el histórico
         if (this.state.historico && this.state.historico.length >= 2) {
             const hist = this.state.historico;
             const mesActual = hist[hist.length - 1];
@@ -532,7 +536,7 @@ const DashboardFinancieroModule = {
         container.innerHTML = `
             <div class="kpi-card kpi-ingresos">
                 <div class="kpi-header">
-                    <h3>Facturación Total</h3>
+                    <h3>Facturación del mes</h3>
                     <i class="fas fa-arrow-up"></i>
                 </div>
                 <div class="kpi-value">${this.formatCurrency(this.state.datos.ingresos)}</div>
@@ -541,7 +545,7 @@ const DashboardFinancieroModule = {
 
             <div class="kpi-card kpi-ingresos">
                 <div class="kpi-header">
-                    <h3>Cobros Recibidos</h3>
+                    <h3>Cobros recibidos</h3>
                     <i class="fas fa-hand-holding-usd"></i>
                 </div>
                 <div class="kpi-value">${this.formatCurrency(this.state.datos.cobrosRecibidos)}</div>
@@ -550,7 +554,7 @@ const DashboardFinancieroModule = {
 
             <div class="kpi-card kpi-margen">
                 <div class="kpi-header">
-                    <h3>Saldo por Cobrar</h3>
+                    <h3>Saldo por cobrar</h3>
                     <i class="fas fa-file-invoice-dollar"></i>
                 </div>
                 <div class="kpi-value">${this.formatCurrency(this.state.datos.saldoPorCobrar)}</div>
@@ -559,7 +563,7 @@ const DashboardFinancieroModule = {
 
             <div class="kpi-card kpi-egresos">
                 <div class="kpi-header">
-                    <h3>Egresos Totales</h3>
+                    <h3>Egresos del mes</h3>
                     <i class="fas fa-arrow-down"></i>
                 </div>
                 <div class="kpi-value">${this.formatCurrency(this.state.datos.egresos)}</div>
@@ -568,7 +572,7 @@ const DashboardFinancieroModule = {
 
             <div class="kpi-card kpi-ganancia">
                 <div class="kpi-header">
-                    <h3>Flujo de Caja</h3>
+                    <h3>Flujo de caja</h3>
                     <i class="fas fa-money-bill-wave"></i>
                 </div>
                 <div class="kpi-value">${this.formatCurrency(this.state.datos.flujoCaja)}</div>
@@ -595,7 +599,7 @@ const DashboardFinancieroModule = {
 
     // Exportar reporte
     exportReport() {
-        let csv = 'Mes,Facturación GTQ,Cobros GTQ,Egresos GTQ,Resultado Contable GTQ,Flujo de Caja GTQ\n';
+        let csv = 'Mes,Facturación GTQ,Cobros GTQ,Egresos GTQ,Facturación menos egresos GTQ,Flujo de Caja GTQ\n';
         this.state.historico.forEach(h => {
             csv += `${h.mes},${h.ingresos},${h.cobros || 0},${h.egresos},${h.ganancia},${h.flujoCaja || 0}\n`;
         });
@@ -608,7 +612,7 @@ const DashboardFinancieroModule = {
         element.click();
         document.body.removeChild(element);
 
-        alert('Reporte exportado correctamente');
+        showNotification('Reporte exportado.', 'success');
     },
 
     // Obtener proyección de flujo de caja

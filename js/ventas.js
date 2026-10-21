@@ -36,7 +36,9 @@ const VentasModule = {
         }
         if (!response.ok) {
             const data = await response.json().catch(() => ({}));
-            throw new Error(data.error || `Error ${response.status}`);
+            const error = new Error(data.error || `Error ${response.status}`);
+            error.status = response.status;
+            throw error;
         }
         return response.json();
     },
@@ -92,7 +94,7 @@ const VentasModule = {
                 <td><strong>${this.escapeHtml(venta.numero_venta)}</strong></td>
                 <td>${this.formatDate(venta.fecha)}</td>
                 <td>${this.escapeHtml(venta.receptor_nombre)}</td>
-                <td>Q${Number(venta.total || 0).toFixed(2)}</td>
+                <td>${formatQ(Number(venta.total || 0))}</td>
                 <td>${this.paymentCell(venta)}</td>
                 <td class="actions">
                     <button class="btn-icon" type="button" title="Ver detalle" aria-label="Ver detalle de ${this.escapeHtml(venta.numero_venta)}" onclick="VentasModule.viewSale('${this.escapeHtml(venta.id)}')">
@@ -121,7 +123,7 @@ const VentasModule = {
         const pendiente = Number(venta.pendiente) || 0;
         if (venta.metodo_pago !== 'credito') return `<span class="badge badge-success">${label}</span>`;
         return pendiente > 0
-            ? `<span class="badge badge-warning">${label}</span> <small>Pendiente Q${pendiente.toFixed(2)}</small>`
+            ? `<span class="badge badge-warning">${label}</span> <small>Pendiente ${formatQ(pendiente)}</small>`
             : `<span class="badge badge-success">${label} · pagada</span>`;
     },
 
@@ -385,7 +387,7 @@ const VentasModule = {
                     <div id="saleConceptResults-${index}" class="concept-search-results" hidden></div></div></td>
                 <td><input class="form-input" type="text" inputmode="numeric" autocomplete="off" aria-label="Cantidad de la línea ${index + 1}" value="${this.escapeHtml(this.inputValue(item, 'cantidad'))}" onchange="VentasModule.updateItem(${index}, 'cantidad', this.value)"></td>
                 <td><input class="form-input" type="text" inputmode="decimal" autocomplete="off" aria-label="Precio unitario de la línea ${index + 1}" value="${this.escapeHtml(this.inputValue(item, 'precio_unitario'))}" onchange="VentasModule.updateItem(${index}, 'precio_unitario', this.value)"></td>
-                <td><strong>${Number.isFinite(subtotal) ? `Q${subtotal.toFixed(2)}` : '—'}</strong></td>
+                <td><strong>${Number.isFinite(subtotal) ? `${formatQ(subtotal)}` : '—'}</strong></td>
                 <td><button class="btn-icon btn-delete" type="button" title="Quitar artículo" aria-label="Quitar la línea ${index + 1}" onclick="VentasModule.removeItem(${index})" ${this.state.items.length === 1 ? 'disabled' : ''}><i class="fas fa-trash" aria-hidden="true"></i></button></td>
             </tr>`;
         }).join('');
@@ -393,13 +395,15 @@ const VentasModule = {
     },
 
     inputValue(item, field) {
+        // Sin artículo elegido, el precio queda vacío en lugar de mostrar 0.
+        if (field === 'precio_unitario' && !item.concepto_id && !item.texto?.[field]) return '';
         return item.texto?.[field] ?? item[field];
     },
 
     updateTotalsOnly() {
         const total = this.state.items.reduce((sum, item) =>
             sum + Math.max(0, Number(item.cantidad) || 0) * Math.max(0, Number(item.precio_unitario) || 0), 0);
-        document.getElementById('saleCalculatedTotal').textContent = `Q${total.toFixed(2)}`;
+        document.getElementById('saleCalculatedTotal').textContent = `${formatQ(total)}`;
     },
 
     async saveSale() {
@@ -445,11 +449,13 @@ const VentasModule = {
                 credito: 'el saldo quedó en Cuentas por Cobrar'
             }[payload.metodo_pago] || 'quedó registrada como pagada';
             this.notify(`${id ? 'Venta actualizada' : 'Venta registrada'}: existencias descontadas y ${destino}.`, 'success');
+            const tbody = document.querySelector('#ventasTable tbody');
+            if (tbody && !this.state.ventas.length) tbody.innerHTML = '<tr><td colspan="6" class="text-center">Actualizando la lista…</td></tr>';
             await this.loadData();
         } catch (error) {
             this.notify(error.message, 'error');
-            // Otra venta pudo cambiar las existencias: actualizar lo que se muestra al buscar.
-            this.loadData();
+            // Otra venta cambió las existencias: actualizar lo que se muestra al buscar.
+            if (error.status === 409) this.loadData();
         } finally {
             button.disabled = false;
         }
@@ -484,8 +490,8 @@ const VentasModule = {
         const esc = (value) => this.escapeHtml(value);
         const rows = venta.items.map(item => `
             <tr><td>${esc(item.concepto_nombre)}</td><td class="text-right">${esc(item.cantidad)}</td>
-            <td class="text-right">Q${Number(item.precio_unitario).toFixed(2)}</td>
-            <td class="text-right">Q${(Number(item.cantidad) * Number(item.precio_unitario)).toFixed(2)}</td></tr>`).join('');
+            <td class="text-right">${formatQ(Number(item.precio_unitario))}</td>
+            <td class="text-right">${formatQ((Number(item.cantidad) * Number(item.precio_unitario)))}</td></tr>`).join('');
         CodigosArticulosModule.showDetailsModal(`Venta ${venta.numero_venta}`, `
             <p><strong>Cliente:</strong> ${esc(venta.receptor_nombre)}</p>
             <p><strong>Fecha:</strong> ${esc(this.formatDate(venta.fecha))}</p>
@@ -494,7 +500,7 @@ const VentasModule = {
                 <thead><tr><th>Artículo</th><th class="text-right">Cantidad</th><th class="text-right">Precio</th><th class="text-right">Subtotal</th></tr></thead>
                 <tbody>${rows}</tbody>
             </table></div>
-            <p class="text-right"><strong>Total: Q${Number(venta.total).toFixed(2)}</strong></p>
+            <p class="text-right"><strong>Total: ${formatQ(Number(venta.total))}</strong></p>
             ${venta.observaciones ? `<p><strong>Observaciones:</strong> ${esc(venta.observaciones)}</p>` : ''}`);
     },
 

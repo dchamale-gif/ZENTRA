@@ -9,9 +9,9 @@ const safe = async (query, params = []) => {
   }
 };
 
-// Valor de inventario a costo; si el artículo no tiene costo se usa su precio de venta.
+// Valor de inventario a costo (precio de compra). Los artículos sin costo no suman.
 // Es la misma regla que muestra la página de Artículos.
-const UNIT_VALUE = 'COALESCE(NULLIF(precio_costo, 0), precio_unitario, 0)';
+const UNIT_VALUE = 'COALESCE(precio_costo, 0)';
 
 // Costo de lo vendido en un mes (0 = mes actual, 1 = mes anterior).
 const costOfSales = (monthsAgo) => `
@@ -56,11 +56,13 @@ const getDashboard = async (req, res) => {
         FROM codigos_articulos WHERE activo = true
       `),
       safe(`
-        SELECT COALESCE(NULLIF(categoria, ''), 'Sin categoría') AS category,
-               SUM(${UNIT_VALUE} * GREATEST(COALESCE(cantidad_disponible, 0), 0))::float AS value
-        FROM codigos_articulos WHERE activo = true
+        SELECT COALESCE(s.nombre, NULLIF(a.categoria, ''), 'Sin clasificar') AS category,
+               SUM(${UNIT_VALUE} * GREATEST(COALESCE(a.cantidad_disponible, 0), 0))::float AS value
+        FROM codigos_articulos a
+        LEFT JOIN clasificaciones_articulos s ON s.id::text = a.categoria AND s.nivel = 'seccion'
+        WHERE a.activo = true
         GROUP BY 1
-        HAVING SUM(${UNIT_VALUE} * GREATEST(COALESCE(cantidad_disponible, 0), 0)) > 0
+        HAVING SUM(${UNIT_VALUE} * GREATEST(COALESCE(a.cantidad_disponible, 0), 0)) > 0
         ORDER BY value DESC
         LIMIT 8
       `),

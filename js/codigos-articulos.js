@@ -336,14 +336,15 @@ const CodigosArticulosModule = {
         const container = document.getElementById('articulosResumen');
         if (!container) return;
         const activos = this.state.articulos.filter(a => a.activo);
-        const valor = activos.reduce((sum, a) => sum + Math.max(0, a.cantidadDisponible) * (a.precioCompra || a.precioVenta), 0);
+        // A costo: los artículos sin precio de compra no suman (igual que el Panel).
+        const valor = activos.reduce((sum, a) => sum + Math.max(0, a.cantidadDisponible) * (a.precioCompra || 0), 0);
         const agotados = activos.filter(a => a.cantidadDisponible <= 0).length;
         const bajos = activos.filter(a => a.cantidadDisponible > 0 && a.cantidadDisponible <= this.stockBajo).length;
         const stat = (label, value, tone = '') => `
             <div class="stat-tile ${tone}"><span class="stat-label">${label}</span><span class="stat-value">${value}</span></div>`;
         container.innerHTML = [
             stat('Artículos activos', activos.length.toLocaleString('es-GT')),
-            stat('Valor del inventario', `Q${valor.toLocaleString('es-GT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`),
+            stat('Valor del inventario (a costo)', formatQ(valor)),
             stat(`Existencia baja (≤ ${this.stockBajo})`, bajos, bajos ? 'is-warning' : ''),
             stat('Agotados', agotados, agotados ? 'is-danger' : '')
         ].join('');
@@ -373,8 +374,8 @@ const CodigosArticulosModule = {
                 </td>
                 <td>${clasificacion.length ? `<span class="breadcrumb-text">${clasificacion.map(esc).join('<i class="fas fa-chevron-right" aria-hidden="true"></i>')}</span>` : '<span class="muted">Sin clasificar</span>'}</td>
                 <td class="text-right"><span class="stock-pill ${stockTone}">${stockLabel}</span></td>
-                <td class="text-right num">Q${costo.toFixed(2)}</td>
-                <td class="text-right num"><strong>Q${precio.toFixed(2)}</strong></td>
+                <td class="text-right num">${formatQ(costo)}</td>
+                <td class="text-right num"><strong>${formatQ(precio)}</strong></td>
                 <td class="text-right num ${margen === null ? 'muted' : (margen < 0 ? 'text-danger' : '')}">${margen === null ? '—' : `${margen.toFixed(1)}%`}</td>
                 <td class="text-right">
                     <div class="row-actions">
@@ -428,15 +429,15 @@ const CodigosArticulosModule = {
                     </div>
                     <div class="price-item">
                         <label>Precio de compra</label>
-                        <p class="price">Q${precioCompra.toFixed(2)}</p>
+                        <p class="price">${formatQ(precioCompra)}</p>
                     </div>
                     <div class="price-item">
                         <label>Precio de venta</label>
-                        <p class="price">Q${precioVenta.toFixed(2)}</p>
+                        <p class="price">${formatQ(precioVenta)}</p>
                     </div>
                     <div class="price-item">
                         <label>Ganancia por unidad</label>
-                        <p class="price">Q${ganancia}${margen === null ? '' : ` (${margen}% del precio)`}</p>
+                        <p class="price">${formatQ(ganancia)}${margen === null ? '' : ` (${margen}% del precio)`}</p>
                     </div>
                 </div>
 
@@ -651,10 +652,10 @@ const CodigosArticulosModule = {
         const text = String(value ?? '').trim().replace(/\s/g, '');
         if (!text) return NaN;
         let normalized;
-        if (/^-?\d{1,3}(,\d{3})+(\.\d+)?$/.test(text)) {
+        if (/^-?[1-9]\d{0,2}(,\d{3})+(\.\d+)?$/.test(text)) {
             normalized = text.replace(/,/g, '');           // 1,500 · 1,500.50 → miles con coma
-        } else if (/^-?\d+,\d{1,2}$/.test(text)) {
-            normalized = text.replace(',', '.');            // 1,5 · 10,50 → coma decimal
+        } else if (/^-?\d+,\d{1,2}$/.test(text) || /^-?0,\d+$/.test(text)) {
+            normalized = text.replace(',', '.');            // 1,5 · 10,50 · 0,500 → coma decimal
         } else {
             normalized = text;
         }

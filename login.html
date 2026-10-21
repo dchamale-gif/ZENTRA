@@ -15,9 +15,9 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <!-- Fuente e iconos no bloquean el primer pintado (importante en 3G) -->
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" media="print" onload="this.media='all'">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" media="print" onload="this.onload=null;this.media='all'">
     <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"></noscript>
-    <link rel="stylesheet" href="vendor/fontawesome/css/all.min.css" media="print" onload="this.media='all'">
+    <link rel="stylesheet" href="vendor/fontawesome/css/all.min.css" media="print" onload="this.onload=null;this.media='all'">
     <noscript><link rel="stylesheet" href="vendor/fontawesome/css/all.min.css"></noscript>
     <style>
         :root {
@@ -691,7 +691,7 @@
         <div id="alertContainer"></div>
 
         <div id="loginPanel">
-        <form id="loginForm" novalidate>
+        <form id="loginForm" novalidate onsubmit="event.preventDefault()">
             <div class="form-group">
                 <label for="email">Correo electrónico</label>
                 <input 
@@ -747,7 +747,7 @@
                 <div><strong>30 días gratis, hasta 3 usuarios. Sin tarjeta.</strong> Al finalizar, el acceso se bloquea hasta activar una suscripción.
                 <a href="legal.html#precios" target="_blank" rel="noopener">Ver precios y condiciones</a></div>
             </div>
-            <form id="registerForm" novalidate>
+            <form id="registerForm" novalidate onsubmit="event.preventDefault()">
                 <div class="form-group">
                     <label for="empresaNombre">Nombre de la empresa <span class="required-mark" aria-hidden="true">*</span></label>
                     <input type="text" id="empresaNombre" maxlength="150" required autocomplete="organization">
@@ -828,6 +828,22 @@
     </div>
     </main>
 
+    <script>
+        // En línea: los botones para cambiar de panel funcionan apenas se pinta la página (3G).
+        function showRegister() {
+            document.getElementById('loginPanel').classList.add('hidden');
+            document.getElementById('registerPanel').classList.remove('hidden');
+            document.getElementById('alertContainer').innerHTML = '';
+            document.getElementById('empresaNombre').focus();
+        }
+
+        function showLogin() {
+            document.getElementById('registerPanel').classList.add('hidden');
+            document.getElementById('loginPanel').classList.remove('hidden');
+            document.getElementById('alertContainer').innerHTML = '';
+            document.getElementById('email').focus();
+        }
+    </script>
     <script src="js/auth-utils.js"></script>
     <script src="js/login.js"></script>
     <script>document.querySelectorAll('#brandYear, .legalYear').forEach(el => { el.textContent = new Date().getFullYear(); });</script>

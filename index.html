@@ -11,12 +11,12 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <!-- Fuente e iconos no bloquean el primer pintado (importante en 3G) -->
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" media="print" onload="this.media='all'">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" media="print" onload="this.onload=null;this.media='all'">
     <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"></noscript>
     <link rel="stylesheet" href="css/style.css">
     <link rel="stylesheet" href="css/theme.css">
     <link rel="stylesheet" href="css/refresh.css">
-    <link rel="stylesheet" href="vendor/fontawesome/css/all.min.css" media="print" onload="this.media='all'">
+    <link rel="stylesheet" href="vendor/fontawesome/css/all.min.css" media="print" onload="this.onload=null;this.media='all'">
     <noscript><link rel="stylesheet" href="vendor/fontawesome/css/all.min.css"></noscript>
 </head>
 <body>
@@ -193,7 +193,7 @@
                     <div class="kpi-grid">
                         <div class="kpi-card kpi-revenue" data-module="ventas">
                             <div class="kpi-header">
-                                <h3>Ingresos del Mes</h3>
+                                <h3>Ventas del mes</h3>
                                 <i class="fas fa-dollar-sign"></i>
                             </div>
                             <div class="kpi-value" id="kpiIngresos">--</div>
@@ -231,18 +231,18 @@
                     <!-- Charts Section -->
                     <div class="charts-section">
                         <div class="chart-card" data-module="ventas">
-                            <h3>Ventas Últimos 7 Días</h3>
+                            <h3>Ventas de los últimos 7 días</h3>
                             <canvas id="salesChart"></canvas>
                         </div>
                         <div class="chart-card" data-module="articulos">
-                            <h3>Distribución de Inventario</h3>
+                            <h3>Inventario por sección (a costo)</h3>
                             <canvas id="inventoryChart"></canvas>
                         </div>
                     </div>
 
                     <!-- Recent Transactions -->
                     <div class="recent-section">
-                        <h3><i class="fas fa-history"></i> Transacciones Recientes</h3>
+                        <h3><i class="fas fa-history" aria-hidden="true"></i> Movimientos recientes</h3>
                         <div class="transactions-table">
                             <table>
                                 <thead>
@@ -266,7 +266,7 @@
                 <div id="page-codigos-articulos" class="page">
                     <div class="page-header">
                         <div>
-                            <h1>Artículos</h1>
+                            <h1>Artículos e inventario</h1>
                             <p class="page-subtitle">Catálogo con precios, costos y existencias. Las ventas descuentan y las compras recibidas suman.</p>
                         </div>
                         <div class="button-group">
@@ -608,9 +608,9 @@
                 <!-- Ventas Page -->
                 <div id="page-ventas" class="page">
                     <div class="page-header">
-                        <h1>Gestión de Ventas</h1>
+                        <h1>Ventas</h1>
                         <button class="btn btn-primary" id="addSaleBtn">
-                            <i class="fas fa-plus"></i> Nueva Venta
+                            <i class="fas fa-plus" aria-hidden="true"></i> Nueva venta
                         </button>
                     </div>
                     <div class="table-container">
@@ -755,7 +755,7 @@
                     </div>
                     <div class="section-heading">
                         <h2>Resumen financiero</h2>
-                        <p>Facturación, cobros, cartera y flujo de caja.</p>
+                        <p>Facturación, cobros, saldo por cobrar y flujo de caja.</p>
                     </div>
                     <div id="financialKPIs" class="kpi-grid"></div>
                     <div class="charts-section">
@@ -764,7 +764,7 @@
                             <canvas id="incomeExpenseChart"></canvas>
                         </div>
                         <div class="chart-card">
-                            <h3>Flujo de Caja</h3>
+                            <h3>Flujo de caja</h3>
                             <canvas id="cashFlowChart"></canvas>
                         </div>
                     </div>
@@ -1154,7 +1154,7 @@
                                 <div class="concept-search-input">
                                     <i class="fas fa-search"></i>
                                     <input id="saleRecipientSearch" class="form-input" type="search" autocomplete="off"
-                                        placeholder="Nombre, NIT o teléfono"
+                                        placeholder="Nombre, NIT (número tributario) o teléfono"
                                         aria-describedby="saleRecipientHint"
                                         oninput="VentasModule.searchRecipient(this.value)">
                                 </div>
@@ -1303,6 +1303,7 @@
                             <div class="form-group">
                                 <label for="articuloTipo">Tipo</label>
                                 <input type="text" id="articuloTipo" class="form-input" maxlength="50" placeholder="Ej: producto, servicio">
+                                <small>Opcional. Sirve para agrupar artículos en tus reportes.</small>
                             </div>
                             <div class="form-group">
                                 <label for="articuloEstado">Estado</label>

@@ -285,6 +285,15 @@ function loadLibrary(name) {
     return lazyLibraryLoads[name];
 }
 
+// Un solo formato de moneda en toda la app: Q1,234.50
+function formatQ(value) {
+    const amount = Number(value);
+    return 'Q' + (Number.isFinite(amount) ? amount : 0).toLocaleString('es-GT', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+    });
+}
+
 /**
  * Traduce errores de red del navegador ("Failed to fetch") a un mensaje accionable.
  */

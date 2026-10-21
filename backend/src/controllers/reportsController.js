@@ -257,7 +257,7 @@ class ReportsController {
             
             const totalMonto = result.rows.reduce((sum, row) => sum + parseFloat(row.monto), 0);
             const data = result.rows.map(row => ({
-                nombre: row.categoria || 'Sin categoría',
+                nombre: row.categoria || 'Sin clasificar',
                 monto: parseFloat(row.monto),
                 porcentaje: totalMonto > 0 ? ((parseFloat(row.monto) / totalMonto) * 100).toFixed(1) : 0,
                 numeroCopmpras: parseInt(row.numero_compras)

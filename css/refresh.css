@@ -842,3 +842,10 @@ tr.is-inactive td { color: var(--text-gray); }
         min-height: 44px;
     }
 }
+
+/* El borde rojo de un campo con error se mantiene aunque tenga el foco */
+.form-input[aria-invalid="true"],
+.form-input[aria-invalid="true"]:focus {
+    border-color: var(--danger-color);
+    box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.15);
+}

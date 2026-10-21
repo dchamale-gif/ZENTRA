@@ -111,22 +111,9 @@ async function handleLogin(event) {
     }
 }
 
-/**
- * Mostrar formulario de registro
- */
-function showRegister() {
-    document.getElementById('loginPanel').classList.add('hidden');
-    document.getElementById('registerPanel').classList.remove('hidden');
-    document.getElementById('alertContainer').innerHTML = '';
-    document.getElementById('empresaNombre').focus();
-}
+// showRegister() y showLogin() están en login.html para que los botones funcionen
+// desde que se pinta la página, antes de que termine de descargar este archivo.
 
-function showLogin() {
-    document.getElementById('registerPanel').classList.add('hidden');
-    document.getElementById('loginPanel').classList.remove('hidden');
-    document.getElementById('alertContainer').innerHTML = '';
-    document.getElementById('email').focus();
-}
 
 // Errores junto al campo: el formulario es largo y un aviso arriba queda fuera de la vista.
 function setFieldError(input, message) {

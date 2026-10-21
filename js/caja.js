@@ -160,7 +160,7 @@ const CajaModule = {
 
     async anularMovimiento(id) {
         const movimiento = this.state.movimientos.find(m => m.id === id);
-        const detalle = movimiento ? ` "${movimiento.descripcion}" por Q${movimiento.monto.toFixed(2)}` : '';
+        const detalle = movimiento ? ` "${movimiento.descripcion}" por ${formatQ(movimiento.monto)}` : '';
         if (!confirm(`¿Anular el movimiento${detalle}? Quedará fuera de los totales de caja.`)) return;
         try {
             await this.apiRequest(`/${encodeURIComponent(id)}`, { method: 'DELETE' });
@@ -246,7 +246,7 @@ const CajaModule = {
                     <td>${this.escapeHtml(mov.cliente || '-')}</td>
                     <td>${this.escapeHtml(mov.referencia || '-')}</td>
                     <td><span class="badge ${badge}">${this.escapeHtml(mov.tipo)}</span></td>
-                    <td class="text-right"><span class="${amountClass}">${sign}Q${mov.monto.toFixed(2)}</span></td>
+                    <td class="text-right"><span class="${amountClass}">${sign}${formatQ(mov.monto)}</span></td>
                     <td>${this.escapeHtml(mov.usuario)}</td>
                     <td class="actions">
                         <button class="btn-icon btn-delete" title="Anular movimiento" onclick="CajaModule.anularMovimiento('${this.escapeHtml(mov.id)}')">
@@ -273,10 +273,10 @@ const CajaModule = {
 
         statusElement.innerHTML = `
             <div class="stat-strip">
-                ${tile('Ingresos', `Q${ingresos.toFixed(2)}`, 'is-positive')}
-                ${tile('Egresos', `Q${egresos.toFixed(2)}`, egresos > 0 ? 'is-danger' : '')}
-                ${tile('Neto del período', `Q${(ingresos - egresos).toFixed(2)}`)}
-                ${tile('Saldo en caja', `Q${this.state.saldoCaja.toFixed(2)}`, 'is-accent')}
+                ${tile('Ingresos', `${formatQ(ingresos)}`, 'is-positive')}
+                ${tile('Egresos', `${formatQ(egresos)}`, egresos > 0 ? 'is-danger' : '')}
+                ${tile('Neto del período', `${formatQ((ingresos - egresos))}`)}
+                ${tile('Saldo en caja', `${formatQ(this.state.saldoCaja)}`, 'is-accent')}
             </div>
         `;
     },

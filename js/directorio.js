@@ -197,7 +197,7 @@ const createDirectoryModule = (cfg) => ({
     }
 });
 
-const historyMoney = (value) => `Q${(Number(value) || 0).toFixed(2)}`;
+const historyMoney = formatQ;
 const historyDate = (value) => (value ? new Date(value).toLocaleDateString('es-GT', { timeZone: 'UTC' }) : '-');
 const historySum = (rows, key) => rows.reduce((total, row) => total + (Number(row[key]) || 0), 0);
 

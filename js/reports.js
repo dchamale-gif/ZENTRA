@@ -476,14 +476,15 @@ const ReportsModule = {
                                 <th>Cantidad</th>
                                 <th>Total</th>
                                 <th>Promedio</th>
-                                <th>% del Total</th>
+                                <th>% de las ventas</th>
                             </tr>
                         </thead>
                         <tbody>
         `;
 
         // Agregar detalles por concepto
-        const totalGeneral = resumen.totalGastos + resumen.totalCostos + resumen.totalIngresos;
+        // Cada concepto como porcentaje de las ventas (sumar ventas y costos no tiene sentido).
+        const totalGeneral = resumen.totalIngresos;
         
         for (const [concepto, datos] of Object.entries(resumen.detalles)) {
             if (datos.cantidad > 0) {
@@ -737,12 +738,7 @@ const ReportsModule = {
 
     // Formatear moneda
     formatarMoneda(valor) {
-        const monto = Number(valor);
-        return new Intl.NumberFormat('es-GT', {
-            style: 'currency',
-            currency: 'GTQ',
-            minimumFractionDigits: 2
-        }).format(Number.isFinite(monto) ? monto : 0);
+        return formatQ(valor);
     },
 
     // Sin datos de ejemplo - Compras

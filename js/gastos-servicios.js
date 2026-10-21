@@ -3,6 +3,12 @@
 // Descripción: Gestión de gastos, conceptos y proveedores
 // ============================================
 
+// Los nombres, facturas y conceptos los escriben los usuarios: siempre se escapan
+// antes de insertarlos como HTML.
+const escGastos = (value) => String(value ?? '').replace(/[&<>"']/g, char => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'
+}[char]));
+
 class GastosServiciosModule {
     constructor() {
         this.state = {
@@ -72,7 +78,7 @@ class GastosServiciosModule {
     // ==================== PAGOS ====================
     addPago(concepto, proveedor, monto, fecha, numeroFactura, requisicion, referencia) {
         if (!concepto || !proveedor || !monto || !fecha || !numeroFactura) {
-            alert('Por favor complete todos los campos requeridos (incluyendo número de factura)');
+            showNotification('Por favor complete todos los campos requeridos (incluyendo número de factura).', 'warning');
             return false;
         }
 
@@ -125,7 +131,7 @@ class GastosServiciosModule {
     // ==================== PROVEEDORES ====================
     addProveedor(nombre, contacto, referencia, telefono) {
         if (!nombre || !contacto) {
-            alert('Por favor ingrese el nombre del proveedor y el contacto');
+            showNotification('Por favor ingrese el nombre del proveedor y el contacto.', 'warning');
             return false;
         }
 
@@ -300,12 +306,7 @@ class GastosServiciosModule {
 
     // ==================== UTILIDADES ====================
     formatarMoneda(valor) {
-        return new Intl.NumberFormat('es-GT', {
-            style: 'currency',
-            currency: 'GTQ',
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2
-        }).format(valor);
+        return formatQ(valor);
     }
 
     formatarFecha(fecha) {
@@ -348,11 +349,11 @@ class GastosServiciosModule {
 
             html += '<tr>';
             html += `<td>${this.formatarFecha(pago.fecha)}</td>`;
-            html += `<td>${conceptoNombre}</td>`;
-            html += `<td>${proveedorNombre}</td>`;
-            html += `<td><strong>${pago.numeroFactura || '-'}</strong></td>`;
-            html += `<td>${pago.requisicion || '-'}</td>`;
-            html += `<td>${pago.referencia || '-'}</td>`;
+            html += `<td>${escGastos(conceptoNombre)}</td>`;
+            html += `<td>${escGastos(proveedorNombre)}</td>`;
+            html += `<td><strong>${escGastos(pago.numeroFactura || '-')}</strong></td>`;
+            html += `<td>${escGastos(pago.requisicion || '-')}</td>`;
+            html += `<td>${escGastos(pago.referencia || '-')}</td>`;
             html += `<td class="monto">${this.formatarMoneda(pago.monto)}</td>`;
             html += `<td class="acciones">`;
             html += `<button onclick="gastosModule.deletePago('${pago.id}'); gastosModule.render();" class="btn-delete"><i class="fas fa-trash"></i></button>`;
@@ -386,18 +387,18 @@ class GastosServiciosModule {
             const estadoClass = proveedor.estado === 'activo' ? 'badge-active' : 'badge-inactive';
             const estadoIcon = proveedor.estado === 'activo' ? 'fas fa-check-circle' : 'fas fa-times-circle';
             const botonesAccion = proveedor.estado === 'activo'
-                ? `<button onclick="abrirModalBajaProveedor('${proveedor.id}', '${proveedor.nombre}')" class="btn-warning" style="padding: 5px 10px; margin-right: 5px;"><i class="fas fa-ban"></i> Dar de baja</button>`
-                : `<button onclick="gastosModule.reactivarProveedor('${proveedor.id}'); gastosModule.render();" class="btn-info" style="padding: 5px 10px; margin-right: 5px;"><i class="fas fa-refresh"></i> Reactivar</button>`;
+                ? `<button onclick="abrirModalBajaProveedor(${escGastos(JSON.stringify(proveedor.id))}, ${escGastos(JSON.stringify(proveedor.nombre))})" class="btn-warning" style="padding: 5px 10px; margin-right: 5px;"><i class="fas fa-ban"></i> Dar de baja</button>`
+                : `<button onclick="gastosModule.reactivarProveedor(${escGastos(JSON.stringify(proveedor.id))}); gastosModule.render();" class="btn-info" style="padding: 5px 10px; margin-right: 5px;"><i class="fas fa-refresh"></i> Reactivar</button>`;
 
             html += '<tr>';
-            html += `<td><strong>${proveedor.nombre}</strong></td>`;
-            html += `<td>${proveedor.contacto || '-'}</td>`;
-            html += `<td>${proveedor.telefono || '-'}</td>`;
-            html += `<td>${proveedor.referencia || '-'}</td>`;
-            html += `<td><span class="${estadoClass}"><i class="${estadoIcon}"></i> ${proveedor.estado}</span></td>`;
+            html += `<td><strong>${escGastos(proveedor.nombre)}</strong></td>`;
+            html += `<td>${escGastos(proveedor.contacto || '-')}</td>`;
+            html += `<td>${escGastos(proveedor.telefono || '-')}</td>`;
+            html += `<td>${escGastos(proveedor.referencia || '-')}</td>`;
+            html += `<td><span class="${estadoClass}"><i class="${estadoIcon}"></i> ${escGastos(proveedor.estado)}</span></td>`;
             html += `<td class="acciones">`;
             html += botonesAccion;
-            html += `<button onclick="gastosModule.deleteProveedor('${proveedor.id}'); gastosModule.render();" class="btn-delete"><i class="fas fa-trash"></i> Eliminar</button>`;
+            html += `<button onclick="gastosModule.deleteProveedor(${escGastos(JSON.stringify(proveedor.id))}); gastosModule.render();" class="btn-delete"><i class="fas fa-trash"></i> Eliminar</button>`;
             html += `</td></tr>`;
         });
 
@@ -429,7 +430,7 @@ class GastosServiciosModule {
             Object.keys(resumen).sort().forEach(concepto => {
                 const data = resumen[concepto];
                 html += '<tr>';
-                html += `<td>${concepto}</td>`;
+                html += `<td>${escGastos(concepto)}</td>`;
                 html += `<td class="cantidad">${data.cantidad}</td>`;
                 html += `<td class="monto">${this.formatarMoneda(data.monto)}</td>`;
                 html += '</tr>';
@@ -494,7 +495,7 @@ class GastosServiciosModule {
 
         select.innerHTML = '<option value="">-- Seleccionar Concepto --</option>';
         this.state.conceptos.forEach(concepto => {
-            select.innerHTML += `<option value="${concepto.id}">${concepto.nombre}</option>`;
+            select.innerHTML += `<option value="${escGastos(concepto.id)}">${escGastos(concepto.nombre)}</option>`;
         });
     }
 
@@ -504,7 +505,7 @@ class GastosServiciosModule {
 
         select.innerHTML = '<option value="">-- Seleccionar Proveedor --</option>';
         this.state.proveedores.forEach(proveedor => {
-            select.innerHTML += `<option value="${proveedor.id}">${proveedor.nombre}</option>`;
+            select.innerHTML += `<option value="${escGastos(proveedor.id)}">${escGastos(proveedor.nombre)}</option>`;
         });
     }
 
@@ -552,7 +553,7 @@ class GastosServiciosModule {
             
             Object.keys(data.resumen).sort().forEach(concepto => {
                 const item = data.resumen[concepto];
-                html += `<tr><td>${concepto}</td><td>${item.cantidad}</td><td class="monto">${this.formatarMoneda(item.monto)}</td></tr>`;
+                html += `<tr><td>${escGastos(concepto)}</td><td>${escGastos(item.cantidad)}</td><td class="monto">${this.formatarMoneda(item.monto)}</td></tr>`;
             });
 
             html += `<tr class="fila-total"><td>TOTAL</td><td></td><td class="monto">${this.formatarMoneda(data.totalGeneral)}</td></tr>`;
@@ -585,7 +586,7 @@ class GastosServiciosModule {
     // ==================== CUENTAS POR PAGAR ====================
     addCuentaPorPagar(proveedor, concepto, monto, fecha, vencimiento, numeroFactura) {
         if (!proveedor || !concepto || !monto || !fecha || !vencimiento || !numeroFactura) {
-            alert('Por favor complete todos los campos requeridos');
+            showNotification('Por favor complete todos los campos requeridos.', 'warning');
             return false;
         }
 
@@ -613,7 +614,7 @@ class GastosServiciosModule {
 
         const montoNum = parseFloat(monto);
         if (montoNum <= 0 || montoNum > cuenta.saldo) {
-            alert('Monto inválido. Debe ser mayor a 0 y menor o igual al saldo pendiente');
+            showNotification('Monto inválido. Debe ser mayor a 0 y menor o igual al saldo pendiente.', 'warning');
             return false;
         }
 
@@ -689,9 +690,9 @@ class GastosServiciosModule {
 
             html += '<tr>';
             html += `<td>${this.formatarFecha(cuenta.fecha)}</td>`;
-            html += `<td>${proveedorNombre}</td>`;
-            html += `<td><strong>${cuenta.numeroFactura}</strong></td>`;
-            html += `<td>${cuenta.concepto}</td>`;
+            html += `<td>${escGastos(proveedorNombre)}</td>`;
+            html += `<td><strong>${escGastos(cuenta.numeroFactura)}</strong></td>`;
+            html += `<td>${escGastos(cuenta.concepto)}</td>`;
             html += `<td class="monto">${this.formatarMoneda(cuenta.monto)}</td>`;
             html += `<td class="monto saldo-pendiente">${this.formatarMoneda(cuenta.saldo)}</td>`;
             html += `<td>${this.formatarFecha(cuenta.vencimiento)}</td>`;
@@ -717,8 +718,8 @@ class GastosServiciosModule {
         
         let html = `
             <div style="background: white; border-radius: 8px; padding: 20px; max-height: 600px; overflow-y: auto;">
-                <h3>${proveedor.nombre} - Factura ${cuenta.numeroFactura}</h3>
-                <p style="color: #666; margin-bottom: 15px;"><strong>Concepto:</strong> ${cuenta.concepto}</p>
+                <h3>${escGastos(proveedor.nombre)} - Factura ${escGastos(cuenta.numeroFactura)}</h3>
+                <p style="color: #666; margin-bottom: 15px;"><strong>Concepto:</strong> ${escGastos(cuenta.concepto)}</p>
                 
                 <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
                     <thead>
@@ -732,8 +733,8 @@ class GastosServiciosModule {
                     <tbody>
                         ${cuenta.lineas.map(linea => `
                             <tr style="border-bottom: 1px solid #eee;">
-                                <td style="padding: 10px;">${linea.concepto}</td>
-                                <td style="text-align: right; padding: 10px;">${linea.cantidad}</td>
+                                <td style="padding: 10px;">${escGastos(linea.concepto)}</td>
+                                <td style="text-align: right; padding: 10px;">${escGastos(linea.cantidad)}</td>
                                 <td style="text-align: right; padding: 10px;">${this.formatarMoneda(linea.unitario)}</td>
                                 <td style="text-align: right; padding: 10px; font-weight: bold;">${this.formatarMoneda(linea.subtotal)}</td>
                             </tr>
@@ -763,7 +764,7 @@ class GastosServiciosModule {
                         <p style="margin: 0 0 8px 0; font-weight: bold; color: #0066cc;">Historial de Pagos:</p>
                         ${cuenta.pagos.map(pago => `
                             <p style="margin: 5px 0; color: #333; font-size: 12px;">
-                                📅 ${pago.fecha} - ${this.formatarMoneda(pago.monto)}
+                                📅 ${escGastos(pago.fecha)} - ${this.formatarMoneda(pago.monto)}
                             </p>
                         `).join('')}
                     </div>
@@ -807,8 +808,8 @@ class GastosServiciosModule {
                 </div>
                 <div class="modal-body">
                     <div style="background: #f5f5f5; padding: 15px; border-radius: 5px; margin-bottom: 20px;">
-                        <p><strong>Proveedor:</strong> ${proveedorNombre}</p>
-                        <p><strong>Factura:</strong> ${cuenta.numeroFactura}</p>
+                        <p><strong>Proveedor:</strong> ${escGastos(proveedorNombre)}</p>
+                        <p><strong>Factura:</strong> ${escGastos(cuenta.numeroFactura)}</p>
                         <p><strong>Saldo Pendiente:</strong> <span style="color: #e74c3c; font-weight: bold;">${this.formatarMoneda(cuenta.saldo)}</span></p>
                     </div>
                     <div class="form-group full-width">
@@ -836,14 +837,14 @@ class GastosServiciosModule {
         const fecha = document.getElementById('fechaPago')?.value;
 
         if (!monto || !fecha) {
-            alert('Por favor complete todos los campos');
+            showNotification('Por favor complete todos los campos.', 'warning');
             return;
         }
 
         if (this.registrarPagoCuenta(cuentaId, monto, fecha)) {
             this.renderCuentasPorPagar();
             document.querySelectorAll('.modal-overlay').forEach(m => m.remove());
-            alert('Pago registrado exitosamente');
+            showNotification('Pago registrado.', 'success');
         }
     }
 }

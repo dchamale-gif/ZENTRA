@@ -107,10 +107,41 @@ function setupNavigation() {
     });
 }
 
+// Formularios con datos que se pierden al cerrarlos. Solo se pide confirmación si el
+// usuario escribió algo desde que lo abrió.
+const DRAFT_FORMS = ['saleModal', 'articuloModal', 'purchaseModal'];
+
+function openDraftForm() {
+    return DRAFT_FORMS.map(id => document.getElementById(id))
+        .find(modal => modal && ['flex', 'block'].includes(modal.style.display) && modal.dataset.dirty === 'true');
+}
+
+document.addEventListener('input', event => {
+    const modal = event.target.closest?.('.modal');
+    if (modal && DRAFT_FORMS.includes(modal.id)) modal.dataset.dirty = 'true';
+});
+
+// Al cerrarse, el formulario vuelve a quedar "limpio" para la próxima vez.
+const draftFormObserver = new MutationObserver(mutations => mutations.forEach(({ target }) => {
+    if (target.style.display !== 'flex' && target.style.display !== 'block') target.dataset.dirty = '';
+}));
+DRAFT_FORMS.forEach(id => {
+    const modal = document.getElementById(id);
+    if (modal) draftFormObserver.observe(modal, { attributes: true, attributeFilter: ['style'] });
+});
+
+// La × también pregunta si hay datos escritos (Cancelar es una decisión explícita).
+document.addEventListener('click', event => {
+    const closeButton = event.target.closest?.('.modal .close-btn');
+    if (!closeButton || closeButton.closest('.modal') !== openDraftForm()) return;
+    if (!confirm('¿Cerrar el formulario? Se perderá lo que escribiste.')) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+    }
+}, true);
+
 window.addEventListener('beforeunload', event => {
-    const formOpen = ['saleModal', 'articuloModal', 'purchaseModal']
-        .some(id => ['flex', 'block'].includes(document.getElementById(id)?.style.display));
-    if (formOpen) {
+    if (openDraftForm()) {
         event.preventDefault();
         event.returnValue = '';
     }
@@ -140,8 +171,7 @@ function closeOpenModals() {
         modal.classList.contains('active') || modal.style.display === 'block' || modal.style.display === 'flex');
     const overlays = document.querySelectorAll('.modal-overlay');
     if (!open.length && !overlays.length) return false;
-    const formOpen = open.some(modal => ['saleModal', 'articuloModal', 'purchaseModal'].includes(modal.id));
-    if (formOpen && !confirm('¿Salir del formulario? Se perderá lo que escribiste.')) {
+    if (openDraftForm() && !confirm('¿Salir del formulario? Se perderá lo que escribiste.')) {
         history.pushState(null, '', `#${currentPage}`);
         return true;
     }
@@ -312,6 +342,7 @@ let dashboardData = { salesByDay: [], inventoryByCategory: [], recent: [] };
 async function setupDashboard() {
     try {
         const response = await authManager.fetchWithAuth('/api/dashboard');
+        if (!response) return; // sesión cerrada: fetchWithAuth ya redirige al inicio
         const result = await response.json();
         if (result.success) {
             dashboardData = result.data;
@@ -369,7 +400,7 @@ function setChartMessage(canvas, message) {
 }
 
 function renderDashboardKpis(k) {
-    const money = v => 'Q. ' + (Number(v) || 0).toLocaleString('es-GT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const money = formatQ;
     const set = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
     const change = (id, value, goodWhenUp, suffix) => {
         const el = document.getElementById(id);
@@ -541,7 +572,7 @@ function formatCurrency(v) { return legacyMoney(v); }
 function getTransactionTypeIcon(type) {
     return type === 'Compra' ? 'fas fa-arrow-down' : 'fas fa-arrow-up';
 }
-const legacyMoney = v => 'Q. ' + (Number(v) || 0).toLocaleString('es-GT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const legacyMoney = formatQ;
 const legacyEsc = v => BulkImport.escapeHtml(v);
 const legacyStatusClass = status => {
     const s = String(status || '').toLowerCase();
@@ -671,21 +702,27 @@ function showNotification(message, type = 'info') {
         String(message ?? '').replace(/^\s*(?:✅|❌|⚠️|⚠|ℹ️)\s*/u, '');
     notification.setAttribute('role', type === 'error' ? 'alert' : 'status');
     const narrow = window.innerWidth < 480;
+    // Escritorio: arriba al centro (no tapa los botones de la página ni la × de los formularios).
+    // Móvil: abajo, por encima del pie del formulario si hay uno abierto (no tapa el menú).
+    const formOpen = [...document.querySelectorAll('.modal')].some(modal =>
+        modal.classList.contains('active') || ['flex', 'block'].includes(modal.style.display));
+    const mobileBottom = formOpen ? '96px' : '16px';
 
     notification.style.cssText = `
         position: fixed;
-        top: ${narrow ? '16px' : '72px'};
-        bottom: auto;
+        top: ${narrow ? 'auto' : '72px'};
+        bottom: ${narrow ? `calc(${mobileBottom} + env(safe-area-inset-bottom, 0px))` : 'auto'};
         height: auto;
-        right: ${narrow ? '16px' : '20px'};
-        left: ${narrow ? '16px' : 'auto'};
+        right: ${narrow ? '16px' : 'auto'};
+        left: ${narrow ? '16px' : '50%'};
+        transform: ${narrow ? 'none' : 'translateX(-50%)'};
         padding: 0;
         background: ${style.bg};
         color: white;
         border-radius: 12px;
         box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2), 0 0 1px rgba(0, 0, 0, 0.1);
         z-index: 10000;
-        animation: ${narrow ? 'none' : 'slideInRight 0.3s ease-out'};
+        animation: none;
         min-width: ${narrow ? '0' : '320px'};
         max-width: 450px;
         border-left: 4px solid ${style.border};
@@ -754,7 +791,8 @@ function showNotification(message, type = 'info') {
     });
 
     closeBtn.addEventListener('click', () => {
-        notification.style.animation = 'slideOutRight 0.3s cubic-bezier(0.6, -0.28, 0.735, 0.045)';
+        notification.style.transition = 'opacity 0.2s ease-out';
+        notification.style.opacity = '0';
         setTimeout(() => notification.remove(), 300);
     });
 
@@ -765,7 +803,8 @@ function showNotification(message, type = 'info') {
     // Auto-remover después de 4 segundos (los errores se quedan 8 para poder leerlos)
     const autoRemoveTimeout = setTimeout(() => {
         if (notification.parentNode) {
-            notification.style.animation = 'slideOutRight 0.3s cubic-bezier(0.6, -0.28, 0.735, 0.045)';
+            notification.style.transition = 'opacity 0.2s ease-out';
+        notification.style.opacity = '0';
             setTimeout(() => {
                 if (notification.parentNode) notification.remove();
             }, 300);
@@ -986,7 +1025,7 @@ function agregarPago() {
     const referencia = document.getElementById('inputReferencia').value;
 
     if (!concepto || !proveedor || !monto || !fecha || !numeroFactura) {
-        alert('Por favor complete todos los campos requeridos (incluyendo número de factura)');
+        showNotification('Por favor complete todos los campos requeridos (incluyendo número de factura).', 'warning');
         return;
     }
 
@@ -1013,7 +1052,7 @@ function agregarProveedor() {
     const referencia = document.getElementById('inputProveedorReferencia').value;
 
     if (!nombre || !contacto) {
-        alert('Por favor ingrese el nombre del proveedor y el contacto');
+        showNotification('Por favor ingrese el nombre del proveedor y el contacto.', 'warning');
         return;
     }
 
@@ -1039,7 +1078,7 @@ function agregarCuentaPorPagar() {
     const vencimiento = document.getElementById('inputVencimientoCPP').value;
 
     if (!proveedor || !concepto || !monto || !numeroFactura || !fecha || !vencimiento) {
-        alert('Por favor complete todos los campos requeridos');
+        showNotification('Por favor complete todos los campos requeridos.', 'warning');
         return;
     }
 
@@ -1148,7 +1187,7 @@ function abrirModalBajaProveedor(proveedorId, proveedorNombre) {
 
 function confirmarBajaProveedor() {
     if (!proveedorEnBaja) {
-        alert('Error: No se especificó el proveedor');
+        showNotification('Error: No se especificó el proveedor.', 'warning');
         return;
     }
 
@@ -1157,7 +1196,7 @@ function confirmarBajaProveedor() {
     const detalles = document.getElementById('inputDetallesBaja').value;
 
     if (!fechaBaja || !motivo) {
-        alert('Por favor complete la fecha y el motivo de la baja');
+        showNotification('Por favor complete la fecha y el motivo de la baja.', 'warning');
         return;
     }
 

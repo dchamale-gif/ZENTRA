@@ -104,7 +104,7 @@ const EstadosDeCuentaModule = {
     },
 
     formatCurrency(value) {
-        return new Intl.NumberFormat('es-GT', { style: 'currency', currency: 'GTQ', minimumFractionDigits: 2 }).format(Number(value) || 0);
+        return formatQ(value);
     },
 
     exportStatement() {

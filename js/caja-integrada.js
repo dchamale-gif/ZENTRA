@@ -156,7 +156,7 @@ const CajaIntegradaModule = {
                     </div>
                     <div class="card-content">
                         <label>Total Ingresos</label>
-                        <p class="amount positive">Q${ingresos.toFixed(2)}</p>
+                        <p class="amount positive">${formatQ(ingresos)}</p>
                     </div>
                 </div>
 
@@ -166,7 +166,7 @@ const CajaIntegradaModule = {
                     </div>
                     <div class="card-content">
                         <label>Total Egresos</label>
-                        <p class="amount negative">Q${egresos.toFixed(2)}</p>
+                        <p class="amount negative">${formatQ(egresos)}</p>
                     </div>
                 </div>
 
@@ -176,7 +176,7 @@ const CajaIntegradaModule = {
                     </div>
                     <div class="card-content">
                         <label>Saldo en Caja</label>
-                        <p class="amount ${saldo >= 0 ? 'positive' : 'negative'}" style="font-size: 20px;">Q${saldo.toFixed(2)}</p>
+                        <p class="amount ${saldo >= 0 ? 'positive' : 'negative'}" style="font-size: 20px;">${formatQ(saldo)}</p>
                     </div>
                 </div>
 
@@ -266,23 +266,32 @@ const CajaIntegradaModule = {
         `;
     },
 
+    // Todo texto que viene del servidor (descripciones, clientes, usuarios) lo escribieron
+    // otros usuarios: siempre se escapa antes de insertarlo como HTML.
+    escapeHtml(value) {
+        return String(value ?? '').replace(/[&<>"']/g, char => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'
+        }[char]));
+    },
+
     // Renderizar fila de movimiento
     renderMovimientoRow(movimiento) {
+        const esc = (value) => this.escapeHtml(value);
         const tipoBadge = this.getTipoBadge(movimiento.tipo);
         const clienteName = movimiento.clienteId ? this.getClienteName(movimiento.clienteId) : movimiento.referencia;
         const montoClass = ['Ingreso por Cobro', 'Ingreso por Venta', 'Microfactura'].includes(movimiento.tipo) ? 'positive' : 'negative';
 
         return `
             <tr>
-                <td>${movimiento.fecha}</td>
+                <td>${esc(movimiento.fecha)}</td>
                 <td>${tipoBadge}</td>
-                <td>${clienteName}</td>
-                <td>${movimiento.descripcion}</td>
-                <td><span class="amount ${montoClass}">Q${movimiento.monto.toFixed(2)}</span></td>
-                <td>${movimiento.usuario}</td>
+                <td>${esc(clienteName)}</td>
+                <td>${esc(movimiento.descripcion)}</td>
+                <td><span class="amount ${montoClass}">${formatQ(movimiento.monto)}</span></td>
+                <td>${esc(movimiento.usuario)}</td>
                 <td>
-                    <button class="btn-icon btn-view" title="Ver Detalles" onclick="CajaIntegradaModule.viewMovimientoDetails('${movimiento.id}')">
-                        <i class="fas fa-eye"></i>
+                    <button class="btn-icon btn-view" type="button" title="Ver detalles" aria-label="Ver detalles" data-movimiento-id="${esc(movimiento.id)}" onclick="CajaIntegradaModule.viewMovimientoDetails(this.dataset.movimientoId)">
+                        <i class="fas fa-eye" aria-hidden="true"></i>
                     </button>
                 </td>
             </tr>
@@ -292,13 +301,14 @@ const CajaIntegradaModule = {
     // Obtener badge del tipo
     getTipoBadge(tipo) {
         const badges = {
-            'Ingreso por Cobro': '<span class="badge badge-success">Ingreso</span>',
+            'Ingreso por Venta': '<span class="badge badge-success">Venta</span>',
+            'Ingreso por Cobro': '<span class="badge badge-success">Cobro</span>',
             'Egreso': '<span class="badge badge-warning">Egreso</span>',
             'Devolución': '<span class="badge badge-danger">Devolución</span>',
             'Transferencia': '<span class="badge badge-info">Transferencia</span>',
             'Microfactura': '<span class="badge badge-primary">Microfactura</span>'
         };
-        return badges[tipo] || `<span class="badge badge-secondary">${tipo}</span>`;
+        return badges[tipo] || `<span class="badge badge-secondary">${this.escapeHtml(tipo)}</span>`;
     },
 
     // Obtener nombre del cliente
@@ -312,48 +322,49 @@ const CajaIntegradaModule = {
         const movimiento = this.state.movimientosCaja.find(m => m.id === movimientoId);
         if (!movimiento) return;
 
+        const esc = (value) => this.escapeHtml(value);
         const detailsHTML = `
             <div class="movimiento-details-card">
                 <div class="detail-header">
-                    <h3>${movimiento.tipo}</h3>
+                    <h3>${esc(movimiento.tipo)}</h3>
                     ${this.getTipoBadge(movimiento.tipo)}
                 </div>
 
                 <div class="detail-grid">
                     <div class="detail-item">
                         <label>Fecha</label>
-                        <p>${movimiento.fecha}</p>
+                        <p>${esc(movimiento.fecha)}</p>
                     </div>
                     <div class="detail-item">
                         <label>Hora</label>
-                        <p>${movimiento.hora || 'N/A'}</p>
+                        <p>${esc(movimiento.hora || 'Sin hora')}</p>
                     </div>
                     <div class="detail-item">
                         <label>Usuario</label>
-                        <p>${movimiento.usuario}</p>
+                        <p>${esc(movimiento.usuario)}</p>
                     </div>
                     <div class="detail-item">
                         <label>Referencia</label>
-                        <p>${movimiento.referencia}</p>
+                        <p>${esc(movimiento.referencia || 'Sin referencia')}</p>
                     </div>
                 </div>
 
                 <div class="detail-section">
                     <label>Descripción</label>
-                    <p>${movimiento.descripcion}</p>
+                    <p>${esc(movimiento.descripcion)}</p>
                 </div>
 
                 ${movimiento.clienteId ? `
                     <div class="detail-section">
                         <label>Cliente</label>
-                        <p>${this.getClienteName(movimiento.clienteId)}</p>
+                        <p>${esc(this.getClienteName(movimiento.clienteId))}</p>
                     </div>
                 ` : ''}
 
                 <div class="detail-amount">
                     <label>Monto</label>
-                    <p class="amount ${(movimiento.tipo === 'Ingreso por Cobro' || movimiento.tipo === 'Microfactura') ? 'positive' : 'negative'}" style="font-size: 18px;">
-                        Q${movimiento.monto.toFixed(2)}
+                    <p class="amount ${['Ingreso por Cobro', 'Ingreso por Venta', 'Microfactura'].includes(movimiento.tipo) ? 'positive' : 'negative'}" style="font-size: 18px;">
+                        ${formatQ(movimiento.monto)}
                     </p>
                 </div>
 
@@ -362,7 +373,7 @@ const CajaIntegradaModule = {
                         <label>Artículos/Servicios</label>
                         <ul>
                             ${movimiento.detallesItems.map(item => `
-                                <li>${item.descripcion} - Q${item.monto.toFixed(2)}</li>
+                                <li>${esc(item.descripcion)} - ${formatQ(item.monto)}</li>
                             `).join('')}
                         </ul>
                     </div>
@@ -380,8 +391,8 @@ const CajaIntegradaModule = {
         overlay.innerHTML = `
             <div class="modal-dialog">
                 <div class="modal-header">
-                    <h2>${title}</h2>
-                    <button class="close-btn">&times;</button>
+                    <h2>${this.escapeHtml(title)}</h2>
+                    <button type="button" class="close-btn" aria-label="Cerrar">&times;</button>
                 </div>
                 <div class="modal-body">
                     ${content}
@@ -435,7 +446,7 @@ const CajaIntegradaModule = {
 
         select.innerHTML = '<option value="">-- Cliente (opcional) --</option>' +
             this.state.clientes
-                .map(p => `<option value="${p.id}">${p.nombre}</option>`)
+                .map(p => `<option value="${this.escapeHtml(p.id)}">${this.escapeHtml(p.nombre)}</option>`)
                 .join('');
     },
 
@@ -493,7 +504,7 @@ const CajaIntegradaModule = {
         form.reset();
         document.getElementById('microfacturaClienteSelect').innerHTML = '<option value="">-- Selecciona cliente --</option>' +
             this.state.clientes
-                .map(p => `<option value="${p.id}">${p.nombre}</option>`)
+                .map(p => `<option value="${this.escapeHtml(p.id)}">${this.escapeHtml(p.nombre)}</option>`)
                 .join('');
 
         document.getElementById('microfacturaFecha').valueAsDate = new Date();
