@@ -10,11 +10,14 @@
     <link rel="apple-touch-icon" href="img/apple-touch-icon.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+    <!-- Fuente e iconos no bloquean el primer pintado (importante en 3G) -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" media="print" onload="this.onload=null;this.media='all'">
+    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"></noscript>
     <link rel="stylesheet" href="css/style.css">
     <link rel="stylesheet" href="css/theme.css">
     <link rel="stylesheet" href="css/refresh.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="vendor/fontawesome/css/all.min.css" media="print" onload="this.onload=null;this.media='all'">
+    <noscript><link rel="stylesheet" href="vendor/fontawesome/css/all.min.css"></noscript>
 </head>
 <body>
     <div class="container-fluid">
@@ -30,7 +33,7 @@
             <nav class="nav-menu">
                 <a href="#" class="nav-item active" data-page="dashboard">
                     <i class="fas fa-chart-line"></i>
-                    <span>Dashboard</span>
+                    <span>Panel</span>
                 </a>
                 <div class="nav-section" data-nav-section>
                 <div class="nav-section-title">Comercial</div>
@@ -55,11 +58,7 @@
                 <div class="nav-section-title">Compras e inventario</div>
                 <a href="#" class="nav-item" data-page="codigos-articulos" data-module="articulos">
                     <i class="fas fa-barcode"></i>
-                    <span>Artículos</span>
-                </a>
-                <a href="#" class="nav-item" data-page="inventory" data-module="articulos">
-                    <i class="fas fa-boxes-stacked"></i>
-                    <span>Inventario</span>
+                    <span>Artículos e inventario</span>
                 </a>
                 <a href="#" class="nav-item" data-page="compras" data-module="compras">
                     <i class="fas fa-cart-shopping"></i>
@@ -90,7 +89,7 @@
                 </a>
                 <a href="#" class="nav-item" data-page="dashboard-financiero" data-module="finanzas">
                     <i class="fas fa-chart-pie"></i>
-                    <span>Dashboard ejecutivo</span>
+                    <span>Panel ejecutivo</span>
                 </a>
                 <a href="#" class="nav-item" data-page="reports" data-module="reportes">
                     <i class="fas fa-chart-column"></i>
@@ -119,11 +118,11 @@
                 <div class="user-dropdown-header">
                     <p class="user-dropdown-email" id="userEmail">Email</p>
                 </div>
-                <a href="#" class="user-dropdown-item" role="menuitem" onclick="event.preventDefault(); alert('Funcionalidad próximamente')">
-                    <i class="fas fa-user"></i> Mi Perfil
+                <a href="#settings" class="user-dropdown-item" role="menuitem" data-user-action="settings">
+                    <i class="fas fa-user" aria-hidden="true"></i> Mi cuenta y empresa
                 </a>
-                <a href="#" class="user-dropdown-item" role="menuitem" onclick="event.preventDefault(); alert('Funcionalidad próximamente')">
-                    <i class="fas fa-key"></i> Cambiar Contraseña
+                <a href="#settings" class="user-dropdown-item" role="menuitem" data-user-action="password">
+                    <i class="fas fa-key" aria-hidden="true"></i> Cambiar contraseña
                 </a>
                 <a href="#" class="user-dropdown-item danger" role="menuitem" id="logoutBtn">
                     <i class="fas fa-sign-out-alt"></i> Cerrar Sesión
@@ -139,21 +138,19 @@
             <header class="header">
                 <div class="header-left">
                     <button type="button" class="btn-menu" id="toggleSidebar" aria-controls="mainSidebar" aria-expanded="false" aria-label="Abrir menú" title="Abrir menú">
-                        <i class="fas fa-bars" aria-hidden="true"></i>
+                        <!-- SVG en línea: el botón del menú se ve aunque la fuente de iconos aún no cargue -->
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
                     </button>
-                    <h2 class="page-title" id="pageTitle">Dashboard</h2>
+                    <h2 class="page-title" id="pageTitle">Panel</h2>
                 </div>
                 <div class="header-right">
                     <div class="notif-wrapper">
-                        <button class="btn-icon" id="notificationsBtn" title="Notificaciones">
-                            <i class="fas fa-bell"></i>
+                        <button type="button" class="btn-icon" id="notificationsBtn" title="Notificaciones" aria-label="Notificaciones">
+                            <i class="fas fa-bell" aria-hidden="true"></i>
                             <span class="notif-badge" id="notificationsBadge" style="display:none">0</span>
                         </button>
                         <div class="notif-panel" id="notificationsPanel"></div>
                     </div>
-                    <button class="btn-icon" title="Mensajes">
-                        <i class="fas fa-envelope"></i>
-                    </button>
                 </div>
             </header>
             <div id="trialBanner" class="trial-banner" style="display:none"></div>
@@ -164,15 +161,39 @@
                 <!-- Dashboard Page -->
                 <div id="page-dashboard" class="page active">
                     <div class="page-header">
-                        <h1>Dashboard</h1>
+                        <h1>Panel</h1>
                         <p class="date-info"><i class="fas fa-calendar-alt"></i> <span id="currentDate"></span></p>
                     </div>
+
+                    <!-- Primeros pasos: se muestra hasta registrar el primer artículo y la primera venta -->
+                    <section id="onboardingCard" class="onboarding-card" hidden aria-labelledby="onboardingTitle">
+                        <h2 id="onboardingTitle">Primeros pasos</h2>
+                        <p>Completa estos dos pasos para registrar tu primera venta.</p>
+                        <ol class="onboarding-steps">
+                            <li id="onboardingStepArticulo">
+                                <span class="onboarding-check" aria-hidden="true"></span>
+                                <div>
+                                    <strong>1. Crea tu primer artículo</strong>
+                                    <span>Escribe el nombre, el precio de venta y cuántas unidades tienes.</span>
+                                </div>
+                                <button type="button" class="btn btn-primary" data-onboarding="articulo">Crear artículo</button>
+                            </li>
+                            <li id="onboardingStepVenta">
+                                <span class="onboarding-check" aria-hidden="true"></span>
+                                <div>
+                                    <strong>2. Registra tu primera venta</strong>
+                                    <span>Elige el artículo, la cantidad y guarda. La existencia baja sola.</span>
+                                </div>
+                                <button type="button" class="btn btn-primary" data-onboarding="venta">Registrar venta</button>
+                            </li>
+                        </ol>
+                    </section>
 
                     <!-- KPI Cards -->
                     <div class="kpi-grid">
                         <div class="kpi-card kpi-revenue" data-module="ventas">
                             <div class="kpi-header">
-                                <h3>Ingresos del Mes</h3>
+                                <h3>Ventas del mes</h3>
                                 <i class="fas fa-dollar-sign"></i>
                             </div>
                             <div class="kpi-value" id="kpiIngresos">--</div>
@@ -181,7 +202,7 @@
 
                         <div class="kpi-card kpi-expenses" data-module="compras">
                             <div class="kpi-header">
-                                <h3>Gastos del Mes</h3>
+                                <h3>Compras del mes</h3>
                                 <i class="fas fa-shopping-cart"></i>
                             </div>
                             <div class="kpi-value" id="kpiGastos">--</div>
@@ -190,7 +211,7 @@
 
                         <div class="kpi-card kpi-inventory" data-module="articulos">
                             <div class="kpi-header">
-                                <h3>Valor Inventario</h3>
+                                <h3>Valor del inventario (a costo)</h3>
                                 <i class="fas fa-boxes"></i>
                             </div>
                             <div class="kpi-value" id="kpiInventario">--</div>
@@ -199,7 +220,7 @@
 
                         <div class="kpi-card kpi-margin" data-module="ventas">
                             <div class="kpi-header">
-                                <h3>Margen Neto</h3>
+                                <h3>Margen bruto del mes</h3>
                                 <i class="fas fa-percentage"></i>
                             </div>
                             <div class="kpi-value" id="kpiMargen">--</div>
@@ -210,18 +231,18 @@
                     <!-- Charts Section -->
                     <div class="charts-section">
                         <div class="chart-card" data-module="ventas">
-                            <h3>Ventas Últimos 7 Días</h3>
+                            <h3>Ventas de los últimos 7 días</h3>
                             <canvas id="salesChart"></canvas>
                         </div>
                         <div class="chart-card" data-module="articulos">
-                            <h3>Distribución de Inventario</h3>
+                            <h3>Inventario por sección (a costo)</h3>
                             <canvas id="inventoryChart"></canvas>
                         </div>
                     </div>
 
                     <!-- Recent Transactions -->
                     <div class="recent-section">
-                        <h3><i class="fas fa-history"></i> Transacciones Recientes</h3>
+                        <h3><i class="fas fa-history" aria-hidden="true"></i> Movimientos recientes</h3>
                         <div class="transactions-table">
                             <table>
                                 <thead>
@@ -245,7 +266,7 @@
                 <div id="page-codigos-articulos" class="page">
                     <div class="page-header">
                         <div>
-                            <h1>Artículos</h1>
+                            <h1>Artículos e inventario</h1>
                             <p class="page-subtitle">Catálogo con precios, costos y existencias. Las ventas descuentan y las compras recibidas suman.</p>
                         </div>
                         <div class="button-group">
@@ -357,7 +378,8 @@
                         <input type="text" id="searchCaja" class="form-input" placeholder="Buscar movimiento...">
                         <select id="filterTipoCaja" class="form-input">
                             <option value="todos">Todos los Movimientos</option>
-                            <option value="Ingreso por Cobro">Ingreso por Cobro</option>
+                            <option value="Ingreso por Venta">Ingresos por venta</option>
+                            <option value="Ingreso por Cobro">Ingresos por cobro</option>
                             <option value="Egreso">Egresos</option>
                             <option value="Microfactura">Microfacturas</option>
                             <option value="Devolución">Devoluciones</option>
@@ -366,44 +388,6 @@
 
                     <div id="movimientosCajaTableContainer" class="table-responsive">
                         <!-- Poblada por JavaScript -->
-                    </div>
-                </div>
-
-                <!-- Medicinas Page -->
-                <!-- Inventory Page -->
-                <div id="page-inventory" class="page">
-                    <div class="page-header">
-                        <h1>Gestión de Inventario</h1>
-                        <button class="btn btn-primary" id="addProductBtn">
-                            <i class="fas fa-plus"></i> Agregar Producto
-                        </button>
-                    </div>
-
-                    <div class="inventory-filters">
-                        <input type="text" id="searchProduct" placeholder="Buscar producto...">
-                        <select id="categoryFilter">
-                            <option value="">Todas las categorías</option>
-                        </select>
-                    </div>
-
-                    <div class="inventory-table">
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>Código</th>
-                                    <th>Producto</th>
-                                    <th>Categoría</th>
-                                    <th>Stock</th>
-                                    <th>Precio Unitario</th>
-                                    <th>Valor Total</th>
-                                    <th>Estado</th>
-                                    <th>Acciones</th>
-                                </tr>
-                            </thead>
-                            <tbody id="inventoryTable">
-                                <!-- Populated by JavaScript -->
-                            </tbody>
-                        </table>
                     </div>
                 </div>
 
@@ -531,7 +515,7 @@
                             <div class="panel-header">
                                 <div>
                                     <h2>Empresa y licencia</h2>
-                                    <p class="panel-subtitle">Datos de tu suscripción. Para cambiarlos, contacta a soporte.</p>
+                                    <p class="panel-subtitle">Datos de tu suscripción. Para activar o cambiar tu plan, pedir una copia de tus datos o cerrar la cuenta, <a href="https://wa.me/50239959782" target="_blank" rel="noopener">escríbenos por WhatsApp</a>. <a href="legal.html" target="_blank" rel="noopener">Precios y condiciones</a>.</p>
                                 </div>
                             </div>
                             <dl class="info-grid" id="companyInfo"></dl>
@@ -624,9 +608,9 @@
                 <!-- Ventas Page -->
                 <div id="page-ventas" class="page">
                     <div class="page-header">
-                        <h1>Gestión de Ventas</h1>
+                        <h1>Ventas</h1>
                         <button class="btn btn-primary" id="addSaleBtn">
-                            <i class="fas fa-plus"></i> Nueva Venta
+                            <i class="fas fa-plus" aria-hidden="true"></i> Nueva venta
                         </button>
                     </div>
                     <div class="table-container">
@@ -761,7 +745,7 @@
                 <!-- Dashboard Financiero Page -->
                 <div id="page-dashboard-financiero" class="page">
                     <div class="page-header">
-                        <h1>Dashboard Ejecutivo</h1>
+                        <h1>Panel ejecutivo</h1>
                         <button class="btn btn-secondary" id="refreshFinancialBtn">
                             <i class="fas fa-sync"></i> Actualizar
                         </button>
@@ -771,7 +755,7 @@
                     </div>
                     <div class="section-heading">
                         <h2>Resumen financiero</h2>
-                        <p>Facturación, cobros, cartera y flujo de caja.</p>
+                        <p>Facturación, cobros, saldo por cobrar y flujo de caja.</p>
                     </div>
                     <div id="financialKPIs" class="kpi-grid"></div>
                     <div class="charts-section">
@@ -780,7 +764,7 @@
                             <canvas id="incomeExpenseChart"></canvas>
                         </div>
                         <div class="chart-card">
-                            <h3>Flujo de Caja</h3>
+                            <h3>Flujo de caja</h3>
                             <canvas id="cashFlowChart"></canvas>
                         </div>
                     </div>
@@ -845,7 +829,7 @@
                             <div class="form-row">
                                 <div class="form-group">
                                     <label>Monto (Q.) *</label>
-                                    <input type="number" id="inputMonto" placeholder="0.00" step="0.01" required>
+                                    <input type="text" id="inputMonto" inputmode="decimal" autocomplete="off" placeholder="0.00" required>
                                 </div>
                                 <div class="form-group">
                                     <label>Fecha *</label>
@@ -913,7 +897,7 @@
                             <div class="form-row">
                                 <div class="form-group">
                                     <label>Monto (Q.) *</label>
-                                    <input type="number" id="inputMontoCPP" placeholder="0.00" step="0.01" required>
+                                    <input type="text" id="inputMontoCPP" inputmode="decimal" autocomplete="off" placeholder="0.00" required>
                                 </div>
                                 <div class="form-group">
                                     <label>Número de Factura *</label>
@@ -1044,7 +1028,7 @@
                             <select id="purchaseProvider" class="form-input" required></select>
                         </div>
                         <div class="form-group">
-                            <label>Fecha <span class="required">*</span></label>
+                            <label for="saleDate">Fecha <span class="required">*</span></label>
                             <input type="date" id="purchaseDate" class="form-input" required>
                         </div>
                         <div class="form-group">
@@ -1153,25 +1137,31 @@
     <div id="saleModal" class="modal">
         <div class="modal-content modal-content-xl">
             <div class="modal-header">
-                <h2><i class="fas fa-cash-register"></i> Nueva Venta</h2>
-                <button class="close-btn" type="button" onclick="VentasModule.closeSaleModal()">&times;</button>
+                <h2><i class="fas fa-cash-register" aria-hidden="true"></i> Nueva venta</h2>
+                <button class="close-btn" type="button" aria-label="Cerrar" onclick="VentasModule.closeSaleModal()">&times;</button>
             </div>
             <div class="modal-body">
-                <form id="saleForm">
+                <form id="saleForm" novalidate>
                     <input id="saleId" type="hidden">
+                    <div id="saleCatalogNotice" class="inline-notice" role="status" hidden>
+                        <span></span>
+                        <button type="button" class="btn btn-primary btn-sm" onclick="VentasModule.goToArticulos()">Ir a Artículos</button>
+                    </div>
                     <div class="form-row">
                         <div class="form-group">
-                            <label>Cliente</label>
+                            <label for="saleRecipientSearch">Cliente (opcional)</label>
                             <div class="concept-search">
                                 <div class="concept-search-input">
                                     <i class="fas fa-search"></i>
                                     <input id="saleRecipientSearch" class="form-input" type="search" autocomplete="off"
-                                        placeholder="Buscar por nombre, DPI, NIT o teléfono..."
+                                        placeholder="Nombre, NIT (número tributario) o teléfono"
+                                        aria-describedby="saleRecipientHint"
                                         oninput="VentasModule.searchRecipient(this.value)">
                                 </div>
                                 <div id="saleRecipientResults" class="concept-search-results" hidden></div>
                             </div>
-                            <button type="button" class="btn btn-secondary btn-sm" style="margin-top:6px" onclick="VentasModule.toggleQuickClient(true)">
+                            <small id="saleRecipientHint">Si lo dejas vacío, la venta se registra a «Consumidor final» (cliente sin nombre).</small>
+                            <button type="button" class="btn btn-secondary btn-sm btn-touch" style="margin-top:6px" onclick="VentasModule.toggleQuickClient(true)">
                                 <i class="fas fa-user-plus"></i> Nuevo cliente
                             </button>
                             <div id="quickClientBox" hidden style="margin-top:8px;padding:10px;border:1px solid #e5e7eb;border-radius:8px">
@@ -1187,7 +1177,7 @@
                             <input id="saleDate" class="form-input" type="date" required>
                         </div>
                         <div class="form-group">
-                            <label>Método de pago</label>
+                            <label for="salePaymentMethod">Método de pago</label>
                             <select id="salePaymentMethod" class="form-input" onchange="VentasModule.updateCreditHint()">
                                 <option value="efectivo">Efectivo</option>
                                 <option value="tarjeta">Tarjeta</option>
@@ -1218,7 +1208,7 @@
             </div>
             <div class="modal-footer">
                 <button class="btn btn-secondary" type="button" onclick="VentasModule.closeSaleModal()">Cancelar</button>
-                <button class="btn btn-primary" type="button" id="saveSaleBtn"><i class="fas fa-save"></i> Guardar Venta</button>
+                <button class="btn btn-primary" type="button" id="saveSaleBtn"><i class="fas fa-save" aria-hidden="true"></i> Guardar venta</button>
             </div>
         </div>
     </div>
@@ -1227,112 +1217,114 @@
     <div id="articuloModal" class="modal">
         <div class="modal-content modal-content-xl">
             <div class="modal-header">
-                <h2><i class="fas fa-cube"></i> Gestión de Artículo</h2>
-                <button class="close-btn">&times;</button>
+                <h2><i class="fas fa-cube" aria-hidden="true"></i> <span id="articuloModalTitle">Nuevo artículo</span></h2>
+                <button type="button" class="close-btn" aria-label="Cerrar">&times;</button>
             </div>
             <div class="modal-body">
-                <form id="editArticuloForm">
+                <form id="editArticuloForm" novalidate>
                     <input type="hidden" id="articuloId">
-
-                    <div class="form-section-title">Información Básica</div>
-
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>Nombre <span class="required">*</span></label>
-                            <input type="text" id="articuloNombre" class="form-input" required>
-                        </div>
-                        <div class="form-group">
-                            <label>Concepto <span class="required">*</span></label>
-                            <input type="text" id="articuloConcepto" class="form-input" required>
-                        </div>
-                    </div>
-
-                    <div class="form-section-title">Sistema de Códigos Dual</div>
-
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>Código de Venta (Sistema Interno) <span class="required">*</span></label>
-                            <input type="text" id="codigoVenta" class="form-input" placeholder="Generando correlativo..." readonly required>
-                            <small>Generado automáticamente según el último correlativo registrado</small>
-                        </div>
-                        <div class="form-group">
-                            <label>Código de Compra (Sistema Externo)</label>
-                            <input type="text" id="codigoCompra" class="form-input" placeholder="Ej: LAB-BAYER-001">
-                            <small>Opcional: código del proveedor o sistema externo</small>
-                        </div>
-                    </div>
-
-                    <div class="form-section-title">Clasificación</div>
-
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>Sección <span class="required">*</span></label>
-                            <select id="articuloSeccion" class="form-input" onchange="CodigosArticulosModule.renderFamiliasForModal()" required>
-                                <option value="">-- Selecciona sección --</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label>Familia <span class="required">*</span></label>
-                            <select id="articuloFamilia" class="form-input" onchange="CodigosArticulosModule.renderSubfamiliasForModal()" required>
-                                <option value="">-- Selecciona familia --</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>Subfamilia</label>
-                            <select id="articuloSubfamilia" class="form-input">
-                                <option value="">-- Selecciona subfamilia --</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label>Tipo</label>
-                            <input type="text" id="articuloTipo" class="form-input" placeholder="Ej: producto, servicio">
-                        </div>
-                    </div>
-
-                    <div class="form-section-title">Precios</div>
-
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>Precio de Compra <span class="required">*</span></label>
-                            <input type="number" id="precioCompra" class="form-input" step="0.01" min="0.01" required>
-                        </div>
-                        <div class="form-group">
-                            <label>Precio de Venta <span class="required">*</span></label>
-                            <input type="number" id="precioVenta" class="form-input" step="0.01" min="0.01" required>
-                        </div>
-                    </div>
-
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>Cantidad Disponible</label>
-                            <input type="number" id="articuloCantidad" class="form-input" min="0" step="1" value="0">
-                        </div>
-                        <div class="form-group">
-                            <label>Unidad de Medida</label>
-                            <input type="text" id="articuloUnidadMedida" class="form-input" placeholder="Ej: unidad, caja, ml">
-                        </div>
-                        <div class="form-group">
-                            <label>Estado</label>
-                            <select id="articuloEstado" class="form-input">
-                                <option value="activo">Activo</option>
-                                <option value="inactivo">Inactivo</option>
-                            </select>
-                        </div>
-                    </div>
+                    <p class="form-note">Los campos con <span class="required">*</span> son obligatorios.</p>
 
                     <div class="form-group full-width">
-                        <label>Descripción</label>
-                        <textarea id="articuloDescripcion" class="form-input" rows="3"></textarea>
+                        <label for="articuloNombre">Nombre del artículo <span class="required">*</span></label>
+                        <input type="text" id="articuloNombre" class="form-input" maxlength="150" required placeholder="Ej: Camiseta azul talla M">
                     </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="precioVenta">Precio de venta (Q) <span class="required">*</span></label>
+                            <input type="text" id="precioVenta" class="form-input" inputmode="decimal" autocomplete="off" required placeholder="0.00">
+                            <small>Lo que paga tu cliente por una unidad.</small>
+                        </div>
+                        <div class="form-group">
+                            <label for="precioCompra">Precio de compra (Q)</label>
+                            <input type="text" id="precioCompra" class="form-input" inputmode="decimal" autocomplete="off" placeholder="0.00">
+                            <small>Opcional. Lo que te cuesta una unidad; sirve para calcular tu ganancia.</small>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="articuloCantidad">Existencia: unidades que tienes hoy <span class="required">*</span></label>
+                            <input type="text" id="articuloCantidad" class="form-input" inputmode="numeric" autocomplete="off" required placeholder="Ej: 10">
+                            <small>Sin existencia no podrás venderlo. Escribe 0 si aún no tienes unidades.</small>
+                        </div>
+                        <div class="form-group">
+                            <label for="articuloUnidadMedida">Unidad de medida</label>
+                            <input type="text" id="articuloUnidadMedida" class="form-input" maxlength="50" placeholder="Ej: unidad, caja, litro">
+                        </div>
+                    </div>
+
+                    <details class="form-more">
+                        <summary>Más opciones: códigos, clasificación y descripción</summary>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="codigoVenta">Código interno</label>
+                                <input type="text" id="codigoVenta" class="form-input" placeholder="Generando código..." readonly>
+                                <small>Se asigna solo (ART-001, ART-002…).</small>
+                            </div>
+                            <div class="form-group">
+                                <label for="codigoCompra">Código de barras o del proveedor</label>
+                                <input type="text" id="codigoCompra" class="form-input" maxlength="100" placeholder="Ej: 7401234567890">
+                                <small>Opcional.</small>
+                            </div>
+                        </div>
+
+                        <div class="form-group full-width">
+                            <label for="articuloConcepto">Nombre en facturas</label>
+                            <input type="text" id="articuloConcepto" class="form-input" maxlength="200">
+                            <small>Opcional. Si lo dejas vacío se usa el nombre del artículo.</small>
+                        </div>
+
+                        <p class="form-note">Sección, familia y subfamilia son opcionales y sirven para agrupar artículos. Puedes crearlas en Configuración.</p>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="articuloSeccion">Sección</label>
+                                <select id="articuloSeccion" class="form-input" onchange="CodigosArticulosModule.renderFamiliasForModal()">
+                                    <option value="">Sin sección</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="articuloFamilia">Familia</label>
+                                <select id="articuloFamilia" class="form-input" onchange="CodigosArticulosModule.renderSubfamiliasForModal()">
+                                    <option value="">Sin familia</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="articuloSubfamilia">Subfamilia</label>
+                                <select id="articuloSubfamilia" class="form-input">
+                                    <option value="">Sin subfamilia</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="articuloTipo">Tipo</label>
+                                <input type="text" id="articuloTipo" class="form-input" maxlength="50" placeholder="Ej: producto, servicio">
+                                <small>Opcional. Sirve para agrupar artículos en tus reportes.</small>
+                            </div>
+                            <div class="form-group">
+                                <label for="articuloEstado">Estado</label>
+                                <select id="articuloEstado" class="form-input">
+                                    <option value="activo">Activo (se puede vender)</option>
+                                    <option value="inactivo">Inactivo (oculto en ventas)</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="form-group full-width">
+                            <label for="articuloDescripcion">Descripción</label>
+                            <textarea id="articuloDescripcion" class="form-input" rows="3"></textarea>
+                        </div>
+                    </details>
                 </form>
             </div>
             <div class="modal-footer">
-                <button class="btn btn-secondary" onclick="CodigosArticulosModule.closeArticuloModal()">Cancelar</button>
-                <button class="btn btn-primary" id="saveArticuloBtn">
-                    <i class="fas fa-save"></i> Guardar Artículo
+                <button type="button" class="btn btn-secondary" onclick="CodigosArticulosModule.closeArticuloModal()">Cancelar</button>
+                <button type="button" class="btn btn-primary" id="saveArticuloBtn">
+                    <i class="fas fa-save" aria-hidden="true"></i> Guardar artículo
                 </button>
             </div>
         </div>
@@ -1352,7 +1344,8 @@
                             <label>Tipo de Movimiento <span class="required">*</span></label>
                             <select id="movimientoCajaType" class="form-input" required>
                                 <option value="">-- Selecciona tipo --</option>
-                                <option value="Ingreso por Cobro">Ingreso por Cobro</option>
+                                <option value="Ingreso por Venta">Ingresos por venta</option>
+                            <option value="Ingreso por Cobro">Ingresos por cobro</option>
                                 <option value="Egreso">Egreso</option>
                                 <option value="Devolución">Devolución</option>
                                 <option value="Transferencia">Transferencia</option>
@@ -1369,7 +1362,7 @@
                     <div class="form-row">
                         <div class="form-group">
                             <label>Monto <span class="required">*</span></label>
-                            <input type="number" id="movimientoCajaMonto" class="form-input" step="0.01" min="0.01" required>
+                            <input type="text" id="movimientoCajaMonto" class="form-input" inputmode="decimal" autocomplete="off" placeholder="0.00" required>
                         </div>
                         <div class="form-group">
                             <label>Fecha <span class="required">*</span></label>
@@ -1423,7 +1416,7 @@
                     <div class="form-row">
                         <div class="form-group">
                             <label>Monto <span class="required">*</span></label>
-                            <input type="number" id="microfacturaMonto" class="form-input" step="0.01" min="0.01" required>
+                            <input type="text" id="microfacturaMonto" class="form-input" inputmode="decimal" autocomplete="off" placeholder="0.00" required>
                         </div>
                         <div class="form-group">
                             <label>Fecha <span class="required">*</span></label>
@@ -1610,7 +1603,7 @@
                                 <th style="width: 50px;"></th>
                             </tr>
                         </thead>
-                        <tbody id="bulkTableBody">                        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+                        <tbody id="bulkTableBody">
                             <!-- Rows will be added here -->
                         </tbody>
                     </table>
@@ -1685,11 +1678,6 @@
 
 
     <!-- Script imports -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="js/config.js"></script>
     <script src="data/demo-data.js"></script>
     <script src="js/api-helper.js"></script>

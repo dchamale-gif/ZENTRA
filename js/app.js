@@ -78,12 +78,16 @@ async function initializeApp() {
     
     if (typeof UsuariosModule !== 'undefined') UsuariosModule.init();
     AccessControl.refresh().then(initializeUserProfile);
+    restorePageFromHash();
     console.log('✅ Sistema inicializado correctamente');
 }
 
 // ============================================
 // NAVEGACIÓN
 // ============================================
+
+// Rutas antiguas que ahora viven en otra página.
+const PAGE_ALIASES = { inventory: 'codigos-articulos' };
 
 function setupNavigation() {
     const navItems = document.querySelectorAll('.nav-item');
@@ -94,9 +98,96 @@ function setupNavigation() {
             navigateToPage(page);
         });
     });
+
+    // Cada sección queda en el historial: "Atrás" cierra el formulario abierto
+    // o vuelve a la sección anterior en lugar de salir de la aplicación.
+    window.addEventListener('popstate', () => {
+        if (closeOpenModals()) return;
+        navigateToPage(pageFromHash(), { fromHistory: true });
+    });
 }
 
-function navigateToPage(pageId) {
+// Formularios con datos que se pierden al cerrarlos. Solo se pide confirmación si el
+// usuario escribió algo desde que lo abrió.
+const DRAFT_FORMS = ['saleModal', 'articuloModal', 'purchaseModal'];
+
+function openDraftForm() {
+    return DRAFT_FORMS.map(id => document.getElementById(id))
+        .find(modal => modal && ['flex', 'block'].includes(modal.style.display) && modal.dataset.dirty === 'true');
+}
+
+document.addEventListener('input', event => {
+    const modal = event.target.closest?.('.modal');
+    if (modal && DRAFT_FORMS.includes(modal.id)) modal.dataset.dirty = 'true';
+});
+
+// Al cerrarse, el formulario vuelve a quedar "limpio" para la próxima vez.
+const draftFormObserver = new MutationObserver(mutations => mutations.forEach(({ target }) => {
+    if (target.style.display !== 'flex' && target.style.display !== 'block') target.dataset.dirty = '';
+}));
+DRAFT_FORMS.forEach(id => {
+    const modal = document.getElementById(id);
+    if (modal) draftFormObserver.observe(modal, { attributes: true, attributeFilter: ['style'] });
+});
+
+// La × también pregunta si hay datos escritos (Cancelar es una decisión explícita).
+document.addEventListener('click', event => {
+    const closeButton = event.target.closest?.('.modal .close-btn');
+    if (!closeButton || closeButton.closest('.modal') !== openDraftForm()) return;
+    if (!confirm('¿Cerrar el formulario? Se perderá lo que escribiste.')) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+    }
+}, true);
+
+window.addEventListener('beforeunload', event => {
+    if (openDraftForm()) {
+        event.preventDefault();
+        event.returnValue = '';
+    }
+});
+
+// Se llama al final de initializeApp, cuando los módulos ya están listos.
+function restorePageFromHash() {
+    const initialPage = pageFromHash();
+    history.replaceState(null, '', `#${initialPage}`);
+    if (initialPage !== 'dashboard') navigateToPage(initialPage, { fromHistory: true });
+}
+
+function pageFromHash() {
+    let pageId;
+    try {
+        pageId = decodeURIComponent(location.hash.slice(1)) || 'dashboard';
+    } catch {
+        pageId = 'dashboard';
+    }
+    const resolved = PAGE_ALIASES[pageId] || pageId;
+    return document.getElementById(`page-${resolved}`) ? resolved : 'dashboard';
+}
+
+// Cierra los formularios y ventanas abiertos; devuelve true si había alguno.
+function closeOpenModals() {
+    const open = [...document.querySelectorAll('.modal')].filter(modal =>
+        modal.classList.contains('active') || modal.style.display === 'block' || modal.style.display === 'flex');
+    const overlays = document.querySelectorAll('.modal-overlay');
+    if (!open.length && !overlays.length) return false;
+    if (openDraftForm() && !confirm('¿Salir del formulario? Se perderá lo que escribiste.')) {
+        history.pushState(null, '', `#${currentPage}`);
+        return true;
+    }
+    open.forEach(modal => {
+        modal.classList.remove('active');
+        modal.style.display = 'none';
+    });
+    overlays.forEach(overlay => overlay.remove());
+    document.body.style.overflow = '';
+    // Volver a dejar la sección actual en el historial que se acaba de consumir.
+    history.pushState(null, '', `#${currentPage}`);
+    return true;
+}
+
+function navigateToPage(pageId, { fromHistory = false } = {}) {
+    pageId = PAGE_ALIASES[pageId] || pageId;
     if (!AccessControl.canOpenPage(pageId)) {
         showNotification('Este módulo no está disponible para tu usuario', 'warning');
         pageId = 'dashboard';
@@ -127,14 +218,13 @@ function navigateToPage(pageId) {
 
     // El título superior es el mismo texto del menú.
     const navLabel = document.querySelector(`.nav-item[data-page="${pageId}"] span`)?.textContent;
-    document.getElementById('pageTitle').textContent = navLabel || 'Dashboard';
+    document.getElementById('pageTitle').textContent = navLabel || 'Panel';
 
     currentPage = pageId;
+    if (!fromHistory && location.hash !== `#${pageId}`) history.pushState(null, '', `#${pageId}`);
 
-    // Cerrar el drawer después de navegar en pantallas pequeñas.
-    if (window.innerWidth <= 768) {
-        setSidebarOpen(false);
-    }
+    // Cerrar el drawer después de navegar (en escritorio no hace nada).
+    setSidebarOpen(false);
 
     // Re-initialize charts if on dashboard or financial dashboard
     if (pageId === 'dashboard') {
@@ -163,6 +253,9 @@ function navigateToPage(pageId) {
     if (pageId === 'caja' && typeof CajaModule !== 'undefined') {
         CajaModule.loadData();
     }
+    if (pageId === 'caja-integrada' && typeof CajaIntegradaModule !== 'undefined') {
+        CajaIntegradaModule.loadMovimientosFromAPI();
+    }
     if (pageId === 'codigos-articulos' && typeof CodigosArticulosModule !== 'undefined') {
         CodigosArticulosModule.loadData();
     }
@@ -174,9 +267,6 @@ function navigateToPage(pageId) {
     }
     if (pageId === 'settings') {
         ClasificacionesConfig.load();
-    }
-    if (pageId === 'inventory') {
-        loadInventory();
     }
     if (pageId === 'transactions') {
         loadTransactions();
@@ -252,10 +342,12 @@ let dashboardData = { salesByDay: [], inventoryByCategory: [], recent: [] };
 async function setupDashboard() {
     try {
         const response = await authManager.fetchWithAuth('/api/dashboard');
+        if (!response) return; // sesión cerrada: fetchWithAuth ya redirige al inicio
         const result = await response.json();
         if (result.success) {
             dashboardData = result.data;
             renderDashboardKpis(result.data.kpis);
+            renderOnboarding(result.data.onboarding);
         }
     } catch (error) {
         console.error('Error cargando dashboard:', error);
@@ -264,17 +356,65 @@ async function setupDashboard() {
     initializeDashboardCharts();
 }
 
+function renderOnboarding(progress) {
+    const card = document.getElementById('onboardingCard');
+    if (!card || !progress) return;
+    const steps = { articulo: progress.articulos > 0, venta: progress.ventas > 0 };
+    card.hidden = steps.articulo && steps.venta;
+    Object.entries(steps).forEach(([step, done]) => {
+        const item = document.getElementById(`onboardingStep${step === 'articulo' ? 'Articulo' : 'Venta'}`);
+        item?.classList.toggle('is-done', done);
+        const button = item?.querySelector('button');
+        if (button) button.hidden = done;
+    });
+    if (!card.dataset.bound) {
+        card.dataset.bound = 'true';
+        card.addEventListener('click', event => {
+            const step = event.target.closest('[data-onboarding]')?.dataset.onboarding;
+            if (step === 'articulo') {
+                navigateToPage('codigos-articulos');
+                CodigosArticulosModule.openArticuloModal();
+            } else if (step === 'venta') {
+                navigateToPage('ventas');
+                VentasModule.openSaleModal();
+            }
+        });
+    }
+}
+
+// Reemplaza una gráfica por un mensaje cuando no hay datos o Chart.js no cargó.
+function setChartMessage(canvas, message) {
+    const card = canvas.parentElement;
+    let note = card.querySelector('.chart-empty');
+    canvas.hidden = Boolean(message);
+    if (!message) {
+        note?.remove();
+        return;
+    }
+    if (!note) {
+        note = document.createElement('p');
+        note.className = 'chart-empty';
+        card.appendChild(note);
+    }
+    note.textContent = message;
+}
+
 function renderDashboardKpis(k) {
-    const money = v => 'Q. ' + (Number(v) || 0).toLocaleString('es-GT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const money = formatQ;
     const set = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
     const change = (id, value, goodWhenUp, suffix) => {
         const el = document.getElementById(id);
         if (!el) return;
-        if (value === null) { el.innerHTML = ''; return; }
-        const up = value >= 0;
+        if (value === null || value === undefined) { el.innerHTML = ''; return; }
+        if (Math.abs(value) < 0.05) {
+            el.className = 'kpi-change';
+            el.textContent = 'Sin cambio vs mes anterior';
+            return;
+        }
+        const up = value > 0;
         const good = goodWhenUp ? up : !up;
         el.className = 'kpi-change ' + (good ? 'positive' : 'negative');
-        el.innerHTML = `<i class="fas fa-arrow-${up ? 'up' : 'down'}"></i> ${Math.abs(value).toFixed(1)}${suffix}`;
+        el.innerHTML = `<i class="fas fa-arrow-${up ? 'up' : 'down'}" aria-hidden="true"></i> ${Math.abs(value).toFixed(1)}${suffix}`;
     };
     set('kpiIngresos', money(k.ingresos));
     set('kpiGastos', money(k.gastos));
@@ -289,15 +429,28 @@ function renderDashboardKpis(k) {
 function initializeDashboardCharts() {
     if (charts.sales) charts.sales.destroy();
     if (charts.inventory) charts.inventory.destroy();
+    charts.sales = charts.inventory = null;
+
+    const salesCtx = document.getElementById('salesChart');
+    const inventoryCtx = document.getElementById('inventoryChart');
+    if (typeof Chart === 'undefined') {
+        // Chart.js se descarga después de que el panel ya es usable.
+        loadLibrary('chart').then(initializeDashboardCharts).catch(() => {
+            [salesCtx, inventoryCtx].forEach(canvas => canvas && setChartMessage(canvas, 'No se pudo cargar la gráfica. Recarga la página para intentarlo de nuevo.'));
+        });
+        return;
+    }
+    const salesData = dashboardData.salesByDay || [];
+    const inventoryData = dashboardData.inventoryByCategory || [];
+    if (salesCtx) setChartMessage(salesCtx, salesData.some(d => d.sales > 0) ? '' : 'Aún no hay ventas en los últimos 7 días.');
+    if (inventoryCtx) setChartMessage(inventoryCtx, inventoryData.length ? '' : 'Aún no hay existencias registradas.');
 
     // Sales Chart
-    const salesCtx = document.getElementById('salesChart');
-    if (salesCtx) {
-        const salesData = dashboardData.salesByDay;
+    if (salesCtx && !salesCtx.hidden) {
         charts.sales = new Chart(salesCtx, {
             type: 'line',
             data: {
-                labels: salesData.map(d => d.day),
+                labels: salesData.map(d => d.day.slice(8, 10) + '/' + d.day.slice(5, 7)),
                 datasets: [{
                     label: 'Ventas (Q)',
                     data: salesData.map(d => d.sales),
@@ -328,7 +481,7 @@ function initializeDashboardCharts() {
                         beginAtZero: true,
                         ticks: {
                             callback: function(value) {
-                                return 'Q.' + value.toLocaleString();
+                                return legacyMoney(value);
                             }
                         }
                     }
@@ -338,9 +491,7 @@ function initializeDashboardCharts() {
     }
 
     // Inventory Distribution Chart
-    const inventoryCtx = document.getElementById('inventoryChart');
-    if (inventoryCtx) {
-        const inventoryData = dashboardData.inventoryByCategory;
+    if (inventoryCtx && !inventoryCtx.hidden) {
         charts.inventory = new Chart(inventoryCtx, {
             type: 'doughnut',
             data: {
@@ -360,6 +511,7 @@ function initializeDashboardCharts() {
             options: {
                 responsive: true,
                 maintainAspectRatio: true,
+                aspectRatio: 2,
                 plugins: {
                     legend: {
                         position: 'bottom'
@@ -420,7 +572,7 @@ function formatCurrency(v) { return legacyMoney(v); }
 function getTransactionTypeIcon(type) {
     return type === 'Compra' ? 'fas fa-arrow-down' : 'fas fa-arrow-up';
 }
-const legacyMoney = v => 'Q. ' + (Number(v) || 0).toLocaleString('es-GT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const legacyMoney = formatQ;
 const legacyEsc = v => BulkImport.escapeHtml(v);
 const legacyStatusClass = status => {
     const s = String(status || '').toLowerCase();
@@ -428,70 +580,13 @@ const legacyStatusClass = status => {
     if (['anulada', 'cancelada', 'failed'].includes(s)) return 'status-failed';
     return 'status-pending';
 };
-let inventoryItems = [];
 let transactionItems = [];
 
 function setupInventory() {
-    ['addProductBtn', 'addTransactionBtn', 'bulkTransactionBtn'].forEach(id => {
+    ['addTransactionBtn', 'bulkTransactionBtn'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.style.display = 'none';
     });
-    document.getElementById('searchProduct')?.addEventListener('keyup', renderInventoryTable);
-    document.getElementById('categoryFilter')?.addEventListener('change', renderInventoryTable);
-}
-
-async function loadInventory() {
-    try {
-        const response = await authManager.fetchWithAuth('/api/codigos-articulos?activo=true');
-        const result = await response.json();
-        inventoryItems = result.articulos || [];
-    } catch (error) {
-        console.error('Error cargando inventario:', error);
-        inventoryItems = [];
-    }
-    const filter = document.getElementById('categoryFilter');
-    if (filter) {
-        const current = filter.value;
-        const categories = [...new Set(inventoryItems.map(a => a.categoria).filter(Boolean))].sort();
-        filter.innerHTML = '<option value="">Todas las categorías</option>' +
-            categories.map(c => `<option value="${legacyEsc(c)}">${legacyEsc(c)}</option>`).join('');
-        filter.value = current;
-    }
-    renderInventoryTable();
-}
-
-function renderInventoryTable() {
-    const tbody = document.getElementById('inventoryTable');
-    if (!tbody) return;
-    const term = (document.getElementById('searchProduct')?.value || '').toLowerCase();
-    const category = document.getElementById('categoryFilter')?.value || '';
-
-    const items = inventoryItems.filter(a =>
-        (!category || a.categoria === category) &&
-        (!term || `${a.nombre_articulo} ${a.codigo}`.toLowerCase().includes(term)));
-
-    if (items.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 30px;">No se encontraron productos</td></tr>';
-        return;
-    }
-
-    tbody.innerHTML = items.map(a => {
-        const stock = Number(a.cantidad_disponible) || 0;
-        const price = Number(a.precio_unitario) || 0;
-        const status = stock <= 0 ? 'Agotado' : stock < 10 ? 'Stock bajo' : 'Disponible';
-        const cls = stock <= 0 ? 'status-failed' : stock < 10 ? 'status-pending' : 'status-completed';
-        return `
-            <tr>
-                <td><strong>${legacyEsc(a.codigo)}</strong></td>
-                <td>${legacyEsc(a.nombre_articulo)}</td>
-                <td>${legacyEsc(a.categoria || '-')}</td>
-                <td>${stock} unidades</td>
-                <td>${legacyMoney(price)}</td>
-                <td><strong>${legacyMoney(price * stock)}</strong></td>
-                <td><span class="status-badge ${cls}">${status}</span></td>
-                <td></td>
-            </tr>`;
-    }).join('');
 }
 
 function setupTransactions() {
@@ -597,23 +692,38 @@ function showNotification(message, type = 'info') {
     notification.innerHTML = `
         <div class="notification-content">
             <span class="notification-icon">${style.icon}</span>
-            <span class="notification-text">${message}</span>
-            <button class="notification-close">×</button>
+            <span class="notification-text"></span>
+            <button type="button" class="notification-close" aria-label="Cerrar aviso">×</button>
         </div>
     `;
+    // Los mensajes pueden incluir nombres escritos por usuarios: siempre como texto.
+    // El aviso ya trae su propio icono, así que se quita un emoji inicial repetido.
+    notification.querySelector('.notification-text').textContent =
+        String(message ?? '').replace(/^\s*(?:✅|❌|⚠️|⚠|ℹ️)\s*/u, '');
+    notification.setAttribute('role', type === 'error' ? 'alert' : 'status');
+    const narrow = window.innerWidth < 480;
+    // Escritorio: arriba al centro (no tapa los botones de la página ni la × de los formularios).
+    // Móvil: abajo, por encima del pie del formulario si hay uno abierto (no tapa el menú).
+    const formOpen = [...document.querySelectorAll('.modal')].some(modal =>
+        modal.classList.contains('active') || ['flex', 'block'].includes(modal.style.display));
+    const mobileBottom = formOpen ? '96px' : '16px';
 
     notification.style.cssText = `
         position: fixed;
-        bottom: 20px;
-        right: 20px;
+        top: ${narrow ? 'auto' : '72px'};
+        bottom: ${narrow ? `calc(${mobileBottom} + env(safe-area-inset-bottom, 0px))` : 'auto'};
+        height: auto;
+        right: ${narrow ? '16px' : 'auto'};
+        left: ${narrow ? '16px' : '50%'};
+        transform: ${narrow ? 'none' : 'translateX(-50%)'};
         padding: 0;
         background: ${style.bg};
         color: white;
         border-radius: 12px;
         box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2), 0 0 1px rgba(0, 0, 0, 0.1);
         z-index: 10000;
-        animation: slideInRight 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
-        min-width: 320px;
+        animation: none;
+        min-width: ${narrow ? '0' : '320px'};
         max-width: 450px;
         border-left: 4px solid ${style.border};
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -660,8 +770,8 @@ function showNotification(message, type = 'info') {
         font-size: 24px;
         cursor: pointer;
         padding: 0;
-        width: 24px;
-        height: 24px;
+        width: 44px;
+        height: 44px;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -681,21 +791,25 @@ function showNotification(message, type = 'info') {
     });
 
     closeBtn.addEventListener('click', () => {
-        notification.style.animation = 'slideOutRight 0.3s cubic-bezier(0.6, -0.28, 0.735, 0.045)';
+        notification.style.transition = 'opacity 0.2s ease-out';
+        notification.style.opacity = '0';
         setTimeout(() => notification.remove(), 300);
     });
 
+    // Un aviso a la vez: los anteriores pueden contradecir al nuevo.
+    document.querySelectorAll('body > .notification').forEach(previous => previous.remove());
     document.body.appendChild(notification);
 
-    // Auto-remover después de 4 segundos
+    // Auto-remover después de 4 segundos (los errores se quedan 8 para poder leerlos)
     const autoRemoveTimeout = setTimeout(() => {
         if (notification.parentNode) {
-            notification.style.animation = 'slideOutRight 0.3s cubic-bezier(0.6, -0.28, 0.735, 0.045)';
+            notification.style.transition = 'opacity 0.2s ease-out';
+        notification.style.opacity = '0';
             setTimeout(() => {
                 if (notification.parentNode) notification.remove();
             }, 300);
         }
-    }, 4000);
+    }, type === 'error' ? 8000 : 4000);
 
     // Cancelar auto-remover si el usuario cierra manualmente
     notification.addEventListener('click', (e) => {
@@ -790,7 +904,8 @@ function labelMobileListTables(root) {
         'table.data-table',
         'table.tabla-datos',
         'table.report-table',
-        'table.statement-table'
+        'table.statement-table',
+        '.transactions-table table'
     ].join(', ');
     const excludedSelector = [
         '.bulk-table',
@@ -903,14 +1018,18 @@ function switchGastosTab(tabName) {
 function agregarPago() {
     const concepto = document.getElementById('selectConcepto').value;
     const proveedor = document.getElementById('selectProveedor').value;
-    const monto = document.getElementById('inputMonto').value;
+    const monto = parseMonto(document.getElementById('inputMonto').value);
     const fecha = document.getElementById('inputFecha').value;
     const numeroFactura = document.getElementById('inputNumeroFactura').value;
     const requisicion = document.getElementById('inputRequisicion').value;
     const referencia = document.getElementById('inputReferencia').value;
 
     if (!concepto || !proveedor || !monto || !fecha || !numeroFactura) {
-        alert('Por favor complete todos los campos requeridos (incluyendo número de factura)');
+        showNotification('Por favor complete todos los campos requeridos (incluyendo número de factura).', 'warning');
+        return;
+    }
+    if (!isValidMonto(monto)) {
+        showNotification('Escribe un monto mayor que 0, por ejemplo 25.50 (máximo 99,999,999.99).', 'warning');
         return;
     }
 
@@ -937,7 +1056,7 @@ function agregarProveedor() {
     const referencia = document.getElementById('inputProveedorReferencia').value;
 
     if (!nombre || !contacto) {
-        alert('Por favor ingrese el nombre del proveedor y el contacto');
+        showNotification('Por favor ingrese el nombre del proveedor y el contacto.', 'warning');
         return;
     }
 
@@ -957,13 +1076,17 @@ function agregarProveedor() {
 function agregarCuentaPorPagar() {
     const proveedor = document.getElementById('selectProveedorCPP').value;
     const concepto = document.getElementById('selectConceptoCPP').value;
-    const monto = document.getElementById('inputMontoCPP').value;
+    const monto = parseMonto(document.getElementById('inputMontoCPP').value);
     const numeroFactura = document.getElementById('inputNumeroFacturaCPP').value;
     const fecha = document.getElementById('inputFechaCPP').value;
     const vencimiento = document.getElementById('inputVencimientoCPP').value;
 
     if (!proveedor || !concepto || !monto || !numeroFactura || !fecha || !vencimiento) {
-        alert('Por favor complete todos los campos requeridos');
+        showNotification('Por favor complete todos los campos requeridos.', 'warning');
+        return;
+    }
+    if (!isValidMonto(monto)) {
+        showNotification('Escribe un monto mayor que 0, por ejemplo 25.50 (máximo 99,999,999.99).', 'warning');
         return;
     }
 
@@ -1036,11 +1159,11 @@ function populateSelectsCuentasPorPagar() {
 
     if (gastosModule && gastosModule.state) {
         gastosModule.state.proveedores.forEach(proveedor => {
-            selectProveedor.innerHTML += `<option value="${proveedor.id}">${proveedor.nombre}</option>`;
+            selectProveedor.innerHTML += `<option value="${escGastos(proveedor.id)}">${escGastos(proveedor.nombre)}</option>`;
         });
 
         gastosModule.state.conceptos.forEach(concepto => {
-            selectConcepto.innerHTML += `<option value="${concepto.id}">${concepto.nombre}</option>`;
+            selectConcepto.innerHTML += `<option value="${escGastos(concepto.id)}">${escGastos(concepto.nombre)}</option>`;
         });
     }
 }
@@ -1072,7 +1195,7 @@ function abrirModalBajaProveedor(proveedorId, proveedorNombre) {
 
 function confirmarBajaProveedor() {
     if (!proveedorEnBaja) {
-        alert('Error: No se especificó el proveedor');
+        showNotification('Error: No se especificó el proveedor.', 'warning');
         return;
     }
 
@@ -1081,7 +1204,7 @@ function confirmarBajaProveedor() {
     const detalles = document.getElementById('inputDetallesBaja').value;
 
     if (!fechaBaja || !motivo) {
-        alert('Por favor complete la fecha y el motivo de la baja');
+        showNotification('Por favor complete la fecha y el motivo de la baja.', 'warning');
         return;
     }
 
@@ -1163,8 +1286,31 @@ function setupLogout() {
                 toggleUserMenu(e);
             }
         });
-        document.getElementById('userDropdown')?.addEventListener('click', e => e.stopPropagation());
+        document.getElementById('userDropdown')?.addEventListener('click', e => {
+            e.stopPropagation();
+            const action = e.target.closest('[data-user-action]')?.dataset.userAction;
+            if (!action) return;
+            e.preventDefault();
+            closeUserMenu();
+            navigateToPage('settings');
+            if (action === 'password') {
+                const field = document.getElementById('currentPassword');
+                field?.scrollIntoView({ block: 'center' });
+                field?.focus();
+            }
+        });
     }
+
+    const closeUserMenu = () => {
+        document.getElementById('userDropdown')?.classList.remove('active');
+        userMenu?.setAttribute('aria-expanded', 'false');
+    };
+    document.addEventListener('keydown', e => {
+        if (e.key === 'Escape' && document.getElementById('userDropdown')?.classList.contains('active')) {
+            closeUserMenu();
+            userMenu?.focus();
+        }
+    });
 
     // Cerrar menú al hacer click fuera
     document.addEventListener('click', function() {

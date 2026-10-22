@@ -1,7 +1,7 @@
 // ============================================
 // CARGA MASIVA DESDE EXCEL / CSV
 // ============================================
-// Requiere SheetJS (window.XLSX) cargado desde CDN.
+// Requiere SheetJS (window.XLSX); se descarga desde CDN al abrir la importación.
 
 const BulkImport = {
     MAX_ROWS: 5000,
@@ -27,10 +27,14 @@ const BulkImport = {
      *   onDone?: () => void
      * }
      */
-    open(config) {
+    async open(config) {
         if (typeof XLSX === 'undefined') {
-            alert('No se pudo cargar el lector de Excel. Revise su conexión a internet e intente de nuevo.');
-            return;
+            try {
+                await loadLibrary('xlsx');
+            } catch (error) {
+                showNotification('No se pudo cargar el lector de Excel. Revisa tu conexión a internet e inténtalo de nuevo.', 'error');
+                return;
+            }
         }
 
         document.getElementById('bulkImportModal')?.remove();

@@ -51,7 +51,7 @@ class AuthManager {
             console.error('Error en login:', error);
             return {
                 success: false,
-                error: error.message
+                error: friendlyError(error)
             };
         }
     }
@@ -107,7 +107,7 @@ class AuthManager {
             console.error('Error en registro:', error);
             return {
                 success: false,
-                error: error.message
+                error: friendlyError(error)
             };
         }
     }
@@ -135,7 +135,7 @@ class AuthManager {
             return { success: true, user: data.user };
         } catch (error) {
             console.error('Error obteniendo perfil:', error);
-            return { success: false, error: error.message };
+            return { success: false, error: friendlyError(error) };
         }
     }
 
@@ -258,6 +258,74 @@ const authManager = new AuthManager();
 // UTILIDADES DE UI
 // ============================================
 
+// Librerías pesadas que solo se usan en algunas acciones: se descargan al necesitarlas
+// para que el panel cargue rápido en conexiones lentas.
+const LAZY_LIBRARIES = {
+    chart: '/vendor/chartjs/chart.umd.js',
+    xlsx: 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js',
+    pdf: 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js'
+};
+const lazyLibraryLoads = {};
+
+function loadLibrary(name) {
+    if (!lazyLibraryLoads[name]) {
+        lazyLibraryLoads[name] = new Promise((resolve, reject) => {
+            const script = document.createElement('script');
+            script.src = LAZY_LIBRARIES[name];
+            script.async = true;
+            script.onload = resolve;
+            script.onerror = () => {
+                delete lazyLibraryLoads[name];
+                script.remove();
+                reject(new Error('No se pudo descargar un componente necesario. Revisa tu conexión e inténtalo de nuevo.'));
+            };
+            document.head.appendChild(script);
+        });
+    }
+    return lazyLibraryLoads[name];
+}
+
+// Lee montos como se escriben en Guatemala ("1,500.50") y también "1,5", "0,500" o "1.5".
+// Devuelve NaN si el texto no es un número, para que el formulario lo marque.
+function parseMonto(value) {
+    const text = String(value ?? '').trim().replace(/\s/g, '');
+    if (!text) return NaN;
+    let normalized;
+    if (/^-?[1-9]\d{0,2}(,\d{3})+(\.\d+)?$/.test(text)) {
+        normalized = text.replace(/,/g, '');           // 1,500 · 1,500.50 → miles con coma
+    } else if (/^-?\d+,\d{1,2}$/.test(text) || /^-?0,\d+$/.test(text)) {
+        normalized = text.replace(',', '.');            // 1,5 · 10,50 · 0,500 → coma decimal
+    } else {
+        normalized = text;
+    }
+    return /^-?\d*\.?\d+$/.test(normalized) ? Number(normalized) : NaN;
+}
+
+// Monto de dinero válido para guardar: número, mayor que 0 y dentro del límite de la base de datos.
+function isValidMonto(amount) {
+    return Number.isFinite(amount) && amount > 0 && amount <= 99999999.99;
+}
+
+// Un solo formato de moneda en toda la app: Q1,234.50
+function formatQ(value) {
+    const amount = Number(value);
+    return 'Q' + (Number.isFinite(amount) ? amount : 0).toLocaleString('es-GT', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+    });
+}
+
+/**
+ * Traduce errores de red del navegador ("Failed to fetch") a un mensaje accionable.
+ */
+function friendlyError(error) {
+    const message = error?.message || String(error || '');
+    if (error instanceof TypeError || /failed to fetch|networkerror|load failed|network request failed/i.test(message)) {
+        return 'Sin conexión con el servidor. Revisa tu internet e inténtalo de nuevo.';
+    }
+    return message || 'Ocurrió un error inesperado. Inténtalo de nuevo.';
+}
+
 /**
  * Mostrar alerta
  */
@@ -265,20 +333,23 @@ function showAlert(message, type = 'info', duration = 5000) {
     const alertContainer = document.getElementById('alertContainer');
     if (!alertContainer) return;
 
+    // Un solo aviso a la vez: los anteriores pueden contradecir al nuevo.
+    alertContainer.innerHTML = '';
     const alert = document.createElement('div');
     alert.className = `alert ${type}`;
+    alert.setAttribute('role', type === 'error' ? 'alert' : 'status');
     
     let icon = 'fas fa-info-circle';
     if (type === 'error') icon = 'fas fa-exclamation-circle';
     if (type === 'success') icon = 'fas fa-check-circle';
     if (type === 'warning') icon = 'fas fa-exclamation-triangle';
 
-    alert.innerHTML = `
-        <i class="${icon}"></i>
-        <span>${message}</span>
-    `;
+    alert.innerHTML = `<i class="${icon}" aria-hidden="true"></i><span></span>`;
+    alert.querySelector('span').textContent = message;
 
     alertContainer.appendChild(alert);
+    const { top, bottom } = alert.getBoundingClientRect();
+    if (top < 0 || bottom > window.innerHeight) alert.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
     if (duration > 0) {
         setTimeout(() => {
@@ -344,8 +415,10 @@ function requireAuth() {
 
 // Proteger index.html y otras páginas
 document.addEventListener('DOMContentLoaded', function() {
-    // Solo ejecutar si no estamos en login.html
-    if (!window.location.pathname.includes('login.html')) {
+    // Solo en páginas protegidas: "/" también es el inicio de sesión (Caddy sirve login.html ahí),
+    // y redirigir desde ahí recargaba la página y cerraba el registro recién abierto.
+    const path = window.location.pathname;
+    if (path !== '/' && !path.includes('login.html')) {
         if (!authManager.isAuthenticated()) {
             window.location.href = '/login.html';
         }

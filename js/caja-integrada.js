@@ -9,7 +9,7 @@ const CajaIntegradaModule = {
         movimientosCaja: [],
         clientes: [],
         saldosClientes: [],
-        tiposMovimiento: ['Ingreso por Cobro', 'Egreso', 'Devolución', 'Transferencia', 'Microfactura'],
+        tiposMovimiento: ['Ingreso por Venta', 'Ingreso por Cobro', 'Egreso', 'Devolución', 'Transferencia', 'Microfactura'],
         searchTerm: '',
         filterTipo: 'todos',
         selectedCliente: null,
@@ -34,7 +34,7 @@ const CajaIntegradaModule = {
         const searchInput = document.getElementById('searchCaja');
         if (searchInput) {
             searchInput.addEventListener('input', (e) => {
-                this.searchTerm = e.target.value.toLowerCase();
+                this.state.searchTerm = e.target.value.toLowerCase();
                 this.renderMovimientosCaja();
             });
         }
@@ -42,7 +42,7 @@ const CajaIntegradaModule = {
         const filterTipo = document.getElementById('filterTipoCaja');
         if (filterTipo) {
             filterTipo.addEventListener('change', (e) => {
-                this.filterTipo = e.target.value;
+                this.state.filterTipo = e.target.value;
                 this.renderMovimientosCaja();
             });
         }
@@ -79,20 +79,30 @@ const CajaIntegradaModule = {
         }
     },
 
+    // Copia local separada por empresa: en un equipo compartido una empresa
+    // nunca debe ver los movimientos de otra.
+    storageKey(name) {
+        const organizationId = authManager.getUser()?.organization?.id || 'sin-empresa';
+        return `${name}:${organizationId}`;
+    },
+
     // Cargar datos
     loadData() {
+        // Quitar copias antiguas sin empresa (versiones anteriores las compartían).
+        localStorage.removeItem('movimientosCaja');
+        localStorage.removeItem('saldosClientes');
         authManager.fetchWithAuth('/api/clientes?activo=true')
             .then((response) => (response && response.ok ? response.json() : { clientes: [] }))
             .then((data) => { this.state.clientes = data.clientes || []; })
             .catch((error) => console.warn('No se pudieron cargar los clientes:', error));
 
         // Restaurar desde localStorage
-        const saldosFromStorage = localStorage.getItem('saldosClientes');
+        const saldosFromStorage = localStorage.getItem(this.storageKey('saldosClientes'));
         if (saldosFromStorage) {
             this.state.saldosClientes = JSON.parse(saldosFromStorage);
         }
 
-        const movFromStorage = localStorage.getItem('movimientosCaja');
+        const movFromStorage = localStorage.getItem(this.storageKey('movimientosCaja'));
         if (movFromStorage) {
             this.state.movimientosCaja = JSON.parse(movFromStorage);
         }
@@ -104,7 +114,7 @@ const CajaIntegradaModule = {
 
     async loadMovimientosFromAPI() {
         const token = authManager?.getToken?.();
-        const apiHost = authManager?.apiBaseUrl || 'http://178.128.72.110:3011';
+        const apiHost = authManager?.apiBaseUrl || window.location.origin;
         const apiBase = apiHost.endsWith('/api') ? apiHost : `${apiHost}/api`;
         if (!token) return;
 
@@ -123,7 +133,7 @@ const CajaIntegradaModule = {
                 fecha: String(movimiento.fecha).slice(0, 10),
                 hora: movimiento.hora ? String(movimiento.hora).slice(0, 8) : ''
             }));
-            localStorage.setItem('movimientosCaja', JSON.stringify(this.state.movimientosCaja));
+            localStorage.setItem(this.storageKey('movimientosCaja'), JSON.stringify(this.state.movimientosCaja));
             this.renderMovimientosCaja();
             this.renderResumenCaja();
         } catch (error) {
@@ -146,7 +156,7 @@ const CajaIntegradaModule = {
                     </div>
                     <div class="card-content">
                         <label>Total Ingresos</label>
-                        <p class="amount positive">Q${ingresos.toFixed(2)}</p>
+                        <p class="amount positive">${formatQ(ingresos)}</p>
                     </div>
                 </div>
 
@@ -156,7 +166,7 @@ const CajaIntegradaModule = {
                     </div>
                     <div class="card-content">
                         <label>Total Egresos</label>
-                        <p class="amount negative">Q${egresos.toFixed(2)}</p>
+                        <p class="amount negative">${formatQ(egresos)}</p>
                     </div>
                 </div>
 
@@ -166,7 +176,7 @@ const CajaIntegradaModule = {
                     </div>
                     <div class="card-content">
                         <label>Saldo en Caja</label>
-                        <p class="amount ${saldo >= 0 ? 'positive' : 'negative'}" style="font-size: 20px;">Q${saldo.toFixed(2)}</p>
+                        <p class="amount ${saldo >= 0 ? 'positive' : 'negative'}" style="font-size: 20px;">${formatQ(saldo)}</p>
                     </div>
                 </div>
 
@@ -189,7 +199,7 @@ const CajaIntegradaModule = {
         let egresos = 0;
 
         this.state.movimientosCaja.forEach(mov => {
-            if (mov.tipo === 'Ingreso por Cobro' || mov.tipo === 'Microfactura') {
+            if (['Ingreso por Cobro', 'Ingreso por Venta', 'Microfactura'].includes(mov.tipo)) {
                 ingresos += mov.monto;
             } else if (mov.tipo === 'Egreso') {
                 egresos += mov.monto;
@@ -212,16 +222,17 @@ const CajaIntegradaModule = {
         let filtered = [...this.state.movimientosCaja];
 
         // Filtro por tipo
-        if (this.filterTipo !== 'todos') {
-            filtered = filtered.filter(m => m.tipo === this.filterTipo);
+        if (this.state.filterTipo !== 'todos') {
+            filtered = filtered.filter(m => m.tipo === this.state.filterTipo);
         }
 
         // Búsqueda
-        if (this.searchTerm) {
+        if (this.state.searchTerm) {
+            const term = this.state.searchTerm;
             filtered = filtered.filter(m =>
-                m.descripcion.toLowerCase().includes(this.searchTerm) ||
-                (m.clienteId && this.getClienteName(m.clienteId).toLowerCase().includes(this.searchTerm)) ||
-                m.referencia.toLowerCase().includes(this.searchTerm)
+                String(m.descripcion || '').toLowerCase().includes(term) ||
+                (m.clienteId && String(this.getClienteName(m.clienteId) || '').toLowerCase().includes(term)) ||
+                String(m.referencia || '').toLowerCase().includes(term)
             );
         }
 
@@ -255,23 +266,32 @@ const CajaIntegradaModule = {
         `;
     },
 
+    // Todo texto que viene del servidor (descripciones, clientes, usuarios) lo escribieron
+    // otros usuarios: siempre se escapa antes de insertarlo como HTML.
+    escapeHtml(value) {
+        return String(value ?? '').replace(/[&<>"']/g, char => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'
+        }[char]));
+    },
+
     // Renderizar fila de movimiento
     renderMovimientoRow(movimiento) {
+        const esc = (value) => this.escapeHtml(value);
         const tipoBadge = this.getTipoBadge(movimiento.tipo);
         const clienteName = movimiento.clienteId ? this.getClienteName(movimiento.clienteId) : movimiento.referencia;
-        const montoClass = (movimiento.tipo === 'Ingreso por Cobro' || movimiento.tipo === 'Microfactura') ? 'positive' : 'negative';
+        const montoClass = ['Ingreso por Cobro', 'Ingreso por Venta', 'Microfactura'].includes(movimiento.tipo) ? 'positive' : 'negative';
 
         return `
             <tr>
-                <td>${movimiento.fecha}</td>
+                <td>${esc(movimiento.fecha)}</td>
                 <td>${tipoBadge}</td>
-                <td>${clienteName}</td>
-                <td>${movimiento.descripcion}</td>
-                <td><span class="amount ${montoClass}">Q${movimiento.monto.toFixed(2)}</span></td>
-                <td>${movimiento.usuario}</td>
+                <td>${esc(clienteName)}</td>
+                <td>${esc(movimiento.descripcion)}</td>
+                <td><span class="amount ${montoClass}">${formatQ(movimiento.monto)}</span></td>
+                <td>${esc(movimiento.usuario)}</td>
                 <td>
-                    <button class="btn-icon btn-view" title="Ver Detalles" onclick="CajaIntegradaModule.viewMovimientoDetails('${movimiento.id}')">
-                        <i class="fas fa-eye"></i>
+                    <button class="btn-icon btn-view" type="button" title="Ver detalles" aria-label="Ver detalles" data-movimiento-id="${esc(movimiento.id)}" onclick="CajaIntegradaModule.viewMovimientoDetails(this.dataset.movimientoId)">
+                        <i class="fas fa-eye" aria-hidden="true"></i>
                     </button>
                 </td>
             </tr>
@@ -281,13 +301,14 @@ const CajaIntegradaModule = {
     // Obtener badge del tipo
     getTipoBadge(tipo) {
         const badges = {
-            'Ingreso por Cobro': '<span class="badge badge-success">Ingreso</span>',
+            'Ingreso por Venta': '<span class="badge badge-success">Venta</span>',
+            'Ingreso por Cobro': '<span class="badge badge-success">Cobro</span>',
             'Egreso': '<span class="badge badge-warning">Egreso</span>',
             'Devolución': '<span class="badge badge-danger">Devolución</span>',
             'Transferencia': '<span class="badge badge-info">Transferencia</span>',
             'Microfactura': '<span class="badge badge-primary">Microfactura</span>'
         };
-        return badges[tipo] || `<span class="badge badge-secondary">${tipo}</span>`;
+        return badges[tipo] || `<span class="badge badge-secondary">${this.escapeHtml(tipo)}</span>`;
     },
 
     // Obtener nombre del cliente
@@ -301,48 +322,49 @@ const CajaIntegradaModule = {
         const movimiento = this.state.movimientosCaja.find(m => m.id === movimientoId);
         if (!movimiento) return;
 
+        const esc = (value) => this.escapeHtml(value);
         const detailsHTML = `
             <div class="movimiento-details-card">
                 <div class="detail-header">
-                    <h3>${movimiento.tipo}</h3>
+                    <h3>${esc(movimiento.tipo)}</h3>
                     ${this.getTipoBadge(movimiento.tipo)}
                 </div>
 
                 <div class="detail-grid">
                     <div class="detail-item">
                         <label>Fecha</label>
-                        <p>${movimiento.fecha}</p>
+                        <p>${esc(movimiento.fecha)}</p>
                     </div>
                     <div class="detail-item">
                         <label>Hora</label>
-                        <p>${movimiento.hora || 'N/A'}</p>
+                        <p>${esc(movimiento.hora || 'Sin hora')}</p>
                     </div>
                     <div class="detail-item">
                         <label>Usuario</label>
-                        <p>${movimiento.usuario}</p>
+                        <p>${esc(movimiento.usuario)}</p>
                     </div>
                     <div class="detail-item">
                         <label>Referencia</label>
-                        <p>${movimiento.referencia}</p>
+                        <p>${esc(movimiento.referencia || 'Sin referencia')}</p>
                     </div>
                 </div>
 
                 <div class="detail-section">
                     <label>Descripción</label>
-                    <p>${movimiento.descripcion}</p>
+                    <p>${esc(movimiento.descripcion)}</p>
                 </div>
 
                 ${movimiento.clienteId ? `
                     <div class="detail-section">
                         <label>Cliente</label>
-                        <p>${this.getClienteName(movimiento.clienteId)}</p>
+                        <p>${esc(this.getClienteName(movimiento.clienteId))}</p>
                     </div>
                 ` : ''}
 
                 <div class="detail-amount">
                     <label>Monto</label>
-                    <p class="amount ${(movimiento.tipo === 'Ingreso por Cobro' || movimiento.tipo === 'Microfactura') ? 'positive' : 'negative'}" style="font-size: 18px;">
-                        Q${movimiento.monto.toFixed(2)}
+                    <p class="amount ${['Ingreso por Cobro', 'Ingreso por Venta', 'Microfactura'].includes(movimiento.tipo) ? 'positive' : 'negative'}" style="font-size: 18px;">
+                        ${formatQ(movimiento.monto)}
                     </p>
                 </div>
 
@@ -351,7 +373,7 @@ const CajaIntegradaModule = {
                         <label>Artículos/Servicios</label>
                         <ul>
                             ${movimiento.detallesItems.map(item => `
-                                <li>${item.descripcion} - Q${item.monto.toFixed(2)}</li>
+                                <li>${esc(item.descripcion)} - ${formatQ(item.monto)}</li>
                             `).join('')}
                         </ul>
                     </div>
@@ -369,8 +391,8 @@ const CajaIntegradaModule = {
         overlay.innerHTML = `
             <div class="modal-dialog">
                 <div class="modal-header">
-                    <h2>${title}</h2>
-                    <button class="close-btn">&times;</button>
+                    <h2>${this.escapeHtml(title)}</h2>
+                    <button type="button" class="close-btn" aria-label="Cerrar">&times;</button>
                 </div>
                 <div class="modal-body">
                     ${content}
@@ -424,7 +446,7 @@ const CajaIntegradaModule = {
 
         select.innerHTML = '<option value="">-- Cliente (opcional) --</option>' +
             this.state.clientes
-                .map(p => `<option value="${p.id}">${p.nombre}</option>`)
+                .map(p => `<option value="${this.escapeHtml(p.id)}">${this.escapeHtml(p.nombre)}</option>`)
                 .join('');
     },
 
@@ -432,13 +454,17 @@ const CajaIntegradaModule = {
     saveMovimiento() {
         const tipo = document.getElementById('movimientoCajaType').value;
         const clienteId = document.getElementById('movimientoClienteId').value;
-        const monto = parseFloat(document.getElementById('movimientoCajaMonto').value) || 0;
+        const monto = parseMonto(document.getElementById('movimientoCajaMonto').value);
         const descripcion = document.getElementById('movimientoCajaDesc').value.trim();
         const fecha = document.getElementById('movimientoCajaFecha').value;
         const referencia = document.getElementById('movimientoCajaRef').value.trim();
 
-        if (!tipo || !monto || monto <= 0 || !fecha || !descripcion) {
-            this.showNotification('⚠️ Por favor completa todos los campos requeridos', 'warning');
+        if (!tipo || !fecha || !descripcion) {
+            this.showNotification('Completa el tipo, la fecha y la descripción del movimiento.', 'warning');
+            return;
+        }
+        if (!isValidMonto(monto)) {
+            this.showNotification('Escribe un monto mayor que 0, por ejemplo 25.50 (máximo 99,999,999.99).', 'warning');
             return;
         }
 
@@ -482,7 +508,7 @@ const CajaIntegradaModule = {
         form.reset();
         document.getElementById('microfacturaClienteSelect').innerHTML = '<option value="">-- Selecciona cliente --</option>' +
             this.state.clientes
-                .map(p => `<option value="${p.id}">${p.nombre}</option>`)
+                .map(p => `<option value="${this.escapeHtml(p.id)}">${this.escapeHtml(p.nombre)}</option>`)
                 .join('');
 
         document.getElementById('microfacturaFecha').valueAsDate = new Date();
@@ -502,12 +528,16 @@ const CajaIntegradaModule = {
     // Guardar microfactura
     saveMicrofactura() {
         const clienteId = document.getElementById('microfacturaClienteSelect').value;
-        const monto = parseFloat(document.getElementById('microfacturaMonto').value) || 0;
+        const monto = parseMonto(document.getElementById('microfacturaMonto').value);
         const descripcion = document.getElementById('microfacturaDesc').value.trim();
         const fecha = document.getElementById('microfacturaFecha').value;
 
-        if (!clienteId || !monto || monto <= 0 || !fecha) {
-            this.showNotification('⚠️ Por favor completa todos los campos', 'warning');
+        if (!clienteId || !fecha) {
+            this.showNotification('Elige el cliente y la fecha de la microfactura.', 'warning');
+            return;
+        }
+        if (!isValidMonto(monto)) {
+            this.showNotification('Escribe un monto mayor que 0, por ejemplo 25.50 (máximo 99,999,999.99).', 'warning');
             return;
         }
 
@@ -551,14 +581,14 @@ const CajaIntegradaModule = {
 
     // Guardar en DB
     saveToDB(movimiento = null) {
-        localStorage.setItem('movimientosCaja', JSON.stringify(this.state.movimientosCaja));
-        localStorage.setItem('saldosClientes', JSON.stringify(this.state.saldosClientes));
+        localStorage.setItem(this.storageKey('movimientosCaja'), JSON.stringify(this.state.movimientosCaja));
+        localStorage.setItem(this.storageKey('saldosClientes'), JSON.stringify(this.state.saldosClientes));
         if (movimiento) this.saveMovimientoToAPI(movimiento);
     },
 
     async saveMovimientoToAPI(movimiento) {
         const token = authManager?.getToken?.();
-        const apiHost = authManager?.apiBaseUrl || 'http://178.128.72.110:3011';
+        const apiHost = authManager?.apiBaseUrl || window.location.origin;
         const apiBase = apiHost.endsWith('/api') ? apiHost : `${apiHost}/api`;
         if (!token) return;
 
@@ -576,27 +606,15 @@ const CajaIntegradaModule = {
             }
 
             if (result.data?.id) movimiento.id = result.data.id;
-            localStorage.setItem('movimientosCaja', JSON.stringify(this.state.movimientosCaja));
+            localStorage.setItem(this.storageKey('movimientosCaja'), JSON.stringify(this.state.movimientosCaja));
         } catch (error) {
             console.warn('Movimiento conservado localmente; falló la API de Caja:', error);
             this.showNotification('El movimiento quedó guardado localmente y se sincronizará al restablecer la conexión', 'warning');
         }
     },
 
-    // Notificación
+    // Mismo aviso que el resto del sistema (js/app.js).
     showNotification(message, type = 'info') {
-        const notification = document.createElement('div');
-        notification.className = `notification notification-${type}`;
-        notification.textContent = message;
-        document.body.appendChild(notification);
-
-        setTimeout(() => {
-            notification.classList.add('show');
-        }, 10);
-
-        setTimeout(() => {
-            notification.classList.remove('show');
-            setTimeout(() => notification.remove(), 300);
-        }, 3000);
+        showNotification(message, type);
     }
 };

@@ -24,14 +24,18 @@ const ComprasModule = {
     },
 
     async apiRequest(path, options = {}) {
-        const token = authManager.getToken();
-        const response = await fetch(`${authManager.apiBaseUrl}${path}`, {
-            ...options,
-            headers: {
-                'Content-Type': 'application/json',
-                ...options.headers
-            }
-        });
+        let response;
+        try {
+            response = await fetch(`${authManager.apiBaseUrl}${path}`, {
+                ...options,
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...options.headers
+                }
+            });
+        } catch (error) {
+            throw new Error(friendlyError(error));
+        }
         if (!response.ok) {
             const data = await response.json().catch(() => ({}));
             throw new Error(data.error || `Error ${response.status}`);
@@ -86,7 +90,7 @@ const ComprasModule = {
                 <td><strong>${this.escapeHtml(compra.numero_compra)}</strong></td>
                 <td>${this.formatDate(compra.fecha)}</td>
                 <td>${this.escapeHtml(compra.proveedor_nombre)}</td>
-                <td>Q${Number(compra.total || 0).toFixed(2)}</td>
+                <td>${formatQ(Number(compra.total || 0))}</td>
                 <td>
                     <span class="badge badge-${this.escapeHtml(compra.estado)}">${this.capitalize(compra.estado)}</span>
                     ${compra.inventario_aplicado ? '<br><small><i class="fas fa-boxes-stacked"></i> Sumada al inventario</small>' : ''}
@@ -215,7 +219,10 @@ const ComprasModule = {
             const concepto = this.getCatalog(item.tipo).find(entry => entry.id === String(value));
             item.precio_unitario = concepto?.precio || 0;
         } else {
-            item[field] = Number(value);
+            // Misma lectura de montos que Artículos y Ventas ("1,5" = 1.5, "1,500" = 1500).
+            item[field] = CodigosArticulosModule.parseDecimal(value);
+            item.texto ||= {};
+            item.texto[field] = Number.isNaN(item[field]) ? String(value) : null;
         }
         this.renderItems();
     },
@@ -320,7 +327,7 @@ const ComprasModule = {
             const sections = this.getFilterOptions(item, 'seccion');
             const families = this.getFilterOptions(item, 'familia');
             const subfamilies = this.getFilterOptions(item, 'subfamilia');
-            const subtotal = (Number(item.cantidad) || 0) * (Number(item.precio_unitario) || 0);
+            const subtotal = Math.max(0, Number(item.cantidad) || 0) * Math.max(0, Number(item.precio_unitario) || 0);
             return `
                 <tr>
                     <td>
@@ -352,9 +359,9 @@ const ComprasModule = {
                             <div id="conceptSearchResults-${index}" class="concept-search-results" hidden></div>
                         </div>
                     </td>
-                    <td><input class="form-input" type="number" min="1" step="1" value="${item.cantidad}" onchange="ComprasModule.updateItem(${index}, 'cantidad', this.value)"></td>
-                    <td><input id="purchaseItemPrice-${index}" class="form-input" type="number" min="0" step="0.01" value="${item.precio_unitario}" onchange="ComprasModule.updateItem(${index}, 'precio_unitario', this.value)"></td>
-                    <td><strong id="purchaseItemSubtotal-${index}">Q${subtotal.toFixed(2)}</strong></td>
+                    <td><input class="form-input" type="text" inputmode="numeric" autocomplete="off" aria-label="Cantidad de la línea ${index + 1}" value="${this.escapeHtml(item.texto?.cantidad ?? item.cantidad)}" onchange="ComprasModule.updateItem(${index}, 'cantidad', this.value)"></td>
+                    <td><input id="purchaseItemPrice-${index}" class="form-input" type="text" inputmode="decimal" autocomplete="off" aria-label="Precio unitario de la línea ${index + 1}" value="${this.escapeHtml(item.texto?.precio_unitario ?? item.precio_unitario)}" onchange="ComprasModule.updateItem(${index}, 'precio_unitario', this.value)"></td>
+                    <td><strong id="purchaseItemSubtotal-${index}">${formatQ(subtotal)}</strong></td>
                     <td>
                         <button class="btn-icon btn-delete" type="button" title="Quitar concepto" onclick="ComprasModule.removeItem(${index})" ${this.state.items.length === 1 ? 'disabled' : ''}>
                             <i class="fas fa-trash"></i>
@@ -366,7 +373,7 @@ const ComprasModule = {
     },
 
     updateCalculatedTotal() {
-        document.getElementById('purchaseCalculatedTotal').textContent = `Q${this.calculateTotal().toFixed(2)}`;
+        document.getElementById('purchaseCalculatedTotal').textContent = `${formatQ(this.calculateTotal())}`;
     },
 
     calculateTotal() {
@@ -390,23 +397,38 @@ const ComprasModule = {
             }))
         };
 
-        if (!payload.proveedor_id || !payload.fecha || payload.items.some(item =>
-            !item.concepto_id || !Number.isInteger(item.cantidad) || item.cantidad <= 0 || item.precio_unitario < 0)) {
-            this.notify('Completa el proveedor, la fecha y selecciona un artículo con cantidad en cada línea.', 'warning');
+        if (!payload.proveedor_id || !payload.fecha) {
+            this.notify('Elige el proveedor y la fecha de la compra.', 'warning');
+            return;
+        }
+        const lineError = payload.items.findIndex(item =>
+            !item.concepto_id || !Number.isInteger(item.cantidad) || item.cantidad <= 0 ||
+            Number.isNaN(item.precio_unitario) || item.precio_unitario < 0 || item.precio_unitario > 99999999.99);
+        if (lineError >= 0) {
+            const prefix = payload.items.length > 1 ? `Línea ${lineError + 1}: ` : '';
+            this.notify(`${prefix}elige un artículo, una cantidad entera mayor que 0 y un precio válido (por ejemplo 25.50).`.replace(/^./, c => c.toUpperCase()), 'warning');
             return;
         }
 
+        // Evita compras duplicadas por doble clic (cada una sumaría existencias).
+        if (this.state.saving) return;
+        this.state.saving = true;
+        const button = document.getElementById('savePurchaseBtn');
+        if (button) button.disabled = true;
         try {
             const result = await this.apiRequest(id ? `/api/compras/${id}` : '/api/compras', {
                 method: id ? 'PUT' : 'POST',
                 body: JSON.stringify(payload)
             });
             this.closePurchaseModal();
-            await this.loadData();
             this.notify(`${result.message}.`, 'success');
+            await this.loadData();
         } catch (error) {
             console.error('Error guardando compra:', error);
             this.notify(error.message, 'error');
+        } finally {
+            this.state.saving = false;
+            if (button) button.disabled = false;
         }
     },
 
@@ -442,17 +464,14 @@ const ComprasModule = {
         return value.charAt(0).toUpperCase() + value.slice(1);
     },
 
+    // Se usa también dentro de atributos (value="..."), así que escapa comillas.
     escapeHtml(value = '') {
-        const element = document.createElement('div');
-        element.textContent = String(value ?? '');
-        return element.innerHTML;
+        return String(value ?? '').replace(/[&<>"']/g, char => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'
+        }[char]));
     },
 
     notify(message, type) {
-        if (window.NotificationsModule?.show) {
-            window.NotificationsModule.show(message, type);
-        } else {
-            alert(message);
-        }
+        showNotification(message, type);
     }
 };

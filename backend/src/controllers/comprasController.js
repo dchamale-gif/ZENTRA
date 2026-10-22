@@ -1,4 +1,5 @@
 const pool = require('../db/connection');
+const { dbInputErrorMessage } = require('../utils/inventory');
 
 const ESTADOS_COMPRA = new Set(['pendiente', 'ordenada', 'recibida', 'cancelada']);
 
@@ -174,6 +175,8 @@ const moverInventario = async (client, compraId, signo) => {
 };
 
 const sendError = (res, error, fallback) => {
+  const inputError = dbInputErrorMessage(error);
+  if (inputError) return res.status(400).json({ error: inputError });
   console.error(fallback, error);
   const status = error.status || (error.code === '23503' ? 400 : 500);
   const message = error.code === '23503' ? 'Proveedor o artículo no válido' : (status === 500 ? fallback : error.message);

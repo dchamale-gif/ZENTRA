@@ -241,13 +241,11 @@ const CodigosArticulosModule = {
         const select = document.getElementById('filterSeccion');
         if (!select) return;
 
-        select.innerHTML = '<option value="todos">Todas las secciones</option>' +
-            this.state.secciones.map(s => `<option value="${s.id}">${s.nombre}</option>`).join('');
+        select.innerHTML = '<option value="todos">Todas las secciones</option>' + this.optionsHtml(this.state.secciones);
 
         const modalSelect = document.getElementById('articuloSeccion');
         if (modalSelect) {
-            modalSelect.innerHTML = '<option value="">-- Selecciona sección --</option>' +
-                this.state.secciones.map(s => `<option value="${s.id}">${s.nombre}</option>`).join('');
+            modalSelect.innerHTML = '<option value="">Sin sección</option>' + this.optionsHtml(this.state.secciones);
         }
     },
 
@@ -260,8 +258,11 @@ const CodigosArticulosModule = {
             ? this.state.familias
             : this.state.familias.filter(f => f.seccionId === this.state.filterSeccion);
 
-        select.innerHTML = '<option value="todos">Todas las familias</option>' +
-            familiasFiltradas.map(f => `<option value="${f.id}">${f.nombre}</option>`).join('');
+        select.innerHTML = '<option value="todos">Todas las familias</option>' + this.optionsHtml(familiasFiltradas);
+    },
+
+    optionsHtml(items) {
+        return items.map(item => `<option value="${this.escapeHtml(item.id)}">${this.escapeHtml(item.nombre)}</option>`).join('');
     },
 
     // Renderizar artículos
@@ -335,14 +336,15 @@ const CodigosArticulosModule = {
         const container = document.getElementById('articulosResumen');
         if (!container) return;
         const activos = this.state.articulos.filter(a => a.activo);
-        const valor = activos.reduce((sum, a) => sum + a.cantidadDisponible * (a.precioCompra || a.precioVenta), 0);
+        // A costo: los artículos sin precio de compra no suman (igual que el Panel).
+        const valor = activos.reduce((sum, a) => sum + Math.max(0, a.cantidadDisponible) * (a.precioCompra || 0), 0);
         const agotados = activos.filter(a => a.cantidadDisponible <= 0).length;
         const bajos = activos.filter(a => a.cantidadDisponible > 0 && a.cantidadDisponible <= this.stockBajo).length;
         const stat = (label, value, tone = '') => `
             <div class="stat-tile ${tone}"><span class="stat-label">${label}</span><span class="stat-value">${value}</span></div>`;
         container.innerHTML = [
             stat('Artículos activos', activos.length.toLocaleString('es-GT')),
-            stat('Valor del inventario', `Q${valor.toLocaleString('es-GT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`),
+            stat('Valor del inventario (a costo)', formatQ(valor)),
             stat(`Existencia baja (≤ ${this.stockBajo})`, bajos, bajos ? 'is-warning' : ''),
             stat('Agotados', agotados, agotados ? 'is-danger' : '')
         ].join('');
@@ -355,7 +357,7 @@ const CodigosArticulosModule = {
         const clasificacion = [articulo.seccionId, articulo.familiaId, articulo.subfamiliaId].filter(Boolean);
         const costo = articulo.precioCompra || 0;
         const precio = articulo.precioVenta || 0;
-        const margen = costo > 0 ? ((precio - costo) / costo) * 100 : null;
+        const margen = costo > 0 && precio > 0 ? ((precio - costo) / precio) * 100 : null;
         const stock = articulo.cantidadDisponible;
         const stockTone = stock <= 0 ? 'is-danger' : (stock <= this.stockBajo ? 'is-warning' : 'is-ok');
         const stockLabel = stock <= 0 ? 'Agotado' : `${stock.toLocaleString('es-GT')}${articulo.unidadMedida ? ` ${esc(articulo.unidadMedida)}` : ''}`;
@@ -372,8 +374,8 @@ const CodigosArticulosModule = {
                 </td>
                 <td>${clasificacion.length ? `<span class="breadcrumb-text">${clasificacion.map(esc).join('<i class="fas fa-chevron-right" aria-hidden="true"></i>')}</span>` : '<span class="muted">Sin clasificar</span>'}</td>
                 <td class="text-right"><span class="stock-pill ${stockTone}">${stockLabel}</span></td>
-                <td class="text-right num">Q${costo.toFixed(2)}</td>
-                <td class="text-right num"><strong>Q${precio.toFixed(2)}</strong></td>
+                <td class="text-right num">${formatQ(costo)}</td>
+                <td class="text-right num"><strong>${formatQ(precio)}</strong></td>
                 <td class="text-right num ${margen === null ? 'muted' : (margen < 0 ? 'text-danger' : '')}">${margen === null ? '—' : `${margen.toFixed(1)}%`}</td>
                 <td class="text-right">
                     <div class="row-actions">
@@ -401,76 +403,90 @@ const CodigosArticulosModule = {
         const subfamilia = this.state.subfamilias.find(s => s.id === articulo.subfamiliaId);
         const seccion = this.state.secciones.find(s => s.id === articulo.seccionId);
 
+        const esc = (value) => this.escapeHtml(value);
         const precioCompra = articulo.precioCompra || 0;
         const precioVenta = articulo.precioVenta || 0;
-        const margen = precioCompra > 0 ? ((precioVenta - precioCompra) / precioCompra * 100).toFixed(2) : '0';
-        const margenPeso = (precioVenta - precioCompra).toFixed(2);
+        const margen = precioCompra > 0 && precioVenta > 0 ? ((precioVenta - precioCompra) / precioVenta * 100).toFixed(1) : null;
+        const ganancia = (precioVenta - precioCompra).toFixed(2);
+        const existencia = Number(articulo.cantidadDisponible) || 0;
 
         const detailsHTML = `
             <div class="codigo-details-card">
                 <div class="header-section">
                     <div>
-                        <h3>${articulo.concepto}</h3>
-                        <p class="subtitle">${articulo.nombre}</p>
+                        <h3>${esc(articulo.nombre)}</h3>
+                        ${articulo.concepto && articulo.concepto !== articulo.nombre ? `<p class="subtitle">En facturas: ${esc(articulo.concepto)}</p>` : ''}
                     </div>
                     <span class="badge badge-${articulo.estado === 'activo' ? 'success' : 'secondary'}">
-                        ${articulo.estado.toUpperCase()}
+                        ${articulo.estado === 'activo' ? 'Activo' : 'Inactivo'}
                     </span>
+                </div>
+
+                <div class="pricing-section">
+                    <div class="price-item">
+                        <label>Existencia</label>
+                        <p class="price">${existencia <= 0 ? 'Agotado' : `${existencia.toLocaleString('es-GT')} ${esc(articulo.unidadMedida || 'unidades')}`}</p>
+                    </div>
+                    <div class="price-item">
+                        <label>Precio de compra</label>
+                        <p class="price">${formatQ(precioCompra)}</p>
+                    </div>
+                    <div class="price-item">
+                        <label>Precio de venta</label>
+                        <p class="price">${formatQ(precioVenta)}</p>
+                    </div>
+                    <div class="price-item">
+                        <label>Ganancia por unidad</label>
+                        <p class="price">${formatQ(ganancia)}${margen === null ? '' : ` (${margen}% del precio)`}</p>
+                    </div>
                 </div>
 
                 <div class="coding-section">
                     <div class="code-box codigo-venta">
-                        <label>Código de Venta (Sistema Interno)</label>
-                        <code>${articulo.codigoVenta}</code>
-                        <small>Código para facturas y ventas locales</small>
+                        <label>Código interno</label>
+                        <code>${esc(articulo.codigoVenta || '—')}</code>
                     </div>
                     <div class="code-box codigo-compra">
-                        <label>Código de Compra (Sistema Externo)</label>
-                        <code>${articulo.codigoCompra}</code>
-                        <small>Código del proveedor/externa</small>
+                        <label>Código de barras o del proveedor</label>
+                        <code>${esc(articulo.codigoCompra || '—')}</code>
                     </div>
                 </div>
 
                 <div class="classification-section">
                     <div class="class-item">
                         <label>Sección:</label>
-                        <p>${seccion ? seccion.nombre : '-'}</p>
+                        <p>${esc(seccion ? seccion.nombre : '-')}</p>
                     </div>
                     <div class="class-item">
                         <label>Familia:</label>
-                        <p>${familia ? familia.nombre : '-'}</p>
+                        <p>${esc(familia ? familia.nombre : '-')}</p>
                     </div>
                     <div class="class-item">
                         <label>Subfamilia:</label>
-                        <p>${subfamilia ? subfamilia.nombre : '-'}</p>
-                    </div>
-                </div>
-
-                <div class="pricing-section">
-                    <div class="price-item">
-                        <label>Precio de Compra</label>
-                        <p class="price">Q${precioCompra.toFixed(2)}</p>
-                    </div>
-                    <div class="price-item">
-                        <label>Precio de Venta</label>
-                        <p class="price">Q${precioVenta.toFixed(2)}</p>
-                    </div>
-                    <div class="price-item">
-                        <label>Margen</label>
-                        <p class="price">${margen}% | Q${margenPeso}</p>
+                        <p>${esc(subfamilia ? subfamilia.nombre : '-')}</p>
                     </div>
                 </div>
 
                 ${articulo.descripcion ? `
                     <div class="description-section">
                         <label>Descripción</label>
-                        <p>${articulo.descripcion}</p>
+                        <p>${esc(articulo.descripcion)}</p>
                     </div>
                 ` : ''}
+
+                <div class="details-actions">
+                    <button type="button" class="btn btn-primary" data-edit-articulo="${esc(articulo.id)}">
+                        <i class="fas fa-pen" aria-hidden="true"></i> Editar artículo
+                    </button>
+                </div>
             </div>
         `;
 
-        this.showDetailsModal('Detalles del Artículo', detailsHTML);
+        const overlay = this.showDetailsModal('Detalles del artículo', detailsHTML);
+        overlay.querySelector('[data-edit-articulo]')?.addEventListener('click', () => {
+            overlay.remove();
+            this.editArticulo(articulo.id);
+        });
     },
 
     // Mostrar modal de detalles
@@ -480,8 +496,8 @@ const CodigosArticulosModule = {
         overlay.innerHTML = `
             <div class="modal-dialog">
                 <div class="modal-header">
-                    <h2>${title}</h2>
-                    <button class="close-btn">&times;</button>
+                    <h2>${this.escapeHtml(title)}</h2>
+                    <button type="button" class="close-btn" aria-label="Cerrar">&times;</button>
                 </div>
                 <div class="modal-body">
                     ${content}
@@ -501,8 +517,22 @@ const CodigosArticulosModule = {
             }
         });
 
+        const closeOnEscape = (event) => {
+            if (event.key !== 'Escape' || !overlay.isConnected) return;
+            overlay.remove();
+            document.body.style.overflow = 'auto';
+        };
+        document.addEventListener('keydown', closeOnEscape);
+        new MutationObserver((_, observer) => {
+            if (overlay.isConnected) return;
+            document.removeEventListener('keydown', closeOnEscape);
+            observer.disconnect();
+        }).observe(document.body, { childList: true });
+
         document.body.appendChild(overlay);
         document.body.style.overflow = 'hidden';
+        overlay.querySelector('.close-btn').focus();
+        return overlay;
     },
 
     // Editar artículo
@@ -521,11 +551,15 @@ const CodigosArticulosModule = {
         if (!modal || !form) return;
 
         form.reset();
+        document.getElementById('articuloModalTitle').textContent = articulo ? 'Editar artículo' : 'Nuevo artículo';
+        form.querySelectorAll('[aria-invalid]').forEach(input => input.removeAttribute('aria-invalid'));
+        form.querySelectorAll('.field-error').forEach(error => error.remove());
+        form.querySelector('details.form-more').open = false;
 
         if (articulo) {
             document.getElementById('articuloId').value = articulo.id;
             document.getElementById('articuloNombre').value = articulo.nombre;
-            document.getElementById('articuloConcepto').value = articulo.concepto;
+            document.getElementById('articuloConcepto').value = articulo.concepto && articulo.concepto !== articulo.nombre ? articulo.concepto : '';
             document.getElementById('codigoVenta').value = articulo.codigoVenta;
             document.getElementById('codigoCompra').value = articulo.codigoCompra;
             document.getElementById('articuloSeccion').value = articulo.seccionId;
@@ -586,8 +620,7 @@ const CodigosArticulosModule = {
             ? this.state.familias
             : this.state.familias.filter(f => f.seccionId === seccionId);
 
-        select.innerHTML = '<option value="">-- Selecciona familia --</option>' +
-            familiasFiltradas.map(f => `<option value="${f.id}">${f.nombre}</option>`).join('');
+        select.innerHTML = '<option value="">Sin familia</option>' + this.optionsHtml(familiasFiltradas);
         this.renderSubfamiliasForModal();
     },
 
@@ -599,8 +632,7 @@ const CodigosArticulosModule = {
         const subfamilias = familiaId
             ? this.state.subfamilias.filter(item => item.familiaId === familiaId)
             : this.state.subfamilias;
-        select.innerHTML = '<option value="">-- Selecciona subfamilia --</option>' +
-            subfamilias.map(item => `<option value="${item.id}">${item.nombre}</option>`).join('');
+        select.innerHTML = '<option value="">Sin subfamilia</option>' + this.optionsHtml(subfamilias);
         select.value = subfamilias.some(item => item.id === currentValue) ? currentValue : '';
     },
 
@@ -614,8 +646,66 @@ const CodigosArticulosModule = {
         }
     },
 
+    // Misma lectura de montos que el resto de la app (parseMonto en js/auth-utils.js).
+    parseDecimal(value) {
+        return parseMonto(value);
+    },
+
+    setFieldError(input, message) {
+        input.setAttribute('aria-invalid', 'true');
+        const error = document.createElement('small');
+        error.className = 'field-error';
+        error.textContent = message;
+        input.closest('.form-group').appendChild(error);
+    },
+
+    // Devuelve los valores numéricos del formulario o null si hay errores (ya marcados en pantalla).
+    readArticuloNumbers() {
+        const form = document.getElementById('editArticuloForm');
+        form.querySelectorAll('[aria-invalid]').forEach(input => input.removeAttribute('aria-invalid'));
+        form.querySelectorAll('.field-error').forEach(error => error.remove());
+
+        const MAX_PRICE = 99999999.99;
+        const fields = {
+            precioVenta: document.getElementById('precioVenta'),
+            precioCompra: document.getElementById('precioCompra'),
+            cantidad: document.getElementById('articuloCantidad')
+        };
+        const values = {
+            precioVenta: this.parseDecimal(fields.precioVenta.value),
+            precioCompra: fields.precioCompra.value.trim() ? this.parseDecimal(fields.precioCompra.value) : 0,
+            cantidad: this.parseDecimal(fields.cantidad.value)
+        };
+        const errors = [];
+        const check = (key, invalid, message) => {
+            if (invalid && !errors.some(([name]) => name === key)) errors.push([key, message]);
+        };
+        if (!document.getElementById('articuloNombre').value.trim()) {
+            errors.push(['nombre', 'Escribe el nombre del artículo.']);
+        }
+        check('precioVenta', Number.isNaN(values.precioVenta), 'Escribe el precio de venta, por ejemplo 25.50.');
+        check('precioVenta', values.precioVenta <= 0, 'El precio de venta debe ser mayor que 0.');
+        check('precioVenta', values.precioVenta > MAX_PRICE, 'El precio es demasiado grande.');
+        check('precioCompra', Number.isNaN(values.precioCompra), 'Escribe un número, por ejemplo 18.00, o déjalo vacío.');
+        check('precioCompra', values.precioCompra < 0, 'El precio de compra no puede ser negativo.');
+        check('precioCompra', values.precioCompra > MAX_PRICE, 'El precio es demasiado grande.');
+        check('cantidad', Number.isNaN(values.cantidad), 'Escribe cuántas unidades tienes hoy (0 si no tienes).');
+        check('cantidad', values.cantidad < 0, 'La existencia no puede ser negativa.');
+        check('cantidad', !Number.isInteger(values.cantidad), 'La existencia debe ser un número entero.');
+        check('cantidad', values.cantidad > 2147483647, 'La existencia es demasiado grande.');
+
+        if (!errors.length) return values;
+        errors.forEach(([key, message]) => {
+            this.setFieldError(key === 'nombre' ? document.getElementById('articuloNombre') : fields[key], message);
+        });
+        const [firstKey] = errors[0];
+        (firstKey === 'nombre' ? document.getElementById('articuloNombre') : fields[firstKey]).focus();
+        return null;
+    },
+
     // Guardar artículo
     async saveArticulo() {
+        if (this.state.saving) return;
         const id = document.getElementById('articuloId').value;
         const nombre = document.getElementById('articuloNombre').value.trim();
         const concepto = document.getElementById('articuloConcepto')?.value.trim();
@@ -623,27 +713,23 @@ const CodigosArticulosModule = {
         const codigoCompra = document.getElementById('codigoCompra').value.trim();
         const seccionId = document.getElementById('articuloSeccion')?.value;
         const familiaId = document.getElementById('articuloFamilia')?.value;
-        const precioCompra = parseFloat(document.getElementById('precioCompra').value) || 0;
-        const precioVenta = parseFloat(document.getElementById('precioVenta').value) || 0;
         const estado = document.getElementById('articuloEstado')?.value;
         const descripcion = document.getElementById('articuloDescripcion').value.trim();
-        const cantidad = parseInt(document.getElementById('articuloCantidad')?.value) || 0;
         const subfamilia = document.getElementById('articuloSubfamilia')?.value.trim();
         const unidadMedida = document.getElementById('articuloUnidadMedida')?.value.trim();
         const tipo = document.getElementById('articuloTipo')?.value.trim();
 
-        if (!nombre || precioVenta <= 0) {
-            this.showNotification('⚠️ Nombre y precio de venta son requeridos', 'warning');
+        const numbers = this.readArticuloNumbers();
+        if (!numbers) {
+            this.showNotification('Revisa los campos marcados en rojo.', 'warning');
             return;
         }
+        const { precioVenta, precioCompra, cantidad } = numbers;
 
+        const saveButton = document.getElementById('saveArticuloBtn');
+        this.state.saving = true;
+        saveButton.disabled = true;
         try {
-            const token = authManager.getToken();
-            if (!token) {
-                this.showNotification('❌ No estás autenticado', 'error');
-                return;
-            }
-
             // Mapear datos del formulario a la API
             const apiData = {
                 codigo: codigoVenta,
@@ -667,10 +753,8 @@ const CodigosArticulosModule = {
                 ? `${authManager.apiBaseUrl}/api/codigos-articulos/${id}`
                 : `${authManager.apiBaseUrl}/api/codigos-articulos`;
 
-            const method = id ? 'PUT' : 'POST';
-
             const response = await fetch(url, {
-                method: method,
+                method: id ? 'PUT' : 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
@@ -678,23 +762,29 @@ const CodigosArticulosModule = {
             });
 
             if (!response.ok) {
-                const errorData = await response.json();
+                const errorData = await response.json().catch(() => ({}));
                 throw new Error(errorData.error || `Error ${response.status}`);
             }
 
-            const result = await response.json();
-            
-            if (id) {
-                this.showNotification('✅ Artículo actualizado correctamente', 'success');
+            await response.json();
+
+            const primerArticulo = !id && this.state.articulos.length === 0;
+            if (primerArticulo && cantidad > 0) {
+                this.showNotification('Artículo creado. Siguiente paso: registra tu primera venta en Ventas → Nueva venta.', 'success');
+            } else if (cantidad === 0) {
+                this.showNotification(`${id ? 'Artículo actualizado' : 'Artículo creado'} con existencia 0: para venderlo, edítalo y escribe cuántas unidades tienes o registra una compra.`, 'warning');
             } else {
-                this.showNotification('✅ Artículo creado correctamente', 'success');
+                this.showNotification(id ? 'Artículo actualizado correctamente.' : 'Artículo creado correctamente.', 'success');
             }
 
             this.closeArticuloModal();
             this.loadData(); // Recargar desde BD
         } catch (error) {
             console.error('Error guardando artículo:', error);
-            this.showNotification(`❌ Error: ${error.message}`, 'error');
+            this.showNotification(`No se pudo guardar el artículo. ${friendlyError(error)}`, 'error');
+        } finally {
+            this.state.saving = false;
+            saveButton.disabled = false;
         }
     },
 
@@ -725,7 +815,7 @@ const CodigosArticulosModule = {
             this.loadData(); // Recargar desde BD
         } catch (error) {
             console.error('Error eliminando artículo:', error);
-            this.showNotification(`❌ Error: ${error.message}`, 'error');
+            this.showNotification(`No se pudo completar la acción. ${friendlyError(error)}`, 'error');
         }
     },
 
@@ -735,28 +825,8 @@ const CodigosArticulosModule = {
         return `${prefix}-${timestamp}`;
     },
 
-    // Guardar en DB
-    saveToDB() {
-        localStorage.setItem('articulos', JSON.stringify(this.state.articulos));
-        localStorage.setItem('secciones', JSON.stringify(this.state.secciones));
-        localStorage.setItem('familias', JSON.stringify(this.state.familias));
-        localStorage.setItem('subfamilias', JSON.stringify(this.state.subfamilias));
-    },
-
-    // Notificación
+    // Mismo aviso que el resto del sistema (js/app.js).
     showNotification(message, type = 'info') {
-        const notification = document.createElement('div');
-        notification.className = `notification notification-${type}`;
-        notification.textContent = message;
-        document.body.appendChild(notification);
-
-        setTimeout(() => {
-            notification.classList.add('show');
-        }, 10);
-
-        setTimeout(() => {
-            notification.classList.remove('show');
-            setTimeout(() => notification.remove(), 300);
-        }, 3000);
+        showNotification(message, type);
     }
 };

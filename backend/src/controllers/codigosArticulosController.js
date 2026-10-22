@@ -1,4 +1,5 @@
 const pool = require('../db/connection');
+const { LOW_STOCK_THRESHOLD, validateArticleNumbers, dbInputErrorMessage } = require('../utils/inventory');
 
 const ARTICLE_COLUMNS = `
   id, codigo, nombre_articulo, descripcion, categoria, familia,
@@ -154,11 +155,13 @@ const createArticulo = async (req, res) => {
     } = req.body;
 
     // Validar campos requeridos
-    if (!nombre_articulo) {
+    if (!String(nombre_articulo || '').trim()) {
       return res.status(400).json({ 
         error: 'Nombre del artículo es requerido'
       });
     }
+    const numberError = validateArticleNumbers(req.body);
+    if (numberError) return res.status(400).json({ error: numberError });
 
     client = await pool.connect();
     await client.query('BEGIN');
@@ -202,6 +205,8 @@ const createArticulo = async (req, res) => {
     });
   } catch (error) {
     if (client) await client.query('ROLLBACK');
+    const inputError = dbInputErrorMessage(error);
+    if (inputError) return res.status(400).json({ error: inputError });
     console.error('Error en createArticulo:', error);
     res.status(500).json({ error: 'Error creando artículo' });
   } finally {
@@ -233,6 +238,12 @@ const updateArticulo = async (req, res) => {
       tipo,
       activo
     } = req.body;
+
+    const numberError = validateArticleNumbers(req.body);
+    if (numberError) return res.status(400).json({ error: numberError });
+    if (nombre_articulo !== undefined && !String(nombre_articulo).trim()) {
+      return res.status(400).json({ error: 'Nombre del artículo es requerido' });
+    }
 
     // Verificar que existe
     const existing = await pool.query(
@@ -275,6 +286,8 @@ const updateArticulo = async (req, res) => {
       articulo: result.rows[0]
     });
   } catch (error) {
+    const inputError = dbInputErrorMessage(error);
+    if (inputError) return res.status(400).json({ error: inputError });
     console.error('Error en updateArticulo:', error);
     res.status(500).json({ error: 'Error actualizando artículo' });
   }
@@ -323,6 +336,8 @@ const actualizarCantidad = async (req, res) => {
     if (cantidad_disponible === undefined) {
       return res.status(400).json({ error: 'Cantidad es requerida' });
     }
+    const numberError = validateArticleNumbers({ cantidad_disponible });
+    if (numberError) return res.status(400).json({ error: numberError });
 
     const result = await pool.query(
       `UPDATE codigos_articulos 
@@ -348,14 +363,15 @@ const actualizarCantidad = async (req, res) => {
 
 /**
  * GET /api/codigos-articulos/stock/bajo
- * Obtener artículos con stock bajo (cantidad < 10)
+ * Obtener artículos con existencia baja (cantidad <= LOW_STOCK_THRESHOLD)
  */
 const getArticulosStockBajo = async (req, res) => {
   try {
     const result = await pool.query(
       `SELECT ${ARTICLE_COLUMNS} FROM codigos_articulos
-       WHERE activo = true AND cantidad_disponible < 10
-       ORDER BY cantidad_disponible ASC`
+       WHERE activo = true AND cantidad_disponible <= $1
+       ORDER BY cantidad_disponible ASC`,
+      [LOW_STOCK_THRESHOLD]
     );
 
     res.status(200).json({

@@ -14,8 +14,11 @@
     <meta property="og:image" content="img/og-image.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Fuente e iconos no bloquean el primer pintado (importante en 3G) -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" media="print" onload="this.onload=null;this.media='all'">
+    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"></noscript>
+    <link rel="stylesheet" href="vendor/fontawesome/css/all.min.css" media="print" onload="this.onload=null;this.media='all'">
+    <noscript><link rel="stylesheet" href="vendor/fontawesome/css/all.min.css"></noscript>
     <style>
         :root {
             --navy: #0b1b33;
@@ -285,6 +288,9 @@
 
         .remember-forgot a,
         .back-btn {
+            min-height: 44px;
+            display: inline-flex;
+            align-items: center;
             color: var(--primary);
             font-weight: 500;
             text-decoration: none;
@@ -368,11 +374,12 @@
         }
 
         .signup-btn {
-            height: 36px;
+            width: 100%;
+            height: 44px;
             padding: 0 14px;
-            background: #fff;
-            color: var(--text);
-            border: 1px solid var(--border);
+            background: #eff6ff;
+            color: var(--primary);
+            border: 1px solid #93c5fd;
             border-radius: 8px;
             font: inherit;
             font-size: 13px;
@@ -382,7 +389,106 @@
         }
 
         .signup-btn:hover {
-            background: #f1f5f9;
+            background: #dbeafe;
+        }
+
+        .field-hint {
+            display: block;
+            margin-top: 6px;
+            font-size: 12px;
+            color: var(--muted);
+        }
+
+        .field-error {
+            display: block;
+            margin-top: 6px;
+            font-size: 12px;
+            font-weight: 500;
+            color: #b91c1c;
+        }
+
+        .form-group input[aria-invalid="true"] {
+            border-color: #f87171;
+        }
+
+        .required-mark {
+            color: #b91c1c;
+        }
+
+        .optional-fields {
+            margin: 4px 0 18px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: #fff;
+        }
+
+        .optional-fields summary {
+            min-height: 44px;
+            display: flex;
+            align-items: center;
+            padding: 0 14px;
+            cursor: pointer;
+            color: var(--text);
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .optional-fields[open] summary {
+            border-bottom: 1px solid var(--border);
+        }
+
+        .optional-fields .optional-body {
+            padding: 14px 14px 0;
+        }
+
+        .consent {
+            margin: 4px 0 14px;
+            font-size: 12px;
+            line-height: 1.5;
+            color: var(--muted);
+        }
+
+        .consent a,
+        .trial-note a,
+        .legal a {
+            color: var(--primary);
+            font-weight: 500;
+        }
+
+        .legal nav {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 4px 16px;
+            margin-bottom: 6px;
+        }
+
+        .legal nav a,
+        .legal nav button {
+            min-height: 44px;
+            display: inline-flex;
+            align-items: center;
+            background: none;
+            border: 0;
+            font: inherit;
+            font-size: 12px;
+            cursor: pointer;
+            text-decoration: none;
+        }
+
+        .legal nav button,
+        .alert-link {
+            color: var(--primary);
+            font-weight: 500;
+        }
+
+        .alert-link {
+            background: none;
+            border: 0;
+            padding: 0;
+            font: inherit;
+            text-decoration: underline;
+            cursor: pointer;
         }
 
         .hidden {
@@ -428,7 +534,7 @@
         }
 
         .back-btn {
-            display: block;
+            display: flex;
             background: transparent;
             border: 0;
             cursor: pointer;
@@ -439,8 +545,8 @@
 
         .support-btn {
             width: 100%;
-            height: 42px;
-            margin-top: 10px;
+            height: 44px;
+            margin-top: 24px;
             border: 1px solid var(--border);
             border-radius: 8px;
             background: #fff;
@@ -466,6 +572,7 @@
         }
 
         .alert {
+            scroll-margin: 24px;
             padding: 11px 14px;
             border-radius: 8px;
             margin-bottom: 18px;
@@ -584,7 +691,7 @@
         <div id="alertContainer"></div>
 
         <div id="loginPanel">
-        <form id="loginForm">
+        <form id="loginForm" novalidate onsubmit="event.preventDefault()">
             <div class="form-group">
                 <label for="email">Correo electrónico</label>
                 <input 
@@ -625,85 +732,120 @@
 
 
         <div class="signup-section">
-            <p>¿Aún no tienes cuenta?</p>
+            <p>¿Primera vez aquí?</p>
             <button type="button" class="signup-btn" onclick="showRegister()">
-                Crear empresa gratis
+                Crear empresa gratis (30 días de prueba)
             </button>
         </div>
         </div>
 
         <div id="registerPanel" class="hidden">
             <h2 class="register-title">Crea tu empresa</h2>
-            <p class="register-subtitle">Configura tu cuenta administradora para empezar.</p>
+            <p class="register-subtitle">Solo necesitas tu nombre, el de tu empresa, tu correo y una contraseña. Lo demás puedes completarlo después.</p>
             <div class="trial-note">
                 <i class="fas fa-circle-info" aria-hidden="true"></i>
-                <div><strong>30 días gratis, hasta 3 usuarios.</strong> Tendrás acceso completo durante el período de prueba.
-                Al finalizar, el acceso quedará bloqueado hasta activar una suscripción.</div>
+                <div><strong>30 días gratis, hasta 3 usuarios. Sin tarjeta.</strong> Al finalizar, el acceso se bloquea hasta activar una suscripción.
+                <a href="legal.html#precios" target="_blank" rel="noopener">Ver precios y condiciones</a></div>
             </div>
-            <form id="registerForm">
+            <form id="registerForm" novalidate onsubmit="event.preventDefault()">
                 <div class="form-group">
-                    <label for="empresaNombre">Nombre de la empresa</label>
+                    <label for="empresaNombre">Nombre de la empresa <span class="required-mark" aria-hidden="true">*</span></label>
                     <input type="text" id="empresaNombre" maxlength="150" required autocomplete="organization">
-                </div>
-                <div class="form-group">
-                    <label for="empresaSector">Sector comercial</label>
-                    <input type="text" id="empresaSector" maxlength="150" required placeholder="Ej. clínica, comercio, servicios">
-                </div>
-                <div class="form-group">
-                    <label for="empresaCorreo">Correo de la empresa</label>
-                    <input type="email" id="empresaCorreo" maxlength="150" required autocomplete="email">
-                </div>
-                <div class="form-group">
-                    <label for="empresaNit">NIT / Identificación fiscal (opcional)</label>
-                    <input type="text" id="empresaNit" maxlength="30">
-                </div>
-                <div class="form-group">
-                    <label for="empresaDireccion">Dirección (opcional)</label>
-                    <input type="text" id="empresaDireccion" maxlength="255" autocomplete="street-address">
                 </div>
                 <div class="form-row">
                     <div class="form-group">
-                        <label for="registerNombre">Nombre</label>
+                        <label for="registerNombre">Tu nombre <span class="required-mark" aria-hidden="true">*</span></label>
                         <input type="text" id="registerNombre" maxlength="100" required autocomplete="given-name">
                     </div>
                     <div class="form-group">
-                        <label for="registerApellido">Apellido</label>
+                        <label for="registerApellido">Tu apellido <span class="required-mark" aria-hidden="true">*</span></label>
                         <input type="text" id="registerApellido" maxlength="100" required autocomplete="family-name">
                     </div>
                 </div>
                 <div class="form-group">
-                    <label for="registerTelefono">Teléfono (opcional)</label>
-                    <input type="tel" id="registerTelefono" maxlength="20" autocomplete="tel">
-                </div>
-                <div class="form-group">
-                    <label for="registerEmail">Correo electrónico</label>
-                    <input type="email" id="registerEmail" required autocomplete="email">
+                    <label for="registerEmail">Correo para iniciar sesión <span class="required-mark" aria-hidden="true">*</span></label>
+                    <input type="email" id="registerEmail" maxlength="150" required autocomplete="email" aria-describedby="registerEmailHint">
+                    <small class="field-hint" id="registerEmailHint">Con este correo entrarás a BotEngine ERP.</small>
                 </div>
                 <div class="form-row">
                     <div class="form-group">
-                        <label for="registerPassword">Contraseña</label>
-                        <input type="password" id="registerPassword" minlength="8" required autocomplete="new-password">
+                        <label for="registerPassword">Contraseña <span class="required-mark" aria-hidden="true">*</span></label>
+                        <input type="password" id="registerPassword" minlength="8" required autocomplete="new-password" aria-describedby="registerPasswordHint">
+                        <small class="field-hint" id="registerPasswordHint">Mínimo 8 caracteres, con letras y números.</small>
                     </div>
                     <div class="form-group">
-                        <label for="registerPasswordConfirm">Confirmar</label>
+                        <label for="registerPasswordConfirm">Repite la contraseña <span class="required-mark" aria-hidden="true">*</span></label>
                         <input type="password" id="registerPasswordConfirm" minlength="8" required autocomplete="new-password">
                     </div>
                 </div>
+                <details class="optional-fields">
+                    <summary>Datos de la empresa (opcional)</summary>
+                    <div class="optional-body">
+                        <div class="form-group">
+                            <label for="empresaSector">Sector comercial</label>
+                            <input type="text" id="empresaSector" maxlength="150" placeholder="Ej. tienda, ferretería, servicios">
+                        </div>
+                        <div class="form-group">
+                            <label for="empresaCorreo">Correo de la empresa</label>
+                            <input type="email" id="empresaCorreo" maxlength="150" aria-describedby="empresaCorreoHint">
+                            <small class="field-hint" id="empresaCorreoHint">Si lo dejas vacío usamos tu correo para iniciar sesión.</small>
+                        </div>
+                        <div class="form-group">
+                            <label for="empresaNit">NIT (número de identificación tributaria)</label>
+                            <input type="text" id="empresaNit" maxlength="30">
+                        </div>
+                        <div class="form-group">
+                            <label for="empresaDireccion">Dirección</label>
+                            <input type="text" id="empresaDireccion" maxlength="255" autocomplete="street-address">
+                        </div>
+                        <div class="form-group">
+                            <label for="registerTelefono">Teléfono</label>
+                            <input type="tel" id="registerTelefono" maxlength="20" autocomplete="tel">
+                        </div>
+                    </div>
+                </details>
+                <p class="consent">Al crear tu empresa aceptas las <a href="legal.html#condiciones" target="_blank" rel="noopener">condiciones de uso</a> y la <a href="legal.html#privacidad" target="_blank" rel="noopener">política de privacidad</a>.</p>
+                <div id="registerStatus" role="status" aria-live="polite"></div>
                 <button type="submit" class="login-btn">
-                    <span>Iniciar prueba gratuita</span>
+                    <span>Crear empresa e iniciar prueba</span>
                     <div class="spinner"></div>
-                </button>
-                <button type="button" class="support-btn" onclick="openSupportWhatsApp()">
-                    <i class="fab fa-whatsapp"></i> Hablar con un ingeniero de soporte
                 </button>
             </form>
             <button type="button" class="back-btn" onclick="showLogin()">Ya tengo cuenta, iniciar sesión</button>
+            <button type="button" class="support-btn" onclick="openSupportWhatsApp()">
+                <i class="fab fa-whatsapp" aria-hidden="true"></i> ¿Dudas? Escríbenos por WhatsApp
+            </button>
         </div>
+        <footer class="legal">
+            <nav aria-label="Información legal">
+                <a href="legal.html#precios">Precios</a>
+                <a href="legal.html#condiciones">Condiciones de uso</a>
+                <a href="legal.html#privacidad">Privacidad</a>
+                <button type="button" onclick="openSupportWhatsApp()">Contacto</button>
+            </nav>
+            <p>© <span class="legalYear">2026</span> BotEngineCorp · BotEngine ERP</p>
+        </footer>
     </div>
     </main>
 
+    <script>
+        // En línea: los botones para cambiar de panel funcionan apenas se pinta la página (3G).
+        function showRegister() {
+            document.getElementById('loginPanel').classList.add('hidden');
+            document.getElementById('registerPanel').classList.remove('hidden');
+            document.getElementById('alertContainer').innerHTML = '';
+            document.getElementById('empresaNombre').focus();
+        }
+
+        function showLogin() {
+            document.getElementById('registerPanel').classList.add('hidden');
+            document.getElementById('loginPanel').classList.remove('hidden');
+            document.getElementById('alertContainer').innerHTML = '';
+            document.getElementById('email').focus();
+        }
+    </script>
     <script src="js/auth-utils.js"></script>
     <script src="js/login.js"></script>
-    <script>document.getElementById('brandYear').textContent = new Date().getFullYear();</script>
+    <script>document.querySelectorAll('#brandYear, .legalYear').forEach(el => { el.textContent = new Date().getFullYear(); });</script>
 </body>
 </html>

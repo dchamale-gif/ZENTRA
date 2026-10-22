@@ -48,25 +48,25 @@ async function handleLogin(event) {
 
     // Validaciones
     if (!email) {
-        showAlert('Por favor ingresa tu email', 'error');
+        showAlert('Escribe tu correo electrónico.', 'error');
         document.getElementById('email').focus();
         return;
     }
 
     if (!isValidEmail(email)) {
-        showAlert('Por favor ingresa un email válido', 'error');
+        showAlert('Escribe un correo válido, por ejemplo nombre@empresa.com.', 'error');
         document.getElementById('email').focus();
         return;
     }
 
     if (!password) {
-        showAlert('Por favor ingresa tu contraseña', 'error');
+        showAlert('Escribe tu contraseña.', 'error');
         document.getElementById('password').focus();
         return;
     }
 
     if (password.length < 6) {
-        showAlert('La contraseña debe tener al menos 6 caracteres', 'error');
+        showAlert('La contraseña tiene al menos 6 caracteres. Revísala.', 'error');
         document.getElementById('password').focus();
         return;
     }
@@ -106,92 +106,131 @@ async function handleLogin(event) {
         }
     } catch (error) {
         console.error('Error inesperado:', error);
-        showAlert('Error inesperado: ' + error.message, 'error');
+        showAlert(friendlyError(error), 'error');
         setButtonLoading(submitBtn, false);
     }
 }
 
-/**
- * Mostrar formulario de registro
- */
-function showRegister() {
-    document.getElementById('loginPanel').classList.add('hidden');
-    document.getElementById('registerPanel').classList.remove('hidden');
-    document.getElementById('alertContainer').innerHTML = '';
-    document.getElementById('empresaNombre').focus();
+// showRegister() y showLogin() están en login.html para que los botones funcionen
+// desde que se pinta la página, antes de que termine de descargar este archivo.
+
+
+// Errores junto al campo: el formulario es largo y un aviso arriba queda fuera de la vista.
+function setFieldError(input, message) {
+    clearFieldError(input);
+    input.setAttribute('aria-invalid', 'true');
+    const error = document.createElement('small');
+    error.className = 'field-error';
+    error.id = `${input.id}Error`;
+    error.textContent = message;
+    input.setAttribute('aria-describedby', [input.getAttribute('aria-describedby'), error.id].filter(Boolean).join(' '));
+    input.closest('.form-group').appendChild(error);
 }
 
-function showLogin() {
-    document.getElementById('registerPanel').classList.add('hidden');
-    document.getElementById('loginPanel').classList.remove('hidden');
-    document.getElementById('alertContainer').innerHTML = '';
-    document.getElementById('email').focus();
+function clearFieldError(input) {
+    const error = document.getElementById(`${input.id}Error`);
+    if (!error) return;
+    error.remove();
+    input.removeAttribute('aria-invalid');
+    const describedBy = (input.getAttribute('aria-describedby') || '').split(' ').filter(id => id && id !== error.id);
+    if (describedBy.length) input.setAttribute('aria-describedby', describedBy.join(' '));
+    else input.removeAttribute('aria-describedby');
+}
+
+function showRegisterStatus(message, type) {
+    const status = document.getElementById('registerStatus');
+    status.innerHTML = '';
+    if (!message) return;
+    const alert = document.createElement('div');
+    alert.className = `alert ${type}`;
+    alert.textContent = message;
+    status.appendChild(alert);
+}
+
+function validateRegisterForm() {
+    const value = id => document.getElementById(id).value.trim();
+    const password = document.getElementById('registerPassword').value;
+    const companyEmail = value('empresaCorreo');
+    const checks = [
+        ['empresaNombre', !value('empresaNombre'), 'Escribe el nombre de tu empresa.'],
+        ['registerNombre', !value('registerNombre'), 'Escribe tu nombre.'],
+        ['registerApellido', !value('registerApellido'), 'Escribe tu apellido.'],
+        ['registerEmail', !isValidEmail(value('registerEmail')), 'Escribe un correo válido, por ejemplo nombre@empresa.com.'],
+        ['registerPassword', password.length < 8, 'La contraseña necesita al menos 8 caracteres.'],
+        ['registerPassword', !/[a-zA-Z]/.test(password) || !/\d/.test(password), 'La contraseña necesita letras y números.'],
+        ['registerPasswordConfirm', password !== document.getElementById('registerPasswordConfirm').value, 'Las contraseñas no coinciden. Escríbela otra vez.'],
+        ['empresaCorreo', companyEmail && !isValidEmail(companyEmail), 'El correo de la empresa no es válido. Corrígelo o déjalo vacío.']
+    ];
+    const failed = new Set();
+    checks.forEach(([id, invalid, message]) => {
+        if (!invalid || failed.has(id)) return;
+        failed.add(id);
+        setFieldError(document.getElementById(id), message);
+    });
+    return [...failed];
 }
 
 async function handleRegister(event) {
     event.preventDefault();
-    const submitBtn = event.target.querySelector('button[type="submit"]');
-    const password = document.getElementById('registerPassword').value;
-    const passwordConfirm = document.getElementById('registerPasswordConfirm').value;
+    const form = event.target;
+    const submitBtn = form.querySelector('button[type="submit"]');
+    if (submitBtn.disabled) return;
 
-    if (password.length < 8) {
-        showAlert('La contraseña debe tener al menos 8 caracteres', 'error');
+    form.querySelectorAll('input').forEach(clearFieldError);
+    showRegisterStatus('');
+    const invalid = validateRegisterForm();
+    if (invalid.length) {
+        const first = document.getElementById(invalid[0]);
+        if (first.closest('details')) first.closest('details').open = true;
+        first.focus();
+        showRegisterStatus(invalid.length === 1 ? 'Revisa el campo marcado en rojo.' : `Revisa los ${invalid.length} campos marcados en rojo.`, 'error');
         return;
     }
-    if (password !== passwordConfirm) {
-        showAlert('Las contraseñas no coinciden', 'error');
-        return;
-    }
 
+    const value = id => document.getElementById(id).value.trim();
     setButtonLoading(submitBtn, true);
     const result = await authManager.register({
-        empresaNombre: document.getElementById('empresaNombre').value.trim(),
-        empresaSector: document.getElementById('empresaSector').value.trim(),
-        empresaCorreo: document.getElementById('empresaCorreo').value.trim(),
-        empresaNit: document.getElementById('empresaNit').value.trim(),
-        empresaTelefono: document.getElementById('registerTelefono').value.trim(),
-        empresaDireccion: document.getElementById('empresaDireccion').value.trim(),
-        nombre: document.getElementById('registerNombre').value.trim(),
-        apellido: document.getElementById('registerApellido').value.trim(),
-        telefono: document.getElementById('registerTelefono').value.trim(),
-        email: document.getElementById('registerEmail').value.trim(),
-        password
+        empresaNombre: value('empresaNombre'),
+        empresaSector: value('empresaSector'),
+        empresaCorreo: value('empresaCorreo'),
+        empresaNit: value('empresaNit'),
+        empresaTelefono: value('registerTelefono'),
+        empresaDireccion: value('empresaDireccion'),
+        nombre: value('registerNombre'),
+        apellido: value('registerApellido'),
+        telefono: value('registerTelefono'),
+        email: value('registerEmail'),
+        password: document.getElementById('registerPassword').value
     });
 
     if (!result.success) {
-        showAlert(result.error, 'error');
+        showRegisterStatus(result.error, 'error');
+        if (/registrado/i.test(result.error || '')) {
+            setFieldError(document.getElementById('registerEmail'), 'Este correo ya tiene cuenta. Inicia sesión o usa otro correo.');
+        }
         setButtonLoading(submitBtn, false);
         return;
     }
 
-    showAlert(`Empresa creada. Tu prueba vence el ${new Date(result.organization.trialEndsAt).toLocaleDateString('es-GT')}.`, 'success', 2500);
-    openSupportWhatsApp();
-    setTimeout(redirectToDashboard, 2500);
+    showRegisterStatus(`¡Listo! Tu empresa fue creada. La prueba gratuita vence el ${new Date(result.organization.trialEndsAt).toLocaleDateString('es-GT')}. Entrando al panel…`, 'success');
+    setTimeout(redirectToDashboard, 1800);
 }
 
+document.addEventListener('input', event => {
+    if (event.target.matches?.('#registerForm input')) clearFieldError(event.target);
+});
+
+// El soporte no exige llenar el formulario: se incluyen solo los datos que ya se escribieron.
 function openSupportWhatsApp() {
-    const companyName = document.getElementById('empresaNombre').value.trim();
-    const sector = document.getElementById('empresaSector').value.trim();
-    const companyEmail = document.getElementById('empresaCorreo').value.trim();
-    if (!companyName || !sector || !companyEmail || !isValidEmail(companyEmail)) {
-        showAlert('Completa nombre de empresa, sector comercial y un correo válido antes de contactar soporte.', 'error');
-        return;
-    }
-    const nit = document.getElementById('empresaNit').value.trim() || 'No indicado';
-    const contactName = `${document.getElementById('registerNombre').value.trim()} ${document.getElementById('registerApellido').value.trim()}`;
-    const phone = document.getElementById('registerTelefono').value.trim() || 'No indicado';
-    const address = document.getElementById('empresaDireccion').value.trim() || 'No indicada';
-    const message = [
-        'Hola, necesito apoyo para configurar mi empresa en BotEngine ERP.',
-        '',
-        `Empresa: ${companyName}`,
-        `Sector comercial: ${sector}`,
-        `Correo de la empresa: ${companyEmail}`,
-        `NIT: ${nit}`,
-        `Teléfono: ${phone}`,
-        `Dirección: ${address}`,
-        `Persona de contacto: ${contactName}`
-    ].join('\n');
+    const value = id => document.getElementById(id)?.value.trim() || '';
+    const contactName = `${value('registerNombre')} ${value('registerApellido')}`.trim();
+    const details = [
+        ['Empresa', value('empresaNombre')],
+        ['Sector comercial', value('empresaSector')],
+        ['Correo', value('registerEmail') || value('email')],
+        ['Persona de contacto', contactName]
+    ].filter(([, text]) => text).map(([label, text]) => `${label}: ${text}`);
+    const message = ['Hola, tengo una consulta sobre BotEngine ERP.', ...(details.length ? ['', ...details] : [])].join('\n');
 
     window.open(
         `https://wa.me/50239959782?text=${encodeURIComponent(message)}`,
@@ -205,9 +244,13 @@ function openSupportWhatsApp() {
  */
 function showForgotPassword(event) {
     event.preventDefault();
-    showAlert('La funcionalidad de recuperación de contraseña aún se está desarrollando', 'info');
-    
-    // En el futuro, esto podría abrir un modal para recuperar contraseña
+    const alert = showAlert('Para restablecer tu contraseña, pide ayuda al administrador de tu empresa o escríbenos por WhatsApp. ', 'info', 0);
+    const link = document.createElement('button');
+    link.type = 'button';
+    link.className = 'alert-link';
+    link.textContent = 'Abrir WhatsApp';
+    link.addEventListener('click', openSupportWhatsApp);
+    alert?.querySelector('span')?.appendChild(link);
 }
 
 /**

@@ -206,27 +206,9 @@ const ReportsModule = {
         }, 800);
     },
 
-    // Mostrar notificación temporal
+    // Mismo aviso que el resto del sistema (js/app.js).
     showNotification(mensaje, tipo = 'success') {
-        const notification = document.createElement('div');
-        notification.className = `notification notification-${tipo}`;
-        notification.innerHTML = `
-            <div class="notification-content">
-                <i class="fas fa-${tipo === 'success' ? 'check-circle' : 'exclamation-circle'}"></i>
-                <span>${mensaje}</span>
-            </div>
-        `;
-        
-        document.body.appendChild(notification);
-        
-        setTimeout(() => {
-            notification.classList.add('show');
-        }, 10);
-        
-        setTimeout(() => {
-            notification.classList.remove('show');
-            setTimeout(() => notification.remove(), 300);
-        }, 3000);
+        showNotification(mensaje, tipo);
     },
 
     // Generar reporte consolidado
@@ -237,7 +219,7 @@ const ReportsModule = {
                 const endDate = document.getElementById('reportEndDate')?.value;
                 
                 if (!startDate || !endDate) {
-                    alert('Por favor selecciona fecha de inicio y fin');
+                    this.showNotification('Selecciona la fecha de inicio y la de fin.', 'warning');
                     return;
                 }
                 
@@ -272,12 +254,13 @@ const ReportsModule = {
                 const reportData = data.data;
                 
                 // Construir resumen compatible con el formato existente
+                // Ganancia bruta = ventas − costo de lo vendido (misma regla que el Panel).
                 const resumen = {
                     totalGastos: reportData.egresos,
                     totalIngresos: reportData.ingresos,
-                    totalCostos: 0,
-                    ganancia: reportData.ganancia,
-                    margenNeto: reportData.margenNeto,
+                    totalCostos: reportData.costoVentas || 0,
+                    ganancia: reportData.gananciaBruta ?? reportData.ganancia,
+                    margenNeto: reportData.margenBruto ?? reportData.margenNeto,
                     detalles: {
                         ventas: {
                             cantidad: reportData.numeroTransacciones || 0,
@@ -379,7 +362,7 @@ const ReportsModule = {
         // Procesar compras
         if (filtro === 'todos' || filtro === 'compras') {
             const compras = datos.compras || [];
-            const sumaCompras = compras.reduce((sum, item) => sum + (item.montoTotal || item.monto || 0), 0);
+            const sumaCompras = compras.reduce((sum, item) => sum + Number(item.montoTotal ?? item.monto ?? item.total ?? 0), 0);
             totalGastos += sumaCompras;
             detalles.compras = {
                 cantidad: compras.length,
@@ -391,7 +374,7 @@ const ReportsModule = {
         // Procesar ventas
         if (filtro === 'todos' || filtro === 'ventas') {
             const ventas = datos.ventas || [];
-            const sumaVentas = ventas.reduce((sum, item) => sum + (item.montoTotal || item.monto || 0), 0);
+            const sumaVentas = ventas.reduce((sum, item) => sum + Number(item.montoTotal ?? item.monto ?? item.total ?? 0), 0);
             totalIngresos += sumaVentas;
             detalles.ventas = {
                 cantidad: ventas.length,
@@ -400,19 +383,21 @@ const ReportsModule = {
             };
         }
 
-        // Procesar medicinas
-        if (filtro === 'todos' || filtro === 'medicinas') {
-            const medicinas = datos.medicinas || [];
-            const sumaMedicinas = medicinas.reduce((sum, item) => {
-                const costo = item.costoPorUnidad || item.costo || 0;
-                const cantidad = item.cantidadDisponible || item.cantidad || 0;
-                return sum + (costo * cantidad);
-            }, 0);
-            totalCostos += sumaMedicinas;
-            detalles.medicinas = {
-                cantidad: medicinas.length,
-                total: sumaMedicinas,
-                promedio: medicinas.length > 0 ? sumaMedicinas / medicinas.length : 0
+        // Costo de lo vendido: unidades vendidas × precio de compra del artículo.
+        // Es la misma regla que usa el margen bruto del Panel.
+        if (filtro === 'todos' || filtro === 'ventas') {
+            const articulos = new Map((VentasModule.state.articulos || []).map(a => [String(a.id), a]));
+            let unidades = 0;
+            const costoVentas = (datos.ventas || []).reduce((sum, venta) => sum + (venta.items || []).reduce((acc, item) => {
+                const cantidad = Number(item.cantidad) || 0;
+                unidades += cantidad;
+                return acc + cantidad * (articulos.get(String(item.concepto_id))?.costo || 0);
+            }, 0), 0);
+            totalCostos += costoVentas;
+            detalles.costoVentas = {
+                cantidad: unidades,
+                total: costoVentas,
+                promedio: unidades > 0 ? costoVentas / unidades : 0
             };
         }
 
@@ -428,7 +413,7 @@ const ReportsModule = {
             };
         }
 
-        const ganancia = totalIngresos - totalGastos - totalCostos;
+        const ganancia = totalIngresos - totalCostos;
         const margenNeto = totalIngresos > 0 ? ((ganancia / totalIngresos) * 100).toFixed(2) : 0;
 
         return {
@@ -458,27 +443,27 @@ const ReportsModule = {
 
                 <div class="report-summary-grid">
                     <div class="summary-card gastos">
-                        <h4>Gastos totales</h4>
+                        <h4>Compras del período</h4>
                         <p class="amount">${this.formatarMoneda(resumen.totalGastos)}</p>
-                        <p class="details">${resumen.detalles.compras?.cantidad || 0} compras</p>
+                        <p class="details">${resumen.detalles.compras?.cantidad || 0} compras (pasan al inventario)</p>
                     </div>
 
                     <div class="summary-card costos">
-                        <h4>Costos de inventario</h4>
+                        <h4>Costo de lo vendido</h4>
                         <p class="amount">${this.formatarMoneda(resumen.totalCostos)}</p>
-                        <p class="details">${resumen.detalles.medicinas?.cantidad || 0} ítems</p>
+                        <p class="details">Precio de compra de lo que vendiste</p>
                     </div>
 
                     <div class="summary-card ingresos">
                         <h4>Ingresos totales</h4>
                         <p class="amount">${this.formatarMoneda(resumen.totalIngresos)}</p>
-                        <p class="details">${(resumen.detalles.ventas?.cantidad || 0) + (resumen.detalles.servicios?.cantidad || 0)} transacciones</p>
+                        <p class="details">${Number(resumen.detalles.ventas?.cantidad || 0) + Number(resumen.detalles.servicios?.cantidad || 0)} ventas</p>
                     </div>
 
                     <div class="summary-card ganancia ${resumen.ganancia >= 0 ? 'positivo' : 'negativo'}">
-                        <h4>Ganancia neta</h4>
+                        <h4>Ganancia bruta</h4>
                         <p class="amount">${this.formatarMoneda(resumen.ganancia)}</p>
-                        <p class="details">Margen: ${Number(resumen.margenNeto) || 0}%</p>
+                        <p class="details">Margen bruto: ${(Number(resumen.margenNeto) || 0).toFixed(1)}%</p>
                     </div>
                 </div>
 
@@ -491,14 +476,15 @@ const ReportsModule = {
                                 <th>Cantidad</th>
                                 <th>Total</th>
                                 <th>Promedio</th>
-                                <th>% del Total</th>
+                                <th>% de las ventas</th>
                             </tr>
                         </thead>
                         <tbody>
         `;
 
         // Agregar detalles por concepto
-        const totalGeneral = resumen.totalGastos + resumen.totalCostos + resumen.totalIngresos;
+        // Cada concepto como porcentaje de las ventas (sumar ventas y costos no tiene sentido).
+        const totalGeneral = resumen.totalIngresos;
         
         for (const [concepto, datos] of Object.entries(resumen.detalles)) {
             if (datos.cantidad > 0) {
@@ -533,7 +519,11 @@ const ReportsModule = {
     // Renderizar gráfico
     renderChart() {
         const canvas = document.getElementById('reportChart');
-        if (!canvas || typeof Chart === 'undefined') return;
+        if (!canvas) return;
+        if (typeof Chart === 'undefined') {
+            loadLibrary('chart').then(() => this.renderChart()).catch(error => console.warn(error.message));
+            return;
+        }
 
         const resumen = this.state.reporteGenerado.resumen;
         const ctx = canvas.getContext('2d');
@@ -552,7 +542,7 @@ const ReportsModule = {
         this.chart = new Chart(ctx, {
             type: 'doughnut',
             data: {
-                labels: ['Gastos', 'Costos', 'Ingresos'],
+                labels: ['Compras', 'Costo de lo vendido', 'Ingresos'],
                 datasets: [{
                     data: [datos.gastos, datos.costos, datos.ingresos],
                     backgroundColor: ['#FF6B6B', '#FFA500', '#4CAF50'],
@@ -612,11 +602,19 @@ const ReportsModule = {
     },
 
     // Exportar a PDF
-    exportToPdf() {
+    async exportToPdf() {
         const element = document.getElementById('reportResultContainer');
         if (!element) {
-            alert('Genera un reporte primero');
+            this.showNotification('Genera un reporte primero.', 'warning');
             return;
+        }
+        if (typeof html2pdf === 'undefined') {
+            try {
+                await loadLibrary('pdf');
+            } catch (error) {
+                this.showNotification(error.message, 'error');
+                return;
+            }
         }
 
         // Mostrar indicador de carga
@@ -732,20 +730,15 @@ const ReportsModule = {
         const nombres = {
             compras: '🛒 Compras',
             ventas: '💳 Ventas',
-            medicinas: '💊 Medicinas',
-            servicios: '🏥 Servicios'
+            costoVentas: '📦 Costo de lo vendido (unidades)',
+            servicios: '🧾 Servicios'
         };
         return nombres[concepto] || concepto;
     },
 
     // Formatear moneda
     formatarMoneda(valor) {
-        const monto = Number(valor);
-        return new Intl.NumberFormat('es-GT', {
-            style: 'currency',
-            currency: 'GTQ',
-            minimumFractionDigits: 2
-        }).format(Number.isFinite(monto) ? monto : 0);
+        return formatQ(valor);
     },
 
     // Sin datos de ejemplo - Compras

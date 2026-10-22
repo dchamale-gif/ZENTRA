@@ -1,6 +1,6 @@
 const pool = require('../db/connection');
 
-const LOW_STOCK_THRESHOLD = 10;
+const { LOW_STOCK_THRESHOLD } = require('../utils/inventory');
 
 const safe = async (query, params = []) => {
   try {
@@ -22,7 +22,7 @@ const getNotifications = async (req, res) => {
         `SELECT COUNT(*)::int AS total,
                 COUNT(*) FILTER (WHERE cantidad_disponible <= 0)::int AS agotados
          FROM codigos_articulos
-         WHERE activo = true AND cantidad_disponible < $1`,
+         WHERE activo = true AND cantidad_disponible <= $1`,
         [LOW_STOCK_THRESHOLD]
       ),
       safe(
@@ -43,14 +43,19 @@ const getNotifications = async (req, res) => {
     const notifications = [];
 
     if (lowStock[0]?.total > 0) {
+      // Mismos grupos que la página de Artículos: "existencia baja" (1 a 5) y "agotados" (0).
       const { total, agotados } = lowStock[0];
+      const bajos = total - agotados;
+      const plural = (n, singular, pluralForm) => `${n} ${n === 1 ? singular : pluralForm}`;
+      const partes = [];
+      if (bajos > 0) partes.push(`${plural(bajos, 'artículo', 'artículos')} con ${LOW_STOCK_THRESHOLD} unidades o menos`);
+      if (agotados > 0) partes.push(`${plural(agotados, 'artículo agotado', 'artículos agotados')}`);
       notifications.push({
         id: 'low-stock',
         type: agotados > 0 ? 'danger' : 'warning',
         icon: 'fa-boxes-stacked',
-        title: 'Stock bajo',
-        message: `${total} artículo(s) con menos de ${LOW_STOCK_THRESHOLD} unidades` +
-          (agotados > 0 ? ` (${agotados} agotados)` : ''),
+        title: agotados > 0 && bajos === 0 ? 'Artículos agotados' : 'Existencia baja',
+        message: `${partes.join(' y ')}.`.replace(/^./, c => c.toUpperCase()),
         page: 'codigos-articulos'
       });
     }
