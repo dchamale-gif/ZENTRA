@@ -47,8 +47,10 @@ services:
       PLATFORM_DB_PASSWORD_FILE: /run/secrets/platform_db_password
       JWT_SECRET_FILE: /run/secrets/jwt_secret
       JWT_EXPIRATION: ${JWT_EXPIRATION:-8h}
-      CORS_ORIGIN: ${CORS_ORIGIN:?Configura CORS_ORIGIN en .env}
+      CORS_ORIGIN: https://${DOMAIN:?Configura DOMAIN en .env}
       DB_SSL: disable
+      WEBSITE_ANALYTICS_URL: ${WEBSITE_ANALYTICS_URL:-https://botenginecorp.com}
+      WEBSITE_ANALYTICS_KEY: ${WEBSITE_ANALYTICS_KEY:-}
     secrets:
       - tenant_db_password
       - auth_db_password
@@ -68,7 +70,8 @@ services:
     security_opt:
       - no-new-privileges:true
     cap_drop: [ALL]
-    networks: [backend]
+    # egress: salida a internet solo para leer las visitas del sitio web
+    networks: [backend, egress]
 
   migrate:
     build:
@@ -113,9 +116,8 @@ services:
       - platform_db_password
       - platform_admin_password
     depends_on:
-      db:
-        condition: service_healthy
-    networks: [backend]
+      migrate:
+        condition: service_completed_successfully
 
   web:
     build:
@@ -123,14 +125,13 @@ services:
       dockerfile: Dockerfile.frontend
     restart: unless-stopped
     environment:
-      DOMAIN: ${DOMAIN:-localhost}
+      DOMAIN: ${DOMAIN:?Configura DOMAIN en .env}
     depends_on:
       backend:
         condition: service_healthy
     ports:
       - "80:80"
       - "443:443"
-      - "443:443/udp"
     volumes:
       - caddy_data:/data
     read_only: true
@@ -152,6 +153,7 @@ networks:
   frontend:
   backend:
     internal: true
+  egress:
 
 secrets:
   postgres_password:

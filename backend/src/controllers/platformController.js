@@ -309,7 +309,32 @@ const updateLicense = async (req, res) => {
   }
 };
 
+// Resumen de visitas del sitio web (WebBotEngine). La clave queda en el servidor.
+const getWebsiteAnalytics = async (req, res) => {
+  const baseUrl = (process.env.WEBSITE_ANALYTICS_URL || '').replace(/\/$/, '');
+  const apiKey = process.env.WEBSITE_ANALYTICS_KEY;
+  if (!baseUrl || !apiKey) {
+    return res.status(503).json({ error: 'Configura WEBSITE_ANALYTICS_URL y WEBSITE_ANALYTICS_KEY en el servidor' });
+  }
+  const days = Math.min(Math.max(parseInt(req.query.days, 10) || 30, 7), 365);
+  try {
+    const response = await fetch(`${baseUrl}/api/analytics/summary?days=${days}`, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+      signal: AbortSignal.timeout(8000)
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      return res.status(502).json({ error: data.error || `El sitio respondió ${response.status}` });
+    }
+    res.json(data);
+  } catch (error) {
+    console.error('Error consultando visitas del sitio:', error.message);
+    res.status(502).json({ error: 'No se pudo conectar con el sitio web' });
+  }
+};
+
 module.exports = {
+  getWebsiteAnalytics,
   createOrganization,
   listOrganizations,
   getOrganization,

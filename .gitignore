@@ -31,6 +31,9 @@ build/
 /ediciones/
 *.min.js
 *.min.css
+# Las librerías de vendor/ sí se versionan (ver vendor/README.md)
+!vendor/**/*.min.js
+!vendor/**/*.min.css
 
 # Database
 *.db

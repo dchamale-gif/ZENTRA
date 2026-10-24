@@ -67,6 +67,30 @@
         .module-checks label:has(input:checked) { background: #eff6ff; border-color: #bfdbfe; }
         .module-checks input { accent-color: var(--primary); height: 16px; min-height: 0; width: 16px; }
         .modal-actions .spacer { flex: 1; }
+        .analytics { margin-bottom: 24px; }
+        .analytics-head { align-items: center; display: flex; gap: 12px; justify-content: space-between; margin-bottom: 12px; }
+        .analytics-head h2 { color: var(--text); font-size: 16px; margin: 0; }
+        .analytics-head .hint { color: var(--muted); font-size: 12.5px; margin: 2px 0 0; }
+        .stat-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); margin-bottom: 12px; }
+        .stat .label { color: var(--muted); font-size: 12.5px; font-weight: 500; }
+        .stat .value { color: var(--text); font-size: 26px; font-variant-numeric: tabular-nums; font-weight: 700; letter-spacing: -.02em; margin-top: 4px; }
+        .stat .sub { color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+        .chart-card h3, .list-card h3 { color: var(--text); font-size: 13.5px; font-weight: 600; margin: 0 0 14px; }
+        .daily-chart { align-items: flex-end; border-bottom: 1px solid var(--border-strong); display: flex; gap: 2px; height: 160px; position: relative; }
+        .daily-chart .bar { align-items: flex-end; display: flex; flex: 1; height: 100%; min-width: 0; }
+        .daily-chart .bar span { background: var(--primary); border-radius: 4px 4px 0 0; display: block; min-height: 2px; width: 100%; }
+        .daily-chart .bar:hover span, .daily-chart .bar:focus span { background: var(--primary-hover); }
+        .daily-chart .bar:focus { outline: none; }
+        .chart-axis { color: var(--muted); display: flex; font-size: 11.5px; justify-content: space-between; margin-top: 6px; }
+        .chart-tip { background: var(--text); border-radius: 6px; color: #fff; font-size: 12px; padding: 6px 8px; pointer-events: none; position: absolute; transform: translate(-50%, -100%); white-space: nowrap; z-index: 2; }
+        .analytics-lists { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); margin-top: 12px; }
+        .rank-row { display: grid; font-size: 13px; gap: 4px 10px; grid-template-columns: 1fr auto; margin-bottom: 10px; }
+        .rank-row .name { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .rank-row .count { color: var(--body); font-variant-numeric: tabular-nums; font-weight: 600; }
+        .rank-row .track { background: #eef1f5; border-radius: 4px; grid-column: 1 / -1; height: 6px; }
+        .rank-row .track span { background: var(--primary); border-radius: 4px; display: block; height: 100%; }
+        .empty-note { color: var(--muted); font-size: 13px; }
+        .section-title { color: var(--text); font-size: 16px; margin: 0 0 12px; }
         @media (max-width: 700px) { header { padding: 12px 16px; } main { padding: 16px; } .toolbar { align-items: stretch; flex-direction: column; } }
     </style>
 </head>
@@ -77,6 +101,21 @@
     </header>
     <main>
         <div id="message" class="message"></div>
+        <section class="analytics" aria-labelledby="analyticsTitle">
+            <div class="analytics-head">
+                <div>
+                    <h2 id="analyticsTitle">Visitas del sitio web</h2>
+                    <p class="hint">Personas que entraron a botenginecorp.com. Cada persona se cuenta una vez por periodo.</p>
+                </div>
+                <select id="analyticsDays" aria-label="Periodo">
+                    <option value="7">Últimos 7 días</option>
+                    <option value="30" selected>Últimos 30 días</option>
+                    <option value="90">Últimos 90 días</option>
+                </select>
+            </div>
+            <div id="analyticsBody"><div class="card empty-note">Cargando visitas...</div></div>
+        </section>
+        <h2 class="section-title">Empresas</h2>
         <section class="toolbar">
             <div>
                 <label for="expiringDays">Mostrar próximas a vencer en</label>
@@ -130,5 +169,6 @@
     </div>
     <script src="js/auth-utils.js"></script>
     <script src="js/support.js"></script>
+    <script src="js/website-analytics.js"></script>
 </body>
 </html>
