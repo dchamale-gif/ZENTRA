@@ -77,6 +77,14 @@
         .mail-state.ok { color: #166534; }
         .mail-state.pending { color: #b45309; }
         .modal-actions .spacer { flex: 1; }
+        .modal-content.wide { max-width: 980px; }
+        .preview-tabs { border-bottom: 1px solid var(--border); display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 12px; }
+        .preview-tabs button { background: none; border: 0; border-bottom: 2px solid transparent; border-radius: 0; color: var(--muted); font-size: 13px; min-height: 36px; padding: 0 12px; }
+        .preview-tabs button[aria-selected="true"] { border-bottom-color: var(--primary); color: var(--text); font-weight: 600; }
+        .preview-meta { color: var(--body); font-size: 13px; margin: 0 0 10px; }
+        .preview-meta strong { color: var(--text); }
+        .preview-frame { background: #f5f7fa; border: 1px solid var(--border); border-radius: 8px; display: block; height: 68vh; width: 100%; }
+        .preview-download { font-size: 12.5px; margin-top: 6px; }
         .analytics { margin-bottom: 24px; }
         .analytics-head { align-items: center; display: flex; gap: 12px; justify-content: space-between; margin-bottom: 12px; }
         .analytics-head h2 { color: var(--text); font-size: 16px; margin: 0; }
@@ -176,10 +184,25 @@
                         <small class="field-hint">La empresa queda habilitada solo con estos módulos.</small>
                     </div>
                 </div>
-                <div class="modal-actions"><button class="secondary" id="cancelCompanyButton" type="button">Cancelar</button><button class="primary" type="submit">Guardar empresa</button></div>
+                <div class="modal-actions"><button class="secondary" id="cancelCompanyButton" type="button">Cancelar</button><button class="primary" type="submit" id="saveCompanyButton">Guardar empresa</button></div>
             </form>
         </div>
     </div>
+    <div id="previewModal" class="modal hidden">
+        <div class="modal-content wide" role="dialog" aria-modal="true" aria-labelledby="previewTitle">
+            <h2 id="previewTitle">Revisa lo que recibirá el cliente</h2>
+            <p class="modal-hint" id="previewHint"></p>
+            <div class="preview-tabs" id="previewTabs" role="tablist"></div>
+            <p class="preview-meta" id="previewMeta"></p>
+            <iframe id="previewFrame" class="preview-frame" title="Vista previa"></iframe>
+            <div class="preview-download" id="previewDownload"></div>
+            <div class="modal-actions">
+                <button class="secondary" type="button" id="previewBackButton">Volver a editar</button>
+                <button class="primary" type="button" id="previewSendButton">Crear empresa y enviar</button>
+            </div>
+        </div>
+    </div>
+
     <div id="modulesModal" class="modal hidden">
         <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="modulesTitle">
             <h2 id="modulesTitle">Módulos de la empresa</h2>

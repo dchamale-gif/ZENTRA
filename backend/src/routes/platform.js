@@ -6,6 +6,7 @@ const router = express.Router();
 
 router.use(platformAuthMiddleware);
 router.post('/organizations', platformController.createOrganization);
+router.post('/contratos/vista-previa', platformController.previewContractDocuments);
 router.get('/organizations', platformController.listOrganizations);
 router.get('/organizations/:id', platformController.getOrganization);
 router.post('/organizations/:id/license', platformController.updateLicense);

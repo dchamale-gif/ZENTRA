@@ -60,6 +60,16 @@ const leerContrato = (body) => {
   };
 };
 
+const siguienteCorrelativo = async (db, anio) => {
+  const { rows } = await db.query(
+    'SELECT COALESCE(MAX(correlativo), 0) + 1 AS siguiente FROM contratos WHERE anio = $1',
+    [anio]
+  );
+  return rows[0].siguiente;
+};
+
+const numeroDe = (anio, correlativo) => `${PREFIJO}-${anio}-${String(correlativo).padStart(4, '0')}`;
+
 /**
  * Asigna el número BE-<año>-<correlativo> y guarda los datos de los documentos.
  * client: conexión con la transacción del alta abierta.
@@ -67,12 +77,8 @@ const leerContrato = (body) => {
 const registrarContrato = async (client, { organizationId, contrato, cliente, usuarios }) => {
   const fecha = hoyEnGuatemala();
   await client.query('SELECT pg_advisory_xact_lock($1)', [BLOQUEO_CORRELATIVO]);
-  const { rows } = await client.query(
-    'SELECT COALESCE(MAX(correlativo), 0) + 1 AS siguiente FROM contratos WHERE anio = $1',
-    [fecha.anio]
-  );
-  const correlativo = rows[0].siguiente;
-  const numero = `${PREFIJO}-${fecha.anio}-${String(correlativo).padStart(4, '0')}`;
+  const correlativo = await siguienteCorrelativo(client, fecha.anio);
+  const numero = numeroDe(fecha.anio, correlativo);
   const datos = { numero, fecha, cliente, usuarios, ...contrato };
   const insert = await client.query(
     `INSERT INTO contratos (organization_id, anio, correlativo, numero, datos)
@@ -82,15 +88,28 @@ const registrarContrato = async (client, { organizationId, contrato, cliente, us
   return { id: insert.rows[0].id, datos };
 };
 
+const correoDe = (datos) => plantillas.documentosContrato({
+  nombre: datos.cliente.contacto,
+  empresa: datos.cliente.nombre,
+  numero: datos.numero,
+  documentos: DOCUMENTOS
+});
+
+/**
+ * Lo mismo que recibiría el cliente, sin guardar ni enviar nada. El número es el que tocaría
+ * ahora; se confirma al crear la empresa (otra alta en medio lo correría).
+ */
+const previsualizar = async ({ contrato, cliente, usuarios }) => {
+  const fecha = hoyEnGuatemala();
+  const numero = numeroDe(fecha.anio, await siguienteCorrelativo(authPool, fecha.anio));
+  const datos = { numero, fecha, cliente, usuarios, ...contrato };
+  return { datos, documentos: await generarDocumentos(datos), correo: correoDe(datos) };
+};
+
 // Genera los PDF y los envía al correo del cliente; marca el contrato como enviado.
 const enviarDocumentos = async ({ id, datos }) => {
   const adjuntos = await generarDocumentos(datos);
-  const correo = plantillas.documentosContrato({
-    nombre: datos.cliente.contacto,
-    empresa: datos.cliente.nombre,
-    numero: datos.numero,
-    documentos: DOCUMENTOS
-  });
+  const correo = correoDe(datos);
   await enviarCorreo({
     para: datos.cliente.correo,
     nombre: datos.cliente.contacto,
@@ -102,4 +121,4 @@ const enviarDocumentos = async ({ id, datos }) => {
   await authPool.query('UPDATE contratos SET enviado_en = NOW() WHERE id = $1', [id]);
 };
 
-module.exports = { leerContrato, registrarContrato, enviarDocumentos };
+module.exports = { leerContrato, registrarContrato, enviarDocumentos, previsualizar };

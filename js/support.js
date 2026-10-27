@@ -1,5 +1,5 @@
 const platformApi = '/api/platform';
-const state = { organizations: [], modules: [], editingId: null };
+const state = { organizations: [], modules: [], editingId: null, previewUrls: [] };
 const statusLabels = { trial: 'Prueba', active: 'Activa', suspended: 'Suspendida', cancelled: 'Cancelada' };
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -15,13 +15,22 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('companyModal').classList.remove('hidden');
     });
     document.getElementById('companyContract').addEventListener('change', toggleContractFields);
+    document.getElementById('previewBackButton').addEventListener('click', () => {
+        closePreview();
+        document.getElementById('companyModal').classList.remove('hidden');
+    });
+    document.getElementById('previewSendButton').addEventListener('click', createCompany);
     document.getElementById('cancelCompanyButton').addEventListener('click', closeCompanyModal);
     document.getElementById('cancelModulesButton').addEventListener('click', closeModules);
     document.getElementById('modulesForm').addEventListener('submit', saveModules);
     document.getElementById('modulesSelectAll').addEventListener('click', () => {
         document.querySelectorAll('#modulesChecks input').forEach(input => { input.checked = true; });
     });
-    document.getElementById('companyForm').addEventListener('submit', createCompany);
+    // Con contrato, primero se revisan los documentos; la empresa se crea desde la vista previa.
+    document.getElementById('companyForm').addEventListener('submit', event => {
+        event.preventDefault();
+        return document.getElementById('companyContract').checked ? openPreview() : createCompany();
+    });
     document.getElementById('logoutButton').addEventListener('click', async () => {
         await authManager.logout();
         window.location.href = '/login.html';
@@ -236,6 +245,7 @@ async function toggleContractFields() {
     const enabled = document.getElementById('companyContract').checked;
     const fields = document.getElementById('contractFields');
     fields.classList.toggle('hidden', !enabled);
+    document.getElementById('saveCompanyButton').textContent = enabled ? 'Revisar documentos' : 'Guardar empresa';
     ['contractPrice', 'contractPos', 'contractStart'].forEach(id => { document.getElementById(id).required = enabled; });
     if (!enabled) return;
     const start = document.getElementById('contractStart');
@@ -267,23 +277,97 @@ const contractData = () => {
     };
 };
 
-async function createCompany(event) {
-    event.preventDefault();
+const companyData = () => ({
+    name: document.getElementById('companyName').value.trim(),
+    sector: document.getElementById('companySector').value.trim(),
+    email: document.getElementById('companyEmail').value.trim(),
+    adminName: document.getElementById('companyAdminName').value.trim(),
+    nit: document.getElementById('companyNit').value.trim(),
+    plan: document.getElementById('companyPlan').value.trim(),
+    durationDays: Number(document.getElementById('companyDays').value),
+    maxUsers: Number(document.getElementById('companyMaxUsers').value),
+    contrato: contractData()
+});
+
+const pdfTitles = { COT: 'Propuesta', CTR: 'Contrato', ANX: 'Anexo A', ACT: 'Acta de entrega' };
+
+// Genera en el servidor el correo y los PDF con los datos del formulario, sin crear ni enviar nada.
+async function openPreview() {
+    const button = document.getElementById('saveCompanyButton');
+    button.disabled = true;
+    button.textContent = 'Generando documentos...';
     try {
-        const data = await apiRequest('/organizations', {
-            method: 'POST',
-            body: JSON.stringify({
-                name: document.getElementById('companyName').value.trim(),
-                sector: document.getElementById('companySector').value.trim(),
-                email: document.getElementById('companyEmail').value.trim(),
-                adminName: document.getElementById('companyAdminName').value.trim(),
-                nit: document.getElementById('companyNit').value.trim(),
-                plan: document.getElementById('companyPlan').value.trim(),
-                durationDays: Number(document.getElementById('companyDays').value),
-                maxUsers: Number(document.getElementById('companyMaxUsers').value),
-                contrato: contractData()
-            })
+        const data = await apiRequest('/contratos/vista-previa', { method: 'POST', body: JSON.stringify(companyData()) });
+        releasePreviewUrls();
+        const tabs = [{ label: 'Correo', email: data.correo }, ...data.documentos.map(documento => {
+            const bytes = Uint8Array.from(atob(documento.pdf), char => char.charCodeAt(0));
+            const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+            state.previewUrls.push(url);
+            const code = documento.nombre.replace(/\.pdf$/, '').split('-').pop();
+            return { label: pdfTitles[code] || code, nombre: documento.nombre, url };
+        })];
+        document.getElementById('previewHint').textContent = `Número ${data.numero}: se confirma al crear la empresa (cambia si otra empresa con contrato se crea antes). Nada se ha enviado todavía.`;
+        document.getElementById('previewTabs').innerHTML = tabs.map((tab, index) =>
+            `<button type="button" role="tab" data-index="${index}">${escapeHtml(tab.label)}</button>`).join('');
+        document.querySelectorAll('#previewTabs button').forEach(tabButton => {
+            tabButton.addEventListener('click', () => showPreviewTab(tabs, Number(tabButton.dataset.index)));
         });
+        showPreviewTab(tabs, 0);
+        closeCompanyModal();
+        document.getElementById('previewSendButton').disabled = false;
+        document.getElementById('previewModal').classList.remove('hidden');
+    } catch (error) {
+        showMessage(error.message, 'error');
+        alert(error.message);
+    } finally {
+        button.disabled = false;
+        button.textContent = 'Revisar documentos';
+    }
+}
+
+function showPreviewTab(tabs, index) {
+    const tab = tabs[index];
+    const frame = document.getElementById('previewFrame');
+    document.querySelectorAll('#previewTabs button').forEach(button => {
+        button.setAttribute('aria-selected', String(Number(button.dataset.index) === index));
+    });
+    const meta = document.getElementById('previewMeta');
+    const download = document.getElementById('previewDownload');
+    if (tab.email) {
+        meta.innerHTML = `Para: <strong>${escapeHtml(tab.email.para)}</strong> · Asunto: <strong>${escapeHtml(tab.email.asunto)}</strong> · 4 PDF adjuntos`;
+        download.innerHTML = '';
+        // El correo se muestra aislado: sin scripts ni acceso a esta página.
+        frame.setAttribute('sandbox', '');
+        frame.srcdoc = tab.email.html;
+    } else {
+        meta.innerHTML = `Adjunto: <strong>${escapeHtml(tab.nombre)}</strong>`;
+        download.innerHTML = `<a href="${tab.url}" download="${escapeHtml(tab.nombre)}">Descargar ${escapeHtml(tab.nombre)}</a> · si no se ve aquí, ábrelo descargado.`;
+        // El visor de PDF del navegador no carga dentro de un iframe con sandbox.
+        frame.removeAttribute('sandbox');
+        frame.removeAttribute('srcdoc');
+        frame.src = tab.url;
+    }
+}
+
+function releasePreviewUrls() {
+    state.previewUrls.forEach(url => URL.revokeObjectURL(url));
+    state.previewUrls = [];
+}
+
+function closePreview() {
+    document.getElementById('previewModal').classList.add('hidden');
+    const frame = document.getElementById('previewFrame');
+    frame.removeAttribute('srcdoc');
+    frame.src = 'about:blank';
+}
+
+async function createCompany() {
+    const sendButton = document.getElementById('previewSendButton');
+    sendButton.disabled = true;
+    try {
+        const data = await apiRequest('/organizations', { method: 'POST', body: JSON.stringify(companyData()) });
+        closePreview();
+        releasePreviewUrls();
         closeCompanyModal();
         document.getElementById('companyForm').reset();
         document.getElementById('contractModules').innerHTML = '';
@@ -293,6 +377,9 @@ async function createCompany(event) {
         await loadOrganizations();
     } catch (error) {
         showMessage(error.message, 'error');
+        sendButton.disabled = false;
+        // Si falló desde la vista previa, el mensaje de la página queda tapado.
+        if (!document.getElementById('previewModal').classList.contains('hidden')) alert(error.message);
     }
 }
 

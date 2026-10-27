@@ -2,7 +2,7 @@ const crypto = require('crypto');
 const pool = require('../db/platformConnection');
 const authPool = require('../db/authConnection');
 const { enviarVerificacion, reenviar, hashInutilizable } = require('../utils/onboarding');
-const { leerContrato, registrarContrato, enviarDocumentos } = require('../utils/contratos');
+const { leerContrato, registrarContrato, enviarDocumentos, previsualizar } = require('../utils/contratos');
 const { MODULES, MODULE_KEYS } = require('../utils/modules');
 
 const LICENSE_STATUSES = new Set(['trial', 'active', 'suspended', 'cancelled']);
@@ -233,6 +233,40 @@ const createOrganization = async (req, res) => {
     if (error.expose) return res.status(error.status || 400).json({ error: error.message });
     console.error('Error creando organización desde soporte:', error);
     res.status(500).json({ error: 'Error agregando empresa' });
+  }
+};
+
+// Documentos y correo que recibiría el cliente con los datos del formulario de alta, sin crear
+// ni enviar nada. Los datos del cliente se recortan igual que en createOrganization.
+const previewContractDocuments = async (req, res) => {
+  try {
+    const { name, email, nit, adminName, maxUsers = DEFAULT_MAX_USERS } = req.body;
+    const correo = String(email || '').trim().toLowerCase();
+    const userLimit = parseMaxUsers(maxUsers);
+    if (!String(name || '').trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo)) {
+      return res.status(400).json({ error: 'Nombre y correo válido son requeridos' });
+    }
+    if (!userLimit) {
+      return res.status(400).json({ error: 'Los usuarios permitidos deben estar entre 1 y 1000' });
+    }
+    const contrato = leerContrato(req.body);
+    if (!contrato) return res.status(400).json({ error: 'Marca «Enviar contrato y documentos» para verlos' });
+    const contacto = String(adminName || '').trim().replace(/\s+/g, ' ').slice(0, 100) || 'Administrador';
+    const { datos, documentos, correo: mensaje } = await previsualizar({
+      contrato,
+      cliente: { nombre: String(name).trim().slice(0, 150), nit: nit ? String(nit).trim().slice(0, 30) : null, contacto, correo },
+      usuarios: userLimit
+    });
+    res.json({
+      success: true,
+      numero: datos.numero,
+      correo: { para: correo, asunto: mensaje.asunto, html: mensaje.html },
+      documentos: documentos.map(({ nombre, contenido }) => ({ nombre, pdf: contenido.toString('base64') }))
+    });
+  } catch (error) {
+    if (error.expose) return res.status(error.status || 400).json({ error: error.message });
+    console.error('Error generando la vista previa de documentos:', error);
+    res.status(500).json({ error: 'Error generando la vista previa de los documentos' });
   }
 };
 
@@ -487,6 +521,7 @@ const getWebsiteAnalytics = async (req, res) => {
 
 module.exports = {
   resendOnboardingEmail,
+  previewContractDocuments,
   deactivateOrganization,
   getWebsiteAnalytics,
   createOrganization,
