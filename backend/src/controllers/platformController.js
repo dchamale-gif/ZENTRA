@@ -219,6 +219,60 @@ const resendOnboardingEmail = async (req, res) => {
   }
 };
 
+// Baja de una empresa suspendida: queda cancelada, sus usuarios se desactivan y sus correos
+// se renombran (baja-<id>-correo) para poder usarlos en otra empresa. No se borra ningún dato.
+const deactivateOrganization = async (req, res) => {
+  let client;
+  try {
+    client = await authPool.connect();
+    await client.query('BEGIN');
+    const { rows } = await client.query(
+      'SELECT id, nombre, subscription_status FROM organizations WHERE id = $1 FOR UPDATE',
+      [req.params.id]
+    );
+    const organization = rows[0];
+    if (!organization) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Empresa no encontrada' });
+    }
+    if (!['suspended', 'cancelled'].includes(organization.subscription_status)) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'Suspende la empresa antes de darla de baja' });
+    }
+    const confirmacion = String(req.body.confirmacion || '').trim().toLowerCase();
+    if (confirmacion !== organization.nombre.trim().toLowerCase()) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'El nombre escrito no coincide con el de la empresa' });
+    }
+    const usuarios = await client.query(
+      `UPDATE users SET email = LEFT('baja-' || id || '-' || email, 150), activo = false, updated_at = NOW()
+       WHERE organization_id = $1 AND email NOT LIKE 'baja-%'
+       RETURNING id`,
+      [organization.id]
+    );
+    await client.query(
+      'DELETE FROM email_verification_tokens WHERE user_id IN (SELECT id FROM users WHERE organization_id = $1)',
+      [organization.id]
+    );
+    await client.query(
+      `UPDATE organizations SET subscription_status = 'cancelled', updated_at = NOW() WHERE id = $1`,
+      [organization.id]
+    );
+    await client.query('COMMIT');
+    const liberados = usuarios.rowCount;
+    res.json({
+      success: true,
+      message: `${organization.nombre} quedó dada de baja; ${liberados} ${liberados === 1 ? 'correo quedó libre' : 'correos quedaron libres'} para usarse en otra empresa`
+    });
+  } catch (error) {
+    if (client) await client.query('ROLLBACK').catch(() => {});
+    console.error('Error dando de baja la empresa:', error);
+    res.status(500).json({ error: 'Error dando de baja la empresa' });
+  } finally {
+    if (client) client.release();
+  }
+};
+
 // Impide bajar la capacidad por debajo de los usuarios que ya están activos.
 const checkActiveUsersFit = async (organizationId, userLimit) => {
   const { rows } = await pool.query(
@@ -404,6 +458,7 @@ const getWebsiteAnalytics = async (req, res) => {
 
 module.exports = {
   resendOnboardingEmail,
+  deactivateOrganization,
   getWebsiteAnalytics,
   createOrganization,
   listOrganizations,

@@ -72,8 +72,10 @@ async function loadOrganizations() {
                     <button class="secondary" type="button" data-action="generate" data-id="${organization.id}">Generar clave</button>
                     <button class="secondary" type="button" data-action="users" data-id="${organization.id}" data-max-users="${organization.maxUsers}">Usuarios</button>
                     <button class="secondary" type="button" data-action="modules" data-id="${organization.id}">Módulos</button>
-                    ${organization.admin && organization.admin.pendienteCambio ? `<button class="secondary" type="button" data-action="correo" data-id="${organization.id}">Reenviar correo</button>` : ''}
-                    <button class="danger" type="button" data-action="suspend" data-id="${organization.id}">Suspender</button>
+                    ${organization.admin && organization.admin.pendienteCambio && !dadaDeBaja(organization) ? `<button class="secondary" type="button" data-action="correo" data-id="${organization.id}">Reenviar correo</button>` : ''}
+                    ${organization.status === 'suspended' || organization.status === 'cancelled'
+                        ? (dadaDeBaja(organization) ? '' : `<button class="danger" type="button" data-action="baja" data-id="${organization.id}">Dar de baja</button>`)
+                        : `<button class="danger" type="button" data-action="suspend" data-id="${organization.id}">Suspender</button>`}
                 </td>
             </tr>
         `).join('');
@@ -82,6 +84,7 @@ async function loadOrganizations() {
             button.addEventListener('click', () => {
                 if (button.dataset.action === 'modules') return openModules(button.dataset.id);
                 if (button.dataset.action === 'correo') return resendEmail(button.dataset.id, button);
+                if (button.dataset.action === 'baja') return deactivateOrganization(button.dataset.id, button);
                 return updateLicense(button.dataset.id, button.dataset.action, button);
             });
         });
@@ -90,10 +93,14 @@ async function loadOrganizations() {
     }
 }
 
+// Al dar de baja, los correos de los usuarios se renombran a baja-<id>-correo.
+const dadaDeBaja = (organization) => organization.status === 'cancelled' && Boolean(organization.admin?.email?.startsWith('baja-'));
+
 // Estado del alta del administrador: verificación de correo y primer ingreso.
 const mailState = (organization) => {
     const admin = organization.admin;
     if (!admin) return '<span class="mail-state pending">Sin administrador</span>';
+    if (dadaDeBaja(organization)) return '<span class="mail-state pending">Dada de baja · correos libres</span>';
     if (!admin.verificado) return '<span class="mail-state pending">Correo sin verificar</span>';
     if (admin.pendienteCambio) return '<span class="mail-state pending">Verificado · aún no entra</span>';
     return '<span class="mail-state ok">Cuenta activada</span>';
@@ -108,6 +115,27 @@ async function resendEmail(id, button) {
     button.disabled = true;
     try {
         const data = await apiRequest(`/organizations/${id}/correo`, { method: 'POST', body: '{}' });
+        showMessage(data.message);
+        await loadOrganizations();
+    } catch (error) {
+        showMessage(error.message, 'error');
+        button.disabled = false;
+    }
+}
+
+// Cancela la empresa, desactiva sus usuarios y libera sus correos. Pide escribir el nombre para confirmar.
+async function deactivateOrganization(id, button) {
+    const organization = state.organizations.find(entry => String(entry.id) === String(id));
+    if (!organization) return;
+    const answer = window.prompt(`Dar de baja ${organization.name}: sus usuarios ya no podrán entrar y sus correos quedarán libres para crear otra empresa. Los datos no se borran.\n\nEscribe el nombre de la empresa para confirmar:`);
+    if (answer === null) return;
+    if (answer.trim().toLowerCase() !== organization.name.trim().toLowerCase()) {
+        showMessage('El nombre escrito no coincide; la empresa no se dio de baja.', 'error');
+        return;
+    }
+    button.disabled = true;
+    try {
+        const data = await apiRequest(`/organizations/${id}/baja`, { method: 'POST', body: JSON.stringify({ confirmacion: answer }) });
         showMessage(data.message);
         await loadOrganizations();
     } catch (error) {
