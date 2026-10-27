@@ -28,7 +28,7 @@ const authMiddleware = async (req, res, next) => {
     
     // Obtener usuario de la BD para verificar que siga activo
     const result = await pool.query(
-      `SELECT u.id, u.email, u.nombre, u.apellido, u.activo, u.organization_id,
+      `SELECT u.id, u.email, u.nombre, u.apellido, u.activo, u.organization_id, u.debe_cambiar_password,
               o.nombre AS organization_name, o.slug AS organization_slug,
               o.sector_comercial AS organization_sector,
               o.email AS organization_email,
@@ -68,6 +68,14 @@ const authMiddleware = async (req, res, next) => {
           status: user.subscription_status,
           trialEndsAt: user.trial_ends_at
         }
+      });
+    }
+
+    // Con contraseña temporal solo se permite cambiarla (y ver el perfil o salir).
+    if (user.debe_cambiar_password && !req.originalUrl.startsWith('/api/auth/')) {
+      return res.status(403).json({
+        error: 'Antes de continuar crea tu propia contraseña',
+        code: 'PASSWORD_CHANGE_REQUIRED'
       });
     }
 

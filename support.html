@@ -67,6 +67,10 @@
         .module-checks label:has(input:checked) { background: #eff6ff; border-color: #bfdbfe; }
         .module-checks input { accent-color: var(--primary); height: 16px; min-height: 0; width: 16px; }
         .modules-extra-title { font-size: 14px; margin: 20px 0 10px; }
+        .field-hint { color: #64748b; display: block; font-size: 12px; margin-top: 4px; }
+        .mail-state { display: inline-block; font-size: 12px; margin-top: 4px; }
+        .mail-state.ok { color: #166534; }
+        .mail-state.pending { color: #b45309; }
         .modal-actions .spacer { flex: 1; }
         .analytics { margin-bottom: 24px; }
         .analytics-head { align-items: center; display: flex; gap: 12px; justify-content: space-between; margin-bottom: 12px; }
@@ -144,7 +148,8 @@
             <form id="companyForm">
                 <div class="form-group"><label for="companyName">Nombre</label><input id="companyName" required maxlength="150"></div>
                 <div class="form-group"><label for="companySector">Sector comercial</label><input id="companySector" required maxlength="150"></div>
-                <div class="form-group"><label for="companyEmail">Correo</label><input id="companyEmail" type="email" required maxlength="150"></div>
+                <div class="form-group"><label for="companyAdminName">Nombre del administrador</label><input id="companyAdminName" required maxlength="100" autocomplete="off"></div>
+                <div class="form-group"><label for="companyEmail">Correo del administrador</label><input id="companyEmail" type="email" required maxlength="150" aria-describedby="companyEmailHint"><small id="companyEmailHint" class="field-hint">Le enviamos un enlace para confirmar el correo; al confirmarlo recibe su usuario y una contraseña temporal.</small></div>
                 <div class="form-group"><label for="companyNit">NIT (opcional)</label><input id="companyNit" maxlength="30"></div>
                 <div class="form-group"><label for="companyPlan">Plan</label><input id="companyPlan" value="Demo" maxlength="50"></div>
                 <div class="form-group"><label for="companyMaxUsers">Usuarios permitidos</label><input id="companyMaxUsers" type="number" min="1" max="1000" value="3" required></div>

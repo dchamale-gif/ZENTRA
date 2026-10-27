@@ -24,11 +24,93 @@ if (!authManager.isAuthenticated() || authManager.isTokenExpired()) {
 // ============================================
 
 document.addEventListener('DOMContentLoaded', function() {
+    // Cuenta recién creada con contraseña temporal: primero debe crear la suya.
+    if (authManager.getUser()?.debeCambiarPassword) {
+        showForcedPasswordChange();
+        return;
+    }
     initializeApp();
     initializeUserProfile();
     initializeTrialBanner();
     setupLogout();
 });
+
+function showForcedPasswordChange() {
+    const user = authManager.getUser() || {};
+    const modal = document.createElement('div');
+    modal.className = 'modal';
+    modal.style.display = 'flex';
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.setAttribute('aria-labelledby', 'forcedPasswordTitle');
+    modal.innerHTML = `
+        <div class="modal-content">
+            <div class="modal-header"><h2 id="forcedPasswordTitle">Crea tu contraseña</h2></div>
+            <form id="forcedPasswordForm" novalidate>
+                <div class="modal-body">
+                    <p>Bienvenido${user.nombre ? `, <span id="forcedPasswordName"></span>` : ''}. Entraste con la contraseña temporal del correo; crea una propia para continuar.</p>
+                    <div class="form-group">
+                        <label for="forcedCurrent">Contraseña temporal</label>
+                        <input id="forcedCurrent" class="form-input" type="password" autocomplete="current-password" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="forcedNew">Nueva contraseña</label>
+                        <input id="forcedNew" class="form-input" type="password" autocomplete="new-password" minlength="8" required aria-describedby="forcedHint">
+                        <small id="forcedHint">Al menos 8 caracteres, con letras y números.</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="forcedConfirm">Repite la nueva contraseña</label>
+                        <input id="forcedConfirm" class="form-input" type="password" autocomplete="new-password" required>
+                    </div>
+                    <p id="forcedError" class="form-error" role="alert" hidden></p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" id="forcedLogout">Salir</button>
+                    <button type="submit" class="btn btn-primary" id="forcedSubmit">Guardar y continuar</button>
+                </div>
+            </form>
+        </div>`;
+    document.body.appendChild(modal);
+    if (user.nombre) modal.querySelector('#forcedPasswordName').textContent = user.nombre;
+    document.body.style.overflow = 'hidden';
+    const error = modal.querySelector('#forcedError');
+    const fail = (message, field) => {
+        error.textContent = message;
+        error.hidden = false;
+        field?.focus();
+    };
+    modal.querySelector('#forcedLogout').addEventListener('click', () => authManager.logout?.().finally(() => { window.location.href = '/login.html'; }));
+    modal.querySelector('#forcedPasswordForm').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const current = modal.querySelector('#forcedCurrent');
+        const nueva = modal.querySelector('#forcedNew');
+        const confirmacion = modal.querySelector('#forcedConfirm');
+        error.hidden = true;
+        if (!current.value) return fail('Escribe la contraseña temporal que recibiste por correo.', current);
+        if (nueva.value.length < 8 || !/[a-zA-Z]/.test(nueva.value) || !/\d/.test(nueva.value)) {
+            return fail('La nueva contraseña debe tener al menos 8 caracteres, con letras y números.', nueva);
+        }
+        if (nueva.value !== confirmacion.value) return fail('Las dos contraseñas nuevas no coinciden.', confirmacion);
+        const button = modal.querySelector('#forcedSubmit');
+        button.disabled = true;
+        try {
+            const response = await fetch(`${authManager.apiBaseUrl}/api/auth/change-password`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({ currentPassword: current.value, newPassword: nueva.value })
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(data.error || 'No se pudo guardar la contraseña');
+            authManager.saveUser({ ...authManager.getUser(), debeCambiarPassword: false });
+            window.location.reload();
+        } catch (requestError) {
+            fail(friendlyError(requestError), current);
+            button.disabled = false;
+        }
+    });
+    modal.querySelector('#forcedCurrent').focus();
+}
 
 function initializeTrialBanner() {
     const organization = authManager.getUser()?.organization;

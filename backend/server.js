@@ -100,6 +100,7 @@ app.get('/health', (req, res) => {
 app.use('/api/auth/login', authRateLimiter);
 app.use('/api/auth/register', authRateLimiter);
 app.use('/api/auth/change-password', authRateLimiter);
+app.use('/api/auth/verificar-correo', authRateLimiter);
 app.use('/api/auth', authRoutes);
 app.use('/api/platform', platformRoutes);
 

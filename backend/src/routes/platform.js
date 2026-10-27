@@ -12,6 +12,7 @@ router.post('/organizations/:id/license', platformController.updateLicense);
 router.post('/organizations/:id/users-limit', platformController.updateUserLimit);
 router.get('/modules', platformController.listModules);
 router.post('/organizations/:id/modules', platformController.updateModules);
+router.post('/organizations/:id/correo', platformController.resendOnboardingEmail);
 router.get('/website-analytics', platformController.getWebsiteAnalytics);
 
 module.exports = router;

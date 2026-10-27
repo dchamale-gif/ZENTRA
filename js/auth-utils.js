@@ -230,6 +230,11 @@ class AuthManager {
                 this.clearSessionExpiry();
                 window.location.href = `/login.html?access=${data.code.toLowerCase()}`;
             }
+            // La sesión es de una contraseña temporal: recargar muestra la pantalla para cambiarla.
+            if (data.code === 'PASSWORD_CHANGE_REQUIRED' && !this.getUser()?.debeCambiarPassword) {
+                this.saveUser({ ...this.getUser(), debeCambiarPassword: true });
+                window.location.reload();
+            }
         }
         if (response.status === 401) {
             this.clearUser();

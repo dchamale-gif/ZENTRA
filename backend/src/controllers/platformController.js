@@ -1,5 +1,7 @@
 const crypto = require('crypto');
 const pool = require('../db/platformConnection');
+const authPool = require('../db/authConnection');
+const { enviarVerificacion, reenviar, hashInutilizable } = require('../utils/onboarding');
 const { MODULES, MODULE_KEYS } = require('../utils/modules');
 
 const LICENSE_STATUSES = new Set(['trial', 'active', 'suspended', 'cancelled']);
@@ -34,6 +36,8 @@ const mapOrganization = (row) => ({
   // Facturación electrónica: solo soporte la habilita.
   fel: row.fel_habilitada === true,
   activeUsers: Number(row.active_users || 0),
+  // Primer usuario de la empresa: si ya verificó su correo y si aún no crea su contraseña.
+  admin: row.admin_estado || null,
   trialEndsAt: row.trial_ends_at,
   subscriptionStartedAt: row.subscription_started_at,
   subscriptionEndsAt: row.subscription_ends_at,
@@ -49,6 +53,10 @@ const listOrganizations = async (req, res) => {
               license_plan, license_key, license_issued_at, license_max_users, modulos_habilitados, fel_habilitada, trial_ends_at,
               subscription_started_at, subscription_ends_at, created_at,
               ${ACTIVE_USERS_SQL},
+              (SELECT json_build_object('email', u.email, 'verificado', u.email_verificado_en IS NOT NULL,
+                                        'pendienteCambio', u.debe_cambiar_password)
+               FROM users u WHERE u.organization_id = organizations.id
+               ORDER BY u.created_at, u.id LIMIT 1) AS admin_estado,
               GREATEST(
                 0,
                 CEIL(EXTRACT(EPOCH FROM (
@@ -99,20 +107,23 @@ const getOrganization = async (req, res) => {
 };
 
 const createOrganization = async (req, res) => {
+  let client;
   try {
     const {
       name,
       sector,
       email,
       nit,
+      adminName,
       plan = 'Demo',
       durationDays = 30,
       maxUsers = DEFAULT_MAX_USERS
     } = req.body;
     const days = Number(durationDays);
     const userLimit = parseMaxUsers(maxUsers);
+    const correo = String(email || '').trim().toLowerCase();
     if (!String(name || '').trim() || !String(sector || '').trim() ||
-        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || '').trim())) {
+        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo)) {
       return res.status(400).json({ error: 'Nombre, sector y correo válido son requeridos' });
     }
     if (!Number.isInteger(days) || days < 1 || days > 3650) {
@@ -121,8 +132,17 @@ const createOrganization = async (req, res) => {
     if (!userLimit) {
       return res.status(400).json({ error: 'Los usuarios permitidos deben estar entre 1 y 1000' });
     }
+    const nombreAdmin = String(adminName || '').trim().replace(/\s+/g, ' ').slice(0, 100) || 'Administrador';
 
-    const result = await pool.query(
+    // Empresa y administrador en una sola transacción (rol de autenticación, que puede crear usuarios).
+    client = await authPool.connect();
+    await client.query('BEGIN');
+    const existente = await client.query('SELECT 1 FROM users WHERE email = $1', [correo]);
+    if (existente.rows.length) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: `Ya existe un usuario con el correo ${correo}; usa otro correo para el administrador` });
+    }
+    const result = await client.query(
       `INSERT INTO organizations
        (nombre, slug, sector_comercial, email, nit, subscription_status,
         license_plan, license_key, license_issued_at, license_max_users,
@@ -136,7 +156,7 @@ const createOrganization = async (req, res) => {
         String(name).trim().slice(0, 150),
         `${String(name).trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40)}-${crypto.randomBytes(3).toString('hex')}`,
         String(sector).trim().slice(0, 150),
-        String(email).trim().toLowerCase(),
+        correo,
         nit ? String(nit).trim().slice(0, 30) : null,
         String(plan).trim().slice(0, 50) || 'Demo',
         generateLicenseKey(),
@@ -144,14 +164,58 @@ const createOrganization = async (req, res) => {
         userLimit
       ]
     );
+    const organization = result.rows[0];
+    const usuario = await client.query(
+      `INSERT INTO users
+       (organization_id, email, password_hash, nombre, activo, verificado, debe_cambiar_password, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, true, false, true, NOW(), NOW())
+       RETURNING id`,
+      [organization.id, correo, await hashInutilizable(), nombreAdmin]
+    );
+    await client.query(
+      `INSERT INTO user_roles (user_id, role_id) SELECT $1, id FROM roles WHERE nombre = 'admin'`,
+      [usuario.rows[0].id]
+    );
+    await client.query('COMMIT');
+    client.release();
+    client = null;
+
+    // Si el correo no sale, la empresa queda creada y se reenvía desde el panel.
+    let correoVerificacion = { enviado: true };
+    try {
+      await enviarVerificacion({ userId: usuario.rows[0].id, email: correo, nombre: nombreAdmin, empresa: organization.nombre });
+    } catch (error) {
+      correoVerificacion = { enviado: false, error: error.expose ? error.message : 'No se pudo enviar el correo' };
+      if (!error.expose) console.error('Error enviando verificación:', error);
+    }
+
     res.status(201).json({
       success: true,
-      message: 'Empresa agregada al panel',
-      organization: mapOrganization(result.rows[0])
+      message: correoVerificacion.enviado
+        ? `Empresa agregada. Enviamos el enlace de verificación a ${correo}`
+        : `Empresa agregada, pero el correo no salió: ${correoVerificacion.error}. Usa «Reenviar correo».`,
+      organization: mapOrganization({ ...organization, admin_estado: { email: correo, verificado: false, pendienteCambio: true } }),
+      correo: correoVerificacion
     });
   } catch (error) {
+    if (client) {
+      await client.query('ROLLBACK').catch(() => {});
+      client.release();
+    }
     console.error('Error creando organización desde soporte:', error);
     res.status(500).json({ error: 'Error agregando empresa' });
+  }
+};
+
+// Reenvía el enlace de verificación o, si ya verificó y no ha entrado, credenciales nuevas.
+const resendOnboardingEmail = async (req, res) => {
+  try {
+    const message = await reenviar(req.params.id);
+    res.json({ success: true, message });
+  } catch (error) {
+    if (error.expose) return res.status(error.status || 400).json({ error: error.message });
+    console.error('Error reenviando correo:', error);
+    res.status(500).json({ error: 'Error reenviando el correo' });
   }
 };
 
@@ -339,6 +403,7 @@ const getWebsiteAnalytics = async (req, res) => {
 };
 
 module.exports = {
+  resendOnboardingEmail,
   getWebsiteAnalytics,
   createOrganization,
   listOrganizations,

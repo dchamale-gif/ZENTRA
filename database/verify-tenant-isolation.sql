@@ -19,7 +19,7 @@ BEGIN
               'organizations', 'users', 'roles', 'user_roles',
               'permissions', 'role_permissions', 'platform_admins',
               'login_attempts', 'password_reset_tokens', 'user_sessions',
-              'user_module_access'
+              'user_module_access', 'email_verification_tokens'
           )
         ORDER BY t.table_name
     ) LOOP

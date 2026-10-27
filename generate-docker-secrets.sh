@@ -48,6 +48,15 @@ generate_secret "jwt_secret.txt" 48
 generate_secret "platform_admin_password.txt" 24
 generate_secret "integrations_key.txt" 32
 
+# La clave de Brevo la pones tú; si aún no existe se crea vacía para que Docker arranque
+# (sin clave, el ERP crea las empresas pero avisa que el correo no salió).
+if [ ! -e "$SECRETS_DIR/email_api_key.txt" ]; then
+  : > "$SECRETS_DIR/email_api_key.txt"
+  chmod 600 "$SECRETS_DIR/email_api_key.txt"
+  copy_acl "$SECRETS_DIR/email_api_key.txt"
+  echo "• Creado vacío: $SECRETS_DIR/email_api_key.txt (pega ahí la clave de API de Brevo)"
+fi
+
 echo ""
 echo "Secretos generados con permisos 0600 en $SECRETS_DIR."
 echo "La contraseña inicial del administrador de plataforma está en: $SECRETS_DIR/platform_admin_password.txt"

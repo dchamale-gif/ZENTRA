@@ -24,6 +24,17 @@ function initializeLoginForm() {
         showAlert('El acceso de tu empresa está suspendido. Contacta a soporte.', 'warning', 0);
     }
 
+    // Llegada desde el enlace del correo de verificación.
+    const correo = new URLSearchParams(window.location.search).get('correo');
+    const mensajesCorreo = {
+        verificado: ['¡Correo confirmado! Te enviamos tu usuario y contraseña temporal; revisa tu bandeja de entrada (y la de spam).', 'success'],
+        'ya-verificado': ['Este correo ya estaba confirmado. Entra con los datos que te enviamos por correo.', 'info'],
+        vencido: ['El enlace venció. Pide a soporte que te envíe uno nuevo.', 'warning'],
+        invalido: ['El enlace no es válido. Revisa que lo copiaste completo o pide uno nuevo a soporte.', 'warning'],
+        'error-envio': ['Confirmamos el enlace, pero no pudimos enviarte la contraseña. Abre el enlace de nuevo en unos minutos o escribe a soporte.', 'error']
+    };
+    if (mensajesCorreo[correo]) showAlert(mensajesCorreo[correo][0], mensajesCorreo[correo][1], 0);
+
     // Si ya hay sesión activa, redirigir al dashboard
     if (authManager.isAuthenticated() && !authManager.isTokenExpired()) {
         if (authManager.getUser()?.platformAdmin) {

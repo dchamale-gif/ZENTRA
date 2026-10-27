@@ -5,6 +5,7 @@ const pool = require('../db/authConnection');
 const platformPool = require('../db/platformConnection');
 const { clearSessionCookie, setSessionCookie } = require('../utils/sessionCookie');
 const { resolveUserAccess } = require('../utils/modules');
+const { verificarCorreo } = require('../utils/onboarding');
 
 const TRIAL_DAYS = 30;
 
@@ -261,6 +262,7 @@ const login = async (req, res) => {
 
     const result = await pool.query(
       `SELECT u.id, u.organization_id, u.email, u.password_hash, u.nombre, u.apellido, u.activo,
+              u.debe_cambiar_password,
               o.nombre AS organization_name, o.slug AS organization_slug,
               o.sector_comercial AS organization_sector,
               o.email AS organization_email,
@@ -335,6 +337,7 @@ const login = async (req, res) => {
         permissions,
         modules,
         isAdmin: access.isAdmin,
+        debeCambiarPassword: user.debe_cambiar_password === true,
         organization
       },
       organization
@@ -362,7 +365,8 @@ const getProfile = async (req, res) => {
     const userId = req.user.id;
 
     const result = await pool.query(
-      `SELECT id, email, nombre, apellido, telefono, activo, ultimo_login
+      `SELECT id, email, nombre, apellido, telefono, activo, ultimo_login,
+              debe_cambiar_password AS "debeCambiarPassword"
        FROM users WHERE id = $1 AND organization_id = $2`,
       [userId, req.organization.id]
     );
@@ -398,8 +402,11 @@ const changePassword = async (req, res) => {
     const result = await pool.query('SELECT password_hash FROM users WHERE id = $1', [req.user.id]);
     const matches = result.rows[0] && await bcrypt.compare(String(currentPassword || ''), result.rows[0].password_hash);
     if (!matches) return res.status(400).json({ error: 'La contraseña actual no es correcta' });
+    if (String(newPassword) === String(currentPassword)) {
+      return res.status(400).json({ error: 'La nueva contraseña debe ser distinta de la actual' });
+    }
     await pool.query(
-      'UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2',
+      'UPDATE users SET password_hash = $1, debe_cambiar_password = false, updated_at = NOW() WHERE id = $2',
       [await bcrypt.hash(String(newPassword), 10), req.user.id]
     );
     res.json({ success: true, message: 'Contraseña actualizada' });
@@ -409,7 +416,14 @@ const changePassword = async (req, res) => {
   }
 };
 
+// Enlace del correo de verificación: confirma el correo, envía las credenciales y lleva al login.
+const verifyEmail = async (req, res) => {
+  const estado = await verificarCorreo(req.query.token);
+  res.redirect(303, `/login.html?correo=${estado}`);
+};
+
 module.exports = {
+  verifyEmail,
   changePassword,
   register,
   login,

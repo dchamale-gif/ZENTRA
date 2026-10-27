@@ -61,7 +61,7 @@ async function loadOrganizations() {
         body.innerHTML = data.organizations.map((organization) => `
             <tr>
                 <td><strong>${escapeHtml(organization.name)}</strong><br><small>${escapeHtml(organization.sector || 'Sin sector')}</small></td>
-                <td>${escapeHtml(organization.email || 'Sin correo')}<br><small>${escapeHtml(organization.nit || 'Sin NIT')}</small></td>
+                <td>${escapeHtml(organization.email || 'Sin correo')}<br><small>${escapeHtml(organization.nit || 'Sin NIT')}</small><br>${mailState(organization)}</td>
                 <td><span class="status ${organization.status}">${escapeHtml(statusLabels[organization.status] || organization.status)}</span><br><small>${organization.daysRemaining} días</small></td>
                 <td class="key">${escapeHtml(organization.licenseKey || 'Sin licencia')}</td>
                 <td class="${organization.activeUsers >= organization.maxUsers ? 'users-full' : ''}">${organization.activeUsers} / ${organization.maxUsers}<br><small>activos / permitidos</small></td>
@@ -72,18 +72,47 @@ async function loadOrganizations() {
                     <button class="secondary" type="button" data-action="generate" data-id="${organization.id}">Generar clave</button>
                     <button class="secondary" type="button" data-action="users" data-id="${organization.id}" data-max-users="${organization.maxUsers}">Usuarios</button>
                     <button class="secondary" type="button" data-action="modules" data-id="${organization.id}">Módulos</button>
+                    ${organization.admin && organization.admin.pendienteCambio ? `<button class="secondary" type="button" data-action="correo" data-id="${organization.id}">Reenviar correo</button>` : ''}
                     <button class="danger" type="button" data-action="suspend" data-id="${organization.id}">Suspender</button>
                 </td>
             </tr>
         `).join('');
         state.organizations = data.organizations;
         body.querySelectorAll('button[data-action]').forEach(button => {
-            button.addEventListener('click', () => button.dataset.action === 'modules'
-                ? openModules(button.dataset.id)
-                : updateLicense(button.dataset.id, button.dataset.action, button));
+            button.addEventListener('click', () => {
+                if (button.dataset.action === 'modules') return openModules(button.dataset.id);
+                if (button.dataset.action === 'correo') return resendEmail(button.dataset.id, button);
+                return updateLicense(button.dataset.id, button.dataset.action, button);
+            });
         });
     } catch (error) {
         showMessage(error.message, 'error');
+    }
+}
+
+// Estado del alta del administrador: verificación de correo y primer ingreso.
+const mailState = (organization) => {
+    const admin = organization.admin;
+    if (!admin) return '<span class="mail-state pending">Sin administrador</span>';
+    if (!admin.verificado) return '<span class="mail-state pending">Correo sin verificar</span>';
+    if (admin.pendienteCambio) return '<span class="mail-state pending">Verificado · aún no entra</span>';
+    return '<span class="mail-state ok">Cuenta activada</span>';
+};
+
+async function resendEmail(id, button) {
+    const organization = state.organizations.find(entry => String(entry.id) === String(id));
+    const pendiente = organization?.admin?.verificado
+        ? 'Se enviará una contraseña temporal nueva y la anterior dejará de funcionar.'
+        : 'Se enviará un enlace de verificación nuevo y el anterior dejará de funcionar.';
+    if (!confirm(`¿Reenviar el correo a ${organization?.admin?.email || 'la empresa'}? ${pendiente}`)) return;
+    button.disabled = true;
+    try {
+        const data = await apiRequest(`/organizations/${id}/correo`, { method: 'POST', body: '{}' });
+        showMessage(data.message);
+        await loadOrganizations();
+    } catch (error) {
+        showMessage(error.message, 'error');
+        button.disabled = false;
     }
 }
 
@@ -175,6 +204,7 @@ async function createCompany(event) {
                 name: document.getElementById('companyName').value.trim(),
                 sector: document.getElementById('companySector').value.trim(),
                 email: document.getElementById('companyEmail').value.trim(),
+                adminName: document.getElementById('companyAdminName').value.trim(),
                 nit: document.getElementById('companyNit').value.trim(),
                 plan: document.getElementById('companyPlan').value.trim(),
                 durationDays: Number(document.getElementById('companyDays').value),
@@ -183,7 +213,7 @@ async function createCompany(event) {
         });
         closeCompanyModal();
         document.getElementById('companyForm').reset();
-        showMessage(`${data.message}. Licencia: ${data.organization.licenseKey}`);
+        showMessage(`${data.message}. Licencia: ${data.organization.licenseKey}`, data.correo?.enviado === false ? 'error' : 'success');
         await loadOrganizations();
     } catch (error) {
         showMessage(error.message, 'error');
