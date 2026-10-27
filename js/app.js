@@ -246,6 +246,9 @@ function navigateToPage(pageId, { fromHistory = false } = {}) {
     if (pageId === 'ventas') {
         VentasModule.refreshTable();
     }
+    if (pageId === 'punto-de-venta' && typeof PosModule !== 'undefined') {
+        PosModule.refresh();
+    }
     if (pageId === 'cuentas-por-cobrar') {
         CuentasPorCobrarModule.refreshTable();
     }
@@ -258,6 +261,10 @@ function navigateToPage(pageId, { fromHistory = false } = {}) {
     }
     if (pageId === 'codigos-articulos' && typeof CodigosArticulosModule !== 'undefined') {
         CodigosArticulosModule.loadData();
+        // Si la empresa conectó su página web, traer lo nuevo y volver a mostrar.
+        if (typeof IntegracionModule !== 'undefined') {
+            IntegracionModule.autoSync().then((changed) => changed && CodigosArticulosModule.loadData());
+        }
     }
     if (pageId === 'clientes') {
         ClientesModule.load();
@@ -267,6 +274,8 @@ function navigateToPage(pageId, { fromHistory = false } = {}) {
     }
     if (pageId === 'settings') {
         ClasificacionesConfig.load();
+        if (typeof IntegracionModule !== 'undefined') IntegracionModule.load();
+        if (typeof FelModule !== 'undefined') FelModule.loadConfig();
     }
     if (pageId === 'transactions') {
         loadTransactions();

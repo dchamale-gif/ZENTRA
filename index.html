@@ -37,6 +37,10 @@
                 </a>
                 <div class="nav-section" data-nav-section>
                 <div class="nav-section-title">Comercial</div>
+                <a href="#" class="nav-item" data-page="punto-de-venta" data-module="ventas">
+                    <i class="fas fa-cash-register"></i>
+                    <span>Punto de venta</span>
+                </a>
                 <a href="#" class="nav-item" data-page="ventas" data-module="ventas">
                     <i class="fas fa-receipt"></i>
                     <span>Ventas</span>
@@ -521,6 +525,237 @@
                             <dl class="info-grid" id="companyInfo"></dl>
                         </section>
 
+                        <section class="panel" id="settingsFel" data-admin-only hidden>
+                            <div class="panel-header">
+                                <div>
+                                    <h2>Facturación electrónica (FEL)</h2>
+                                    <p class="panel-subtitle">Datos de tu empresa ante la SAT y el certificador que contrataste. Al cobrar podrás elegir ticket (sin FEL) o factura, que se certifica en ese momento.</p>
+                                </div>
+                                <span class="status-pill" id="felPill" hidden></span>
+                            </div>
+                            <p id="felAviso" class="inline-notice" role="status" hidden><span></span></p>
+                            <form id="felForm" class="integracion-form" novalidate>
+                                <fieldset>
+                                    <legend>Certificador</legend>
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label for="felCertificador">Certificador <span class="required">*</span></label>
+                                            <select id="felCertificador" class="form-input"></select>
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="felAmbiente">Ambiente</label>
+                                            <select id="felAmbiente" class="form-input">
+                                                <option value="pruebas">Pruebas</option>
+                                                <option value="produccion">Producción (facturas reales)</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div id="felCredenciales" class="form-row"></div>
+                                </fieldset>
+
+                                <fieldset>
+                                    <legend>Emisor (como aparece en tu RTU)</legend>
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label for="felNit">NIT <span class="required">*</span></label>
+                                            <input type="text" id="felNit" class="form-input" autocomplete="off" placeholder="1234567K">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="felAfiliacion">Régimen de IVA <span class="required">*</span></label>
+                                            <select id="felAfiliacion" class="form-input">
+                                                <option value="GEN">General (factura con IVA 12 %)</option>
+                                                <option value="PEQ">Pequeño contribuyente</option>
+                                            </select>
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="felEstablecimiento">Código de establecimiento <span class="required">*</span></label>
+                                            <input type="text" id="felEstablecimiento" class="form-input" inputmode="numeric" value="1">
+                                        </div>
+                                    </div>
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label for="felNombre">Nombre o razón social <span class="required">*</span></label>
+                                            <input type="text" id="felNombre" class="form-input" maxlength="400">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="felNombreComercial">Nombre comercial <span class="required">*</span></label>
+                                            <input type="text" id="felNombreComercial" class="form-input" maxlength="255">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="felCorreo">Correo (opcional)</label>
+                                            <input type="email" id="felCorreo" class="form-input" maxlength="120">
+                                        </div>
+                                    </div>
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label for="felDireccion">Dirección del establecimiento <span class="required">*</span></label>
+                                            <input type="text" id="felDireccion" class="form-input" maxlength="200">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="felMunicipio">Municipio <span class="required">*</span></label>
+                                            <input type="text" id="felMunicipio" class="form-input" maxlength="100">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="felDepartamento">Departamento <span class="required">*</span></label>
+                                            <input type="text" id="felDepartamento" class="form-input" maxlength="100">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="felCodigoPostal">Código postal</label>
+                                            <input type="text" id="felCodigoPostal" class="form-input" inputmode="numeric" maxlength="5" value="01001">
+                                        </div>
+                                    </div>
+                                    <small class="integracion-help" id="felFrasesHint"></small>
+                                </fieldset>
+
+                                <fieldset>
+                                    <legend>Al cobrar</legend>
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label for="felPorDefecto">Comprobante que aparece marcado</label>
+                                            <select id="felPorDefecto" class="form-input">
+                                                <option value="ticket">Ticket</option>
+                                                <option value="factura">Factura</option>
+                                            </select>
+                                        </div>
+                                        <div class="form-group">
+                                            <label class="checkbox-line integracion-activa"><input type="checkbox" id="felActiva" checked> Facturación activa</label>
+                                        </div>
+                                    </div>
+                                </fieldset>
+
+                                <p id="felError" class="form-error" role="alert" hidden></p>
+                                <div class="integracion-actions">
+                                    <button type="submit" class="btn btn-primary" id="felGuardarBtn"><i class="fas fa-save" aria-hidden="true"></i> Guardar</button>
+                                </div>
+                            </form>
+                        </section>
+
+                        <section class="panel" id="settingsIntegracion" data-admin-only hidden>
+                            <div class="panel-header">
+                                <div>
+                                    <h2>Página web</h2>
+                                    <p class="panel-subtitle">Trae productos, precios y fotos desde la base de datos de tu página web. Solo tu empresa ve esta conexión y la contraseña se guarda cifrada. El ERP solo lee: nunca modifica la base de la web.</p>
+                                </div>
+                                <span class="status-pill" id="integracionPill" hidden></span>
+                            </div>
+                            <p id="integracionAviso" class="inline-notice" role="status" hidden><span></span></p>
+                            <form id="integracionForm" class="integracion-form" novalidate>
+                                <fieldset>
+                                    <legend>Conexión</legend>
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label for="intMotor">Motor de la base <span class="required">*</span></label>
+                                            <select id="intMotor" class="form-input">
+                                                <option value="mysql">MySQL / MariaDB</option>
+                                                <option value="postgres">PostgreSQL</option>
+                                            </select>
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="intHost">Servidor <span class="required">*</span></label>
+                                            <input type="text" id="intHost" class="form-input" list="intHosts" autocomplete="off" spellcheck="false">
+                                            <datalist id="intHosts"></datalist>
+                                            <small id="intHostHint"></small>
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="intPuerto">Puerto</label>
+                                            <input type="text" id="intPuerto" class="form-input" inputmode="numeric" placeholder="3306" autocomplete="off">
+                                        </div>
+                                    </div>
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label for="intBase">Base de datos <span class="required">*</span></label>
+                                            <input type="text" id="intBase" class="form-input" autocomplete="off" spellcheck="false">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="intUsuario">Usuario <span class="required">*</span></label>
+                                            <input type="text" id="intUsuario" class="form-input" autocomplete="off" spellcheck="false">
+                                            <small>Usa un usuario que solo pueda leer.</small>
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="intPassword">Contraseña</label>
+                                            <input type="password" id="intPassword" class="form-input" autocomplete="new-password">
+                                            <small id="intPasswordHint">Se guarda cifrada.</small>
+                                        </div>
+                                    </div>
+                                    <label class="checkbox-line"><input type="checkbox" id="intSsl"> Conexión cifrada (SSL)</label>
+                                </fieldset>
+
+                                <fieldset>
+                                    <legend>Productos</legend>
+                                    <div class="form-group">
+                                        <label for="intTabla">Tabla de productos <span class="required">*</span></label>
+                                        <input type="text" id="intTabla" class="form-input" list="intTablas" autocomplete="off" spellcheck="false" aria-describedby="intTablaHint">
+                                        <datalist id="intTablas"></datalist>
+                                        <small id="intTablaHint">Pulsa «Probar conexión» para ver las tablas y columnas disponibles.</small>
+                                    </div>
+                                    <p class="integracion-help">Escribe qué columna de esa tabla corresponde a cada dato. Los que dejes vacíos no se tocan en el ERP.</p>
+                                    <div class="integracion-columnas">
+                                        <div class="form-group">
+                                            <label for="intCol-codigo">Código o SKU <span class="required">*</span></label>
+                                            <input type="text" id="intCol-codigo" class="form-input" data-columna="codigo" list="intColumnas" autocomplete="off" spellcheck="false">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="intCol-nombre">Nombre <span class="required">*</span></label>
+                                            <input type="text" id="intCol-nombre" class="form-input" data-columna="nombre" list="intColumnas" autocomplete="off" spellcheck="false">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="intCol-precio">Precio de venta</label>
+                                            <input type="text" id="intCol-precio" class="form-input" data-columna="precio" list="intColumnas" autocomplete="off" spellcheck="false">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="intCol-categoria">Sección o categoría</label>
+                                            <input type="text" id="intCol-categoria" class="form-input" data-columna="categoria" list="intColumnas" autocomplete="off" spellcheck="false">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="intCol-familia">Familia</label>
+                                            <input type="text" id="intCol-familia" class="form-input" data-columna="familia" list="intColumnas" autocomplete="off" spellcheck="false">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="intCol-descripcion">Descripción</label>
+                                            <input type="text" id="intCol-descripcion" class="form-input" data-columna="descripcion" list="intColumnas" autocomplete="off" spellcheck="false">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="intCol-existencia">Existencia</label>
+                                            <input type="text" id="intCol-existencia" class="form-input" data-columna="existencia" list="intColumnas" autocomplete="off" spellcheck="false">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="intCol-foto">Foto (base64)</label>
+                                            <input type="text" id="intCol-foto" class="form-input" data-columna="foto" list="intColumnas" autocomplete="off" spellcheck="false">
+                                        </div>
+                                    </div>
+                                    <datalist id="intColumnas"></datalist>
+                                    <label class="checkbox-line"><input type="checkbox" id="intCopiarExistencia"> Copiar también la existencia desde la web</label>
+                                    <small class="integracion-help">Déjalo sin marcar si la existencia la lleva el ERP con compras y ventas; si no, cada sincronización la reemplaza por la de la web.</small>
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label for="intAuto">Sincronizar sola</label>
+                                            <select id="intAuto" class="form-input">
+                                                <option value="0">Solo con el botón</option>
+                                                <option value="1">Al abrir Punto de venta o Artículos (cada minuto como máximo)</option>
+                                                <option value="5">Al abrir, si pasaron 5 minutos</option>
+                                                <option value="15">Al abrir, si pasaron 15 minutos</option>
+                                                <option value="60">Al abrir, si pasó 1 hora</option>
+                                            </select>
+                                        </div>
+                                        <div class="form-group">
+                                            <label class="checkbox-line integracion-activa"><input type="checkbox" id="intActiva" checked> Conexión activa</label>
+                                        </div>
+                                    </div>
+                                </fieldset>
+
+                                <div id="integracionPrueba" class="integracion-prueba" role="status" hidden></div>
+                                <p id="integracionError" class="form-error" role="alert" hidden></p>
+
+                                <div class="integracion-actions">
+                                    <button type="button" class="btn btn-secondary" id="intProbarBtn"><i class="fas fa-plug" aria-hidden="true"></i> Probar conexión</button>
+                                    <button type="submit" class="btn btn-primary" id="intGuardarBtn"><i class="fas fa-save" aria-hidden="true"></i> Guardar</button>
+                                    <button type="button" class="btn btn-secondary" id="intSyncBtn" hidden><i class="fas fa-rotate" aria-hidden="true"></i> Sincronizar ahora</button>
+                                    <button type="button" class="btn btn-secondary btn-danger-text" id="intQuitarBtn" hidden>Quitar conexión</button>
+                                </div>
+                                <p id="integracionEstado" class="integracion-estado" role="status"></p>
+                            </form>
+                        </section>
+
                         <section class="panel" id="settingsUsers" data-admin-only hidden>
                             <div class="panel-header">
                                 <div>
@@ -622,12 +857,68 @@
                                     <th>Cliente</th>
                                     <th>Total</th>
                                     <th>Pago</th>
+                                    <th>Comprobante</th>
                                     <th>Acciones</th>
                                 </tr>
                             </thead>
                             <tbody></tbody>
                         </table>
                     </div>
+                </div>
+
+                <!-- Punto de venta Page -->
+                <div id="page-punto-de-venta" class="page">
+                    <div class="pos-layout">
+                        <section class="pos-catalog" aria-label="Productos">
+                            <label class="search-field pos-search">
+                                <i class="fas fa-magnifying-glass" aria-hidden="true"></i>
+                                <span class="sr-only">Buscar producto</span>
+                                <input type="search" id="posSearch" class="form-input" autocomplete="off"
+                                    placeholder="Buscar producto o código">
+                            </label>
+                            <div class="pos-filters" id="posSecciones" role="group" aria-label="Filtrar por sección" hidden></div>
+                            <div class="pos-filters pos-filters-sub" id="posFamilias" role="group" aria-label="Filtrar por familia" hidden></div>
+                            <div class="pos-products" id="posProducts"></div>
+                        </section>
+
+                        <aside class="pos-ticket" id="posTicket" aria-label="Cuenta">
+                            <div class="pos-accounts-header">
+                                <h2>Cuentas abiertas</h2>
+                                <button type="button" class="btn btn-secondary btn-sm pos-sell-only" id="posNewAccountBtn">
+                                    <i class="fas fa-plus" aria-hidden="true"></i> Nueva cuenta
+                                </button>
+                            </div>
+                            <div class="pos-accounts" id="posCuentas" role="tablist" aria-label="Cuentas abiertas"></div>
+
+                            <div class="pos-ticket-header">
+                                <div>
+                                    <h3 id="posTicketTitle">Sin cuenta seleccionada</h3>
+                                    <small id="posTicketMeta"></small>
+                                </div>
+                                <div class="pos-ticket-actions">
+                                    <button type="button" class="btn-icon" id="posRenameBtn" title="Renombrar cuenta" aria-label="Renombrar cuenta" hidden>
+                                        <i class="fas fa-pen" aria-hidden="true"></i>
+                                    </button>
+                                    <button type="button" class="btn-icon btn-delete" id="posCancelBtn" title="Anular cuenta" aria-label="Anular cuenta" hidden>
+                                        <i class="fas fa-ban" aria-hidden="true"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <ul class="pos-lines" id="posLines"></ul>
+
+                            <div class="pos-ticket-footer">
+                                <div class="pos-total-row">
+                                    <span id="posUnits">0 productos</span>
+                                    <strong id="posTotal">Q0.00</strong>
+                                </div>
+                                <button type="button" class="btn btn-primary pos-charge-btn pos-sell-only" id="posChargeBtn" disabled>
+                                    <i class="fas fa-cash-register" aria-hidden="true"></i> Cobrar
+                                </button>
+                                <small class="pos-sync" id="posSyncStatus" role="status">Sincronizado</small>
+                            </div>
+                        </aside>
+                    </div>
+                    <button type="button" class="pos-ticket-jump" id="posTicketJump" hidden></button>
                 </div>
 
                 <!-- Caja Page -->
@@ -1134,6 +1425,90 @@
     </div>
 
     <!-- Modal for sale management -->
+    <div id="felModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="felModalTitle">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="felModalTitle">Factura</h2>
+                <button class="close-btn" type="button" aria-label="Cerrar" onclick="FelModule.closeModal()">&times;</button>
+            </div>
+            <div class="modal-body" id="felModalBody"></div>
+            <div class="modal-footer" id="felModalFooter"></div>
+        </div>
+    </div>
+
+    <div id="posNewAccountModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="posNewAccountTitle">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="posNewAccountTitle">Nueva cuenta</h2>
+                <button class="close-btn" type="button" aria-label="Cerrar" onclick="PosModule.closeModal('posNewAccountModal')">&times;</button>
+            </div>
+            <form id="posNewAccountForm" novalidate>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label for="posNewAccountName">Nombre de la cuenta</label>
+                        <input id="posNewAccountName" class="form-input" type="text" maxlength="80" autocomplete="off" aria-describedby="posNewAccountHint posNewAccountError">
+                        <small id="posNewAccountHint">Usa el nombre del cliente, del pedido o de la mesa. Por ejemplo «María López» o «Pedido WhatsApp».</small>
+                        <p id="posNewAccountError" class="form-error" role="alert" hidden></p>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" type="button" onclick="PosModule.closeModal('posNewAccountModal')">Cancelar</button>
+                    <button class="btn btn-primary" type="submit" id="posNewAccountSubmit">Abrir cuenta</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="posChargeModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="posChargeTitle">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="posChargeTitle">Cobrar</h2>
+                <button class="close-btn" type="button" aria-label="Cerrar" onclick="PosModule.closeModal('posChargeModal')">&times;</button>
+            </div>
+            <form id="posChargeForm" novalidate>
+                <div class="modal-body">
+                    <p class="pos-charge-total">Total <strong id="posChargeTotal">Q0.00</strong></p>
+                    <fieldset class="pos-payment-methods">
+                        <legend>Forma de pago</legend>
+                        <label><input type="radio" name="posPaymentMethod" value="efectivo" checked> <i class="fas fa-money-bill-wave" aria-hidden="true"></i> Efectivo</label>
+                        <label><input type="radio" name="posPaymentMethod" value="tarjeta"> <i class="fas fa-credit-card" aria-hidden="true"></i> Tarjeta</label>
+                        <label><input type="radio" name="posPaymentMethod" value="transferencia"> <i class="fas fa-building-columns" aria-hidden="true"></i> Transferencia</label>
+                    </fieldset>
+                    <fieldset class="pos-payment-methods pos-comprobante" id="posComprobante" hidden>
+                        <legend>Comprobante</legend>
+                        <label><input type="radio" name="posComprobante" value="ticket" checked> <i class="fas fa-receipt" aria-hidden="true"></i> Ticket</label>
+                        <label><input type="radio" name="posComprobante" value="factura"> <i class="fas fa-file-invoice" aria-hidden="true"></i> Factura</label>
+                    </fieldset>
+                    <div class="fel-receptor" id="posReceptor" hidden>
+                        <div class="form-group">
+                            <label for="posReceptorId">NIT o CUI</label>
+                            <div class="fel-receptor-id">
+                                <input id="posReceptorId" class="form-input" type="text" autocomplete="off" placeholder="CF" aria-describedby="posReceptorHint">
+                                <button type="button" class="btn btn-secondary btn-sm" data-fel-cf="posReceptorId">CF</button>
+                            </div>
+                            <small id="posReceptorHint">Vacío o CF = consumidor final.</small>
+                        </div>
+                        <div class="form-group">
+                            <label for="posReceptorNombre">Nombre</label>
+                            <input id="posReceptorNombre" class="form-input" type="text" maxlength="400" autocomplete="off" placeholder="Consumidor Final">
+                        </div>
+                    </div>
+                    <div class="form-group" id="posCashGroup">
+                        <label for="posChargeReceived">Efectivo recibido (opcional)</label>
+                        <input id="posChargeReceived" class="form-input" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0.00">
+                        <small id="posChargeChange" aria-live="polite"></small>
+                    </div>
+                    <p id="posChargeError" class="form-error" role="alert" hidden></p>
+                    <small>La venta queda registrada en Ventas, descuenta existencias y, si es en efectivo, entra a Caja.</small>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" type="button" onclick="PosModule.closeModal('posChargeModal')">Cancelar</button>
+                    <button class="btn btn-primary" type="submit" id="posChargeSubmit"><i class="fas fa-check" aria-hidden="true"></i> Confirmar cobro</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <div id="saleModal" class="modal">
         <div class="modal-content modal-content-xl">
             <div class="modal-header">
@@ -1228,6 +1603,23 @@
                     <div class="form-group full-width">
                         <label for="articuloNombre">Nombre del artículo <span class="required">*</span></label>
                         <input type="text" id="articuloNombre" class="form-input" maxlength="150" required placeholder="Ej: Camiseta azul talla M">
+                    </div>
+
+                    <div class="form-group full-width">
+                        <span class="form-label">Foto (opcional)</span>
+                        <div class="articulo-foto">
+                            <div id="articuloFotoPreview" class="articulo-foto-preview" hidden>
+                                <img alt="Foto del artículo">
+                            </div>
+                            <div class="articulo-foto-actions">
+                                <label class="btn btn-secondary btn-sm" for="articuloFotoInput">
+                                    <i class="fas fa-camera" aria-hidden="true"></i> <span id="articuloFotoLabel">Agregar foto</span>
+                                </label>
+                                <input type="file" id="articuloFotoInput" accept="image/*" class="sr-only" onchange="CodigosArticulosModule.onFotoSelected(this)">
+                                <button type="button" class="btn btn-secondary btn-sm" onclick="CodigosArticulosModule.removeFoto()" data-foto-remove>Quitar foto</button>
+                                <small>Se ve en el punto de venta. Se achica sola antes de guardarse.</small>
+                            </div>
+                        </div>
                     </div>
 
                     <div class="form-row">
@@ -1695,6 +2087,9 @@
     <script src="js/caja-integrada.js"></script>
     <script src="js/compras.js"></script>
     <script src="js/ventas.js"></script>
+    <script src="js/punto-de-venta.js"></script>
+    <script src="js/integraciones.js"></script>
+    <script src="js/fel.js"></script>
     <script src="js/caja.js"></script>
     <script src="js/cuentas-por-cobrar.js"></script>
     <script src="js/estados-de-cuenta.js"></script>

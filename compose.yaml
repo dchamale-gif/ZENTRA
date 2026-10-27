@@ -51,7 +51,14 @@ services:
       DB_SSL: disable
       WEBSITE_ANALYTICS_URL: ${WEBSITE_ANALYTICS_URL:-https://botenginecorp.com}
       WEBSITE_ANALYTICS_KEY: ${WEBSITE_ANALYTICS_KEY:-}
+      # Integraciones: llave para cifrar credenciales y servidores externos permitidos (separados por coma).
+      INTEGRATIONS_KEY_FILE: /run/secrets/integrations_key
+      INTEGRATIONS_ALLOWED_HOSTS: ${INTEGRATIONS_ALLOWED_HOSTS:-}
+    # Permite llegar a una base de datos instalada en el mismo servidor, fuera de Docker.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     secrets:
+      - integrations_key
       - tenant_db_password
       - auth_db_password
       - platform_db_password
@@ -168,3 +175,5 @@ secrets:
     file: ./secrets/jwt_secret.txt
   platform_admin_password:
     file: ./secrets/platform_admin_password.txt
+  integrations_key:
+    file: ./secrets/integrations_key.txt

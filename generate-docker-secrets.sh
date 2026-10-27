@@ -29,6 +29,7 @@ generate_secret "auth_db_password.txt" 32
 generate_secret "platform_db_password.txt" 32
 generate_secret "jwt_secret.txt" 48
 generate_secret "platform_admin_password.txt" 24
+generate_secret "integrations_key.txt" 32
 
 echo ""
 echo "Secretos generados con permisos 0600 en $SECRETS_DIR."

@@ -109,6 +109,7 @@ const CodigosArticulosModule = {
             estado: articulo.activo === false ? 'inactivo' : 'activo',
             descripcion: articulo.descripcion || '',
             descripcion2: articulo.descripcion2 || '',
+            fotoVersion: articulo.foto_version || '',
             activo: articulo.activo !== false
         };
 
@@ -556,6 +557,8 @@ const CodigosArticulosModule = {
         form.querySelectorAll('.field-error').forEach(error => error.remove());
         form.querySelector('details.form-more').open = false;
 
+        this.resetFoto(articulo);
+
         if (articulo) {
             document.getElementById('articuloId').value = articulo.id;
             document.getElementById('articuloNombre').value = articulo.nombre;
@@ -585,6 +588,72 @@ const CodigosArticulosModule = {
         if (!articulo) {
             await this.loadNextCodigo();
         }
+    },
+
+    // ---------- Foto ----------
+    // undefined: sin cambios · null: quitarla · texto: foto nueva en base64.
+
+    resetFoto(articulo) {
+        this.state.fotoPendiente = undefined;
+        const url = articulo?.fotoVersion
+            ? `${authManager.apiBaseUrl}/api/codigos-articulos/${encodeURIComponent(articulo.id)}/foto?v=${encodeURIComponent(articulo.fotoVersion)}`
+            : '';
+        this.showFotoPreview(url);
+    },
+
+    showFotoPreview(src) {
+        const preview = document.getElementById('articuloFotoPreview');
+        const img = preview.querySelector('img');
+        preview.hidden = !src;
+        if (src) img.src = src;
+        else img.removeAttribute('src');
+        document.getElementById('articuloFotoInput').value = '';
+        document.getElementById('articuloFotoLabel').textContent = src ? 'Cambiar foto' : 'Agregar foto';
+    },
+
+    async onFotoSelected(input) {
+        const file = input.files?.[0];
+        if (!file) return;
+        try {
+            const dataUrl = await this.resizeImage(file, 800);
+            this.state.fotoPendiente = dataUrl;
+            this.showFotoPreview(dataUrl);
+            document.getElementById('articuloModal').dataset.dirty = 'true';
+        } catch (error) {
+            input.value = '';
+            this.showNotification('No se pudo leer la imagen. Prueba con una foto JPG o PNG.', 'error');
+        }
+    },
+
+    removeFoto() {
+        this.state.fotoPendiente = null;
+        this.showFotoPreview('');
+        document.getElementById('articuloModal').dataset.dirty = 'true';
+    },
+
+    // Achica la foto en el navegador (las del celular pesan varios MB) y la devuelve en base64.
+    resizeImage(file, maxSide) {
+        return new Promise((resolve, reject) => {
+            const url = URL.createObjectURL(file);
+            const image = new Image();
+            image.onload = () => {
+                URL.revokeObjectURL(url);
+                const scale = Math.min(1, maxSide / Math.max(image.width, image.height));
+                const canvas = document.createElement('canvas');
+                canvas.width = Math.round(image.width * scale);
+                canvas.height = Math.round(image.height * scale);
+                const context = canvas.getContext('2d');
+                context.fillStyle = '#fff';
+                context.fillRect(0, 0, canvas.width, canvas.height);
+                context.drawImage(image, 0, 0, canvas.width, canvas.height);
+                resolve(canvas.toDataURL('image/jpeg', 0.85));
+            };
+            image.onerror = () => {
+                URL.revokeObjectURL(url);
+                reject(new Error('Imagen no válida'));
+            };
+            image.src = url;
+        });
     },
 
     async loadNextCodigo() {
@@ -748,6 +817,7 @@ const CodigosArticulosModule = {
                 tipo: tipo || 'producto',
                 activo: estado !== 'inactivo'
             };
+            if (this.state.fotoPendiente !== undefined) apiData.foto = this.state.fotoPendiente;
 
             const url = id 
                 ? `${authManager.apiBaseUrl}/api/codigos-articulos/${id}`

@@ -170,7 +170,7 @@ const BulkImport = {
         const errors = (summary.errors || []).slice(0, 50);
         return `
             <p><strong>Resultado:</strong> ${summary.created} creados, ${summary.updated} actualizados,
-            ${summary.failed} con error.</p>
+            ${summary.unchanged ? `${summary.unchanged} sin cambios, ` : ''}${summary.failed} con error.</p>
             ${errors.length ? `<ul style="max-height:160px;overflow:auto;color:var(--danger-color)">
                 ${errors.map((e) => `<li>Fila ${e.row}: ${this.escapeHtml(e.message)}</li>`).join('')}
             </ul>` : ''}`;

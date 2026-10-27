@@ -44,6 +44,7 @@ const VentasModule = {
     },
 
     async loadData() {
+        const felReady = typeof FelModule !== 'undefined' ? FelModule.loadEstado() : null;
         const requests = await Promise.allSettled([
             this.apiRequest('/api/ventas'),
             this.apiRequest('/api/ventas/receptores'),
@@ -79,6 +80,7 @@ const VentasModule = {
                 this.notify(`No se pudieron cargar ${names[index]}: ${result.reason.message}`, 'warning');
             }
         });
+        await felReady;
         this.render();
     },
 
@@ -86,17 +88,19 @@ const VentasModule = {
         const tbody = document.querySelector('#ventasTable tbody');
         if (!tbody) return;
         if (this.state.ventas.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="6" class="text-center">No hay ventas registradas</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="7" class="text-center">No hay ventas registradas</td></tr>';
             return;
         }
         tbody.innerHTML = this.state.ventas.map(venta => `
             <tr>
                 <td><strong>${this.escapeHtml(venta.numero_venta)}</strong></td>
                 <td>${this.formatDate(venta.fecha)}</td>
-                <td>${this.escapeHtml(venta.receptor_nombre)}</td>
+                <td>${this.escapeHtml(this.clienteNombre(venta))}</td>
                 <td>${formatQ(Number(venta.total || 0))}</td>
                 <td>${this.paymentCell(venta)}</td>
+                <td>${typeof FelModule !== 'undefined' ? FelModule.comprobanteCell(venta) : ''}</td>
                 <td class="actions">
+                    ${this.facturaButton(venta)}
                     <button class="btn-icon" type="button" title="Ver detalle" aria-label="Ver detalle de ${this.escapeHtml(venta.numero_venta)}" onclick="VentasModule.viewSale('${this.escapeHtml(venta.id)}')">
                         <i class="fas fa-eye" aria-hidden="true"></i>
                     </button>
@@ -108,6 +112,31 @@ const VentasModule = {
                     </button>
                 </td>
             </tr>`).join('');
+    },
+
+    // Si se facturó a un NIT, el nombre de la factura dice más que «Consumidor final».
+    clienteNombre(venta) {
+        const factura = venta.factura;
+        if (!venta.cliente_id && factura && factura.estado === 'certificado' && factura.receptor_id !== 'CF') {
+            return factura.receptor_nombre;
+        }
+        return venta.receptor_nombre;
+    },
+
+    // Ver la factura, o emitirla si la venta quedó como ticket y la facturación está activa.
+    facturaButton(venta) {
+        if (typeof FelModule === 'undefined') return '';
+        const vigente = venta.factura && venta.factura.estado !== 'error';
+        if (!vigente && !FelModule.activa()) return '';
+        const label = vigente ? 'Ver factura' : 'Emitir factura';
+        return `<button class="btn-icon" type="button" title="${label}" aria-label="${label} de ${this.escapeHtml(venta.numero_venta)}" onclick="VentasModule.openFactura('${this.escapeHtml(venta.id)}')">
+                        <i class="fas fa-file-invoice" aria-hidden="true"></i>
+                    </button>`;
+    },
+
+    openFactura(id) {
+        const venta = this.state.ventas.find(entry => String(entry.id) === String(id));
+        if (venta) FelModule.open(venta);
     },
 
     refreshTable() {
@@ -450,7 +479,7 @@ const VentasModule = {
             }[payload.metodo_pago] || 'quedó registrada como pagada';
             this.notify(`${id ? 'Venta actualizada' : 'Venta registrada'}: existencias descontadas y ${destino}.`, 'success');
             const tbody = document.querySelector('#ventasTable tbody');
-            if (tbody && !this.state.ventas.length) tbody.innerHTML = '<tr><td colspan="6" class="text-center">Actualizando la lista…</td></tr>';
+            if (tbody && !this.state.ventas.length) tbody.innerHTML = '<tr><td colspan="7" class="text-center">Actualizando la lista…</td></tr>';
             await this.loadData();
         } catch (error) {
             this.notify(error.message, 'error');
