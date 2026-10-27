@@ -53,7 +53,7 @@ const FelModule = {
     },
 
     async loadConfig() {
-        if (!AccessControl.isAdmin()) return;
+        if (!AccessControl.isAdmin() || !AccessControl.felHabilitada()) return;
         this.initConfig();
         try {
             const data = await this.request('/api/fel/config');

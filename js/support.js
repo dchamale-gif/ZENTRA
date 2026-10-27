@@ -191,9 +191,9 @@ async function createCompany(event) {
 }
 
 const modulesSummary = (organization) => {
-    if (!organization.modules) return 'Todos';
     const total = state.modules.length || 10;
-    return `${organization.modules.length} de ${total}`;
+    const modules = organization.modules ? `${organization.modules.length} de ${total}` : 'Todos';
+    return organization.fel ? `${modules}<br><small>+ FEL</small>` : modules;
 };
 
 async function openModules(id) {
@@ -211,6 +211,7 @@ async function openModules(id) {
     document.getElementById('modulesChecks').innerHTML = state.modules.map(module => `
         <label><input type="checkbox" value="${module.key}" ${enabled.includes(module.key) ? 'checked' : ''}> ${escapeHtml(module.label)}</label>
     `).join('');
+    document.getElementById('modulesFel').checked = Boolean(organization.fel);
     document.getElementById('modulesModal').classList.remove('hidden');
 }
 
@@ -226,7 +227,7 @@ async function saveModules(event) {
     try {
         const data = await apiRequest(`/organizations/${state.editingId}/modules`, {
             method: 'POST',
-            body: JSON.stringify({ modules })
+            body: JSON.stringify({ modules, fel: document.getElementById('modulesFel').checked })
         });
         closeModules();
         showMessage(data.message);

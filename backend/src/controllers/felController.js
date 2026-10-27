@@ -22,6 +22,14 @@ const sendError = (res, error, fallback) => {
   res.status(500).json({ error: fallback });
 };
 
+const NO_HABILITADA = 'La facturación electrónica no está habilitada para tu empresa; pide a soporte que la active';
+
+// Soporte habilita FEL por empresa (organizations.fel_habilitada, viene en req.organization).
+const requireHabilitada = (req, res, next) => {
+  if (req.organization?.felHabilitada) return next();
+  res.status(403).json({ error: NO_HABILITADA, code: 'FEL_DISABLED' });
+};
+
 const text = (value, max) => String(value ?? '').trim().replace(/\s+/g, ' ').slice(0, max);
 
 const loadConfig = async (db = pool) => {
@@ -148,14 +156,16 @@ const saveConfig = async (req, res) => {
 
 const getEstado = async (req, res) => {
   try {
-    res.status(200).json({ success: true, fel: estadoPublico(await loadConfig()) });
+    const estado = req.organization?.felHabilitada ? estadoPublico(await loadConfig()) : estadoPublico(null);
+    res.status(200).json({ success: true, fel: { ...estado, habilitadaPorSoporte: Boolean(req.organization?.felHabilitada) } });
   } catch (error) {
     sendError(res, error, 'Error obteniendo el estado de facturación');
   }
 };
 
 // Revisa antes de cobrar que la factura se podrá emitir (configuración y receptor).
-const prepararFactura = async (receptorInput) => {
+const prepararFactura = async (receptorInput, felHabilitada) => {
+  if (!felHabilitada) throw httpError(403, NO_HABILITADA);
   const row = await loadConfig();
   if (!row?.activa) throw httpError(400, 'La facturación electrónica no está activa; configúrala en Configuración → Facturación');
   obtenerConector(row.config.certificador);
@@ -170,8 +180,8 @@ const DOCUMENTO_PUBLICO = `id, venta_id, tipo_dte, estado, certificador, ambient
  * Emite y certifica la factura de una venta ya registrada. Si el certificador la rechaza o no
  * responde, la venta queda igual y el documento queda con estado «error» para reintentar.
  */
-const emitirFactura = async (ventaId, receptorInput, userId) => {
-  const { row, receptor } = await prepararFactura(receptorInput);
+const emitirFactura = async (ventaId, receptorInput, userId, felHabilitada) => {
+  const { row, receptor } = await prepararFactura(receptorInput, felHabilitada);
   const { config } = row;
 
   const venta = await pool.query('SELECT id, total, estado FROM ventas WHERE id = $1', [ventaId]);
@@ -238,7 +248,7 @@ const emitirFactura = async (ventaId, receptorInput, userId) => {
 
 const emitir = async (req, res) => {
   try {
-    const documento = await emitirFactura(req.params.ventaId, req.body.receptor, req.user.id);
+    const documento = await emitirFactura(req.params.ventaId, req.body.receptor, req.user.id, req.organization.felHabilitada);
     res.status(documento.estado === 'certificado' ? 201 : 502).json({
       success: documento.estado === 'certificado',
       documento,
@@ -309,4 +319,6 @@ const getXml = async (req, res) => {
   }
 };
 
-module.exports = { getConfig, saveConfig, getEstado, emitir, anular, getXml, prepararFactura, emitirFactura };
+module.exports = {
+  getConfig, saveConfig, getEstado, emitir, anular, getXml, prepararFactura, emitirFactura, requireHabilitada
+};

@@ -49,6 +49,9 @@ CREATE POLICY tenant_isolation ON fel_documentos FOR ALL
     USING (organization_id = app_current_organization_id())
     WITH CHECK (organization_id = app_current_organization_id());
 
+-- Soporte habilita FEL por empresa desde el panel de plataforma (apagado por defecto).
+ALTER TABLE organizations ADD COLUMN IF NOT EXISTS fel_habilitada BOOLEAN NOT NULL DEFAULT false;
+
 DO $$
 BEGIN
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'zentra_tenant') THEN

@@ -191,7 +191,7 @@ const cobrarCuenta = async (req, res) => {
     if (!METODOS_COBRO.has(metodoPago)) throw httpError(400, 'Elige efectivo, tarjeta o transferencia');
     // Factura: se revisan configuración y NIT antes de cobrar, para no registrar la venta con datos malos.
     const conFactura = req.body.comprobante === 'factura';
-    if (conFactura) await prepararFactura(req.body.receptor);
+    if (conFactura) await prepararFactura(req.body.receptor, req.organization.felHabilitada);
 
     client = await pool.connect();
     await client.query('BEGIN');
@@ -232,7 +232,7 @@ const cobrarCuenta = async (req, res) => {
     let factura = null;
     if (conFactura) {
       try {
-        factura = await emitirFactura(venta.id, req.body.receptor, req.user.id);
+        factura = await emitirFactura(venta.id, req.body.receptor, req.user.id, req.organization.felHabilitada);
       } catch (error) {
         factura = { estado: 'error', error: error.expose ? error.message : 'No se pudo emitir la factura' };
       }

@@ -26,6 +26,11 @@ const AccessControl = {
         return !modules || modules.some((entry) => entry.modulo === key && entry.nivel === 'editar');
     },
 
+    // Soporte habilita la facturación electrónica por empresa.
+    felHabilitada() {
+        return this.user().organization?.felHabilitada === true;
+    },
+
     isAdmin() {
         const user = this.user();
         return user.isAdmin ?? (user.roles || []).includes('admin');
@@ -49,6 +54,9 @@ const AccessControl = {
         });
         document.querySelectorAll('[data-admin-only]').forEach((element) => {
             element.hidden = !this.isAdmin();
+        });
+        document.querySelectorAll('[data-requires-fel]').forEach((element) => {
+            element.hidden = element.hidden || !this.felHabilitada();
         });
         const activePage = document.querySelector('.page.active')?.id?.replace('page-', '');
         if (activePage && !this.canOpenPage(activePage) && typeof navigateToPage === 'function') {

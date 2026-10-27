@@ -37,6 +37,7 @@ const getOrganizationPayload = (row) => {
     licenseIssuedAt: row.organization_license_issued_at,
     maxUsers: row.organization_max_users,
     modules: row.organization_modules ?? null,
+    felHabilitada: row.organization_fel === true,
     status: row.subscription_status,
     trialEndsAt: row.trial_ends_at,
     subscriptionEndsAt: row.subscription_ends_at,
@@ -268,6 +269,7 @@ const login = async (req, res) => {
               o.license_issued_at AS organization_license_issued_at,
               o.license_max_users AS organization_max_users,
               o.modulos_habilitados AS organization_modules,
+              o.fel_habilitada AS organization_fel,
               o.subscription_status, o.trial_ends_at, o.subscription_ends_at
        FROM users u
        JOIN organizations o ON o.id = u.organization_id

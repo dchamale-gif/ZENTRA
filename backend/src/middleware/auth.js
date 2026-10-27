@@ -37,6 +37,7 @@ const authMiddleware = async (req, res, next) => {
               o.license_issued_at AS organization_license_issued_at,
               o.license_max_users AS organization_max_users,
               o.modulos_habilitados AS organization_modules,
+              o.fel_habilitada AS organization_fel,
               o.subscription_status, o.trial_ends_at, o.subscription_ends_at
        FROM users u
        JOIN organizations o ON o.id = u.organization_id
@@ -82,6 +83,7 @@ const authMiddleware = async (req, res, next) => {
       plan: user.organization_license_plan,
       maxUsers: user.organization_max_users,
       modules: user.organization_modules,
+      felHabilitada: user.organization_fel === true,
       subscriptionEndsAt: user.subscription_ends_at,
       status: user.subscription_status,
       trialEndsAt: user.trial_ends_at

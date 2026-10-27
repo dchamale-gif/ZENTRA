@@ -31,6 +31,8 @@ const mapOrganization = (row) => ({
   maxUsers: row.license_max_users,
   // null = todos los módulos habilitados
   modules: row.modulos_habilitados ?? null,
+  // Facturación electrónica: solo soporte la habilita.
+  fel: row.fel_habilitada === true,
   activeUsers: Number(row.active_users || 0),
   trialEndsAt: row.trial_ends_at,
   subscriptionStartedAt: row.subscription_started_at,
@@ -44,7 +46,7 @@ const listOrganizations = async (req, res) => {
     const expiringIn = Math.min(Math.max(Number(req.query.expiringIn) || 30, 1), 3650);
     const result = await pool.query(
       `SELECT id, nombre, sector_comercial, email, nit, subscription_status,
-              license_plan, license_key, license_issued_at, license_max_users, modulos_habilitados, trial_ends_at,
+              license_plan, license_key, license_issued_at, license_max_users, modulos_habilitados, fel_habilitada, trial_ends_at,
               subscription_started_at, subscription_ends_at, created_at,
               ${ACTIVE_USERS_SQL},
               GREATEST(
@@ -76,7 +78,7 @@ const getOrganization = async (req, res) => {
     const result = await pool.query(
       `SELECT o.id, o.nombre, o.sector_comercial, o.email, o.nit,
               o.subscription_status, o.license_plan, o.license_key,
-              o.license_issued_at, o.license_max_users, o.modulos_habilitados, o.trial_ends_at,
+              o.license_issued_at, o.license_max_users, o.modulos_habilitados, o.fel_habilitada, o.trial_ends_at,
               o.subscription_started_at, o.subscription_ends_at, o.created_at,
               COUNT(u.id)::INTEGER AS user_count,
               (COUNT(u.id) FILTER (WHERE u.activo))::INTEGER AS active_users
@@ -127,7 +129,7 @@ const createOrganization = async (req, res) => {
         trial_started_at, trial_ends_at)
        VALUES ($1, $2, $3, $4, $5, 'trial', $6, $7, NOW(), $9, NOW(), NOW() + ($8 * INTERVAL '1 day'))
        RETURNING id, nombre, sector_comercial, email, nit, subscription_status,
-                 license_plan, license_key, license_issued_at, license_max_users, modulos_habilitados, trial_ends_at,
+                 license_plan, license_key, license_issued_at, license_max_users, modulos_habilitados, fel_habilitada, trial_ends_at,
                  subscription_started_at, subscription_ends_at, created_at,
                  $8 AS days_remaining`,
       [
@@ -179,7 +181,7 @@ const updateUserLimit = async (req, res) => {
        SET license_max_users = $1, updated_at = NOW()
        WHERE id = $2
        RETURNING id, nombre, sector_comercial, email, nit, subscription_status,
-                 license_plan, license_key, license_issued_at, license_max_users, modulos_habilitados, trial_ends_at,
+                 license_plan, license_key, license_issued_at, license_max_users, modulos_habilitados, fel_habilitada, trial_ends_at,
                  subscription_started_at, subscription_ends_at, created_at,
                  ${ACTIVE_USERS_SQL},
                  GREATEST(0, CEIL(EXTRACT(EPOCH FROM (
@@ -205,25 +207,28 @@ const listModules = (req, res) => {
   res.json({ success: true, modules: MODULES.map(({ key, label }) => ({ key, label })) });
 };
 
-// Habilita o quita módulos a una empresa; los usuarios dejan de verlos al recargar.
+// Habilita o quita módulos a una empresa (y FEL, si viene); los usuarios lo ven al recargar.
 const updateModules = async (req, res) => {
   try {
-    const { modules } = req.body;
+    const { modules, fel } = req.body;
     if (!Array.isArray(modules) || modules.some((key) => !MODULE_KEYS.has(key))) {
       return res.status(400).json({ error: 'Lista de módulos no válida' });
     }
+    if (fel !== undefined && typeof fel !== 'boolean') {
+      return res.status(400).json({ error: 'Indica si la facturación electrónica queda habilitada' });
+    }
     const all = modules.length === MODULE_KEYS.size;
     const result = await pool.query(
-      `UPDATE organizations SET modulos_habilitados = $1, updated_at = NOW()
+      `UPDATE organizations SET modulos_habilitados = $1, fel_habilitada = COALESCE($3, fel_habilitada), updated_at = NOW()
        WHERE id = $2
        RETURNING id, nombre, sector_comercial, email, nit, subscription_status,
-                 license_plan, license_key, license_issued_at, license_max_users, modulos_habilitados, trial_ends_at,
+                 license_plan, license_key, license_issued_at, license_max_users, modulos_habilitados, fel_habilitada, trial_ends_at,
                  subscription_started_at, subscription_ends_at, created_at,
                  ${ACTIVE_USERS_SQL},
                  GREATEST(0, CEIL(EXTRACT(EPOCH FROM (
                    COALESCE(subscription_ends_at, trial_ends_at) - NOW()
                  )) / 86400)) AS days_remaining`,
-      [all ? null : [...new Set(modules)], req.params.id]
+      [all ? null : [...new Set(modules)], req.params.id, fel ?? null]
     );
     if (result.rows.length === 0) return res.status(404).json({ error: 'Empresa no encontrada' });
     res.json({
@@ -278,7 +283,7 @@ const updateLicense = async (req, res) => {
            updated_at = NOW()
        WHERE id = $5
        RETURNING id, nombre, sector_comercial, email, nit, subscription_status,
-                 license_plan, license_key, license_issued_at, license_max_users, modulos_habilitados, trial_ends_at,
+                 license_plan, license_key, license_issued_at, license_max_users, modulos_habilitados, fel_habilitada, trial_ends_at,
                  subscription_started_at, subscription_ends_at, created_at,
                  ${ACTIVE_USERS_SQL},
                  GREATEST(

@@ -66,6 +66,7 @@
         .module-checks label { align-items: center; border: 1px solid var(--border); border-radius: 8px; cursor: pointer; display: flex; font-size: 13.5px; font-weight: 500; gap: 10px; margin: 0; padding: 10px 12px; }
         .module-checks label:has(input:checked) { background: #eff6ff; border-color: #bfdbfe; }
         .module-checks input { accent-color: var(--primary); height: 16px; min-height: 0; width: 16px; }
+        .modules-extra-title { font-size: 14px; margin: 20px 0 10px; }
         .modal-actions .spacer { flex: 1; }
         .analytics { margin-bottom: 24px; }
         .analytics-head { align-items: center; display: flex; gap: 12px; justify-content: space-between; margin-bottom: 12px; }
@@ -158,6 +159,11 @@
             <p class="modal-hint">Lo que desmarques desaparece del menú y del dashboard de todos sus usuarios al recargar, y el servidor lo bloquea. Sus datos se conservan.</p>
             <form id="modulesForm">
                 <div class="module-checks" id="modulesChecks"></div>
+                <h3 class="modules-extra-title">Funciones adicionales</h3>
+                <div class="module-checks">
+                    <label><input type="checkbox" id="modulesFel"> Facturación electrónica (FEL)</label>
+                </div>
+                <p class="modal-hint">Con FEL, la empresa puede configurar su certificador en Configuración y emitir facturas al cobrar. Si la quitas, deja de facturar pero conserva las facturas ya emitidas.</p>
                 <div class="modal-actions">
                     <button class="secondary" type="button" id="modulesSelectAll">Marcar todos</button>
                     <span class="spacer"></span>
