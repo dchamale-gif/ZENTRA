@@ -37,7 +37,7 @@ const validateRows = (rows) => {
  */
 const runImport = async (pool, rows, processRow, { dryRun = false } = {}) => {
   validateRows(rows);
-  const summary = { total: rows.length, created: 0, updated: 0, failed: 0, errors: [] };
+  const summary = { total: rows.length, created: 0, updated: 0, unchanged: 0, failed: 0, errors: [] };
   const client = await pool.connect();
 
   try {
@@ -49,6 +49,7 @@ const runImport = async (pool, rows, processRow, { dryRun = false } = {}) => {
         const outcome = await processRow(client, rows[index], index);
         await client.query('RELEASE SAVEPOINT import_row');
         if (outcome === 'updated') summary.updated += 1;
+        else if (outcome === 'unchanged') summary.unchanged += 1;
         else summary.created += 1;
       } catch (error) {
         await client.query('ROLLBACK TO SAVEPOINT import_row');

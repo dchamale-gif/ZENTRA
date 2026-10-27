@@ -15,11 +15,21 @@ const SIGNATURES = [
 // status para las rutas y expose para la importación masiva (mensaje por fila).
 const fotoError = (message) => Object.assign(new Error(message), { status: 400, expose: true });
 
+const detectMime = (buffer) => (buffer.length > 12 ? SIGNATURES.find(([, test]) => test(buffer))?.[0] : null);
+
 /**
  * Acepta base64 puro o con prefijo «data:image/...;base64,», con saltos de línea
- * o en variante URL (-_). Devuelve { mime, buffer, hash } o lanza un error 400.
+ * o en variante URL (-_). Desde otra base de datos también puede llegar la imagen
+ * binaria (BLOB/BYTEA). Devuelve { mime, buffer, hash } o lanza un error 400.
  */
 const parseFotoBase64 = (value) => {
+  if (Buffer.isBuffer(value)) {
+    if (value.length > MAX_FOTO_BYTES) {
+      throw fotoError(`La foto pesa más de ${MAX_FOTO_BYTES / 1024 / 1024} MB; redúcela antes de enviarla`);
+    }
+    if (detectMime(value)) value = value.toString('base64');
+    else value = value.toString('latin1'); // texto base64 guardado en una columna binaria
+  }
   let raw = String(value).trim();
   const dataUrl = raw.match(/^data:[^;,]*;base64,(.*)$/s);
   if (dataUrl) raw = dataUrl[1];
@@ -31,7 +41,7 @@ const parseFotoBase64 = (value) => {
     throw fotoError(`La foto pesa más de ${MAX_FOTO_BYTES / 1024 / 1024} MB; redúcela antes de enviarla`);
   }
   const buffer = Buffer.from(raw, 'base64');
-  const mime = buffer.length > 12 ? SIGNATURES.find(([, test]) => test(buffer))?.[0] : null;
+  const mime = detectMime(buffer);
   if (!mime) throw fotoError('La foto debe ser una imagen JPG, PNG, WebP o GIF');
   const hash = crypto.createHash('sha256').update(buffer).digest('hex').slice(0, 16);
   return { mime, buffer, hash };
@@ -39,22 +49,23 @@ const parseFotoBase64 = (value) => {
 
 /**
  * Guarda o quita la foto de un artículo dentro de la transacción del llamador.
- * undefined: no tocar · null o '': quitar · texto: reemplazar.
+ * undefined: no tocar · null o '': quitar · texto o Buffer: reemplazar.
+ * origenHash identifica la foto en el sistema externo del que se sincronizó.
  */
-const guardarFoto = async (db, articuloId, foto) => {
+const guardarFoto = async (db, articuloId, foto, { origenHash = null } = {}) => {
   if (foto === undefined) return;
-  if (foto === null || String(foto).trim() === '') {
+  if (foto === null || (!Buffer.isBuffer(foto) && String(foto).trim() === '')) {
     await db.query('DELETE FROM articulo_fotos WHERE articulo_id = $1', [articuloId]);
     return;
   }
   const { mime, buffer, hash } = parseFotoBase64(foto);
   await db.query(
-    `INSERT INTO articulo_fotos (articulo_id, mime_type, datos, bytes, hash)
-     VALUES ($1, $2, $3, $4, $5)
+    `INSERT INTO articulo_fotos (articulo_id, mime_type, datos, bytes, hash, origen_hash)
+     VALUES ($1, $2, $3, $4, $5, $6)
      ON CONFLICT (articulo_id) DO UPDATE
      SET mime_type = EXCLUDED.mime_type, datos = EXCLUDED.datos, bytes = EXCLUDED.bytes,
-         hash = EXCLUDED.hash, updated_at = NOW()`,
-    [articuloId, mime, buffer, buffer.length, hash]
+         hash = EXCLUDED.hash, origen_hash = EXCLUDED.origen_hash, updated_at = NOW()`,
+    [articuloId, mime, buffer, buffer.length, hash, origenHash]
   );
 };
 

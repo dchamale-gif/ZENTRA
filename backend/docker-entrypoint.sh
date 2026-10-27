@@ -16,5 +16,6 @@ load_secret AUTH_DB_PASSWORD
 load_secret PLATFORM_DB_PASSWORD
 load_secret JWT_SECRET
 load_secret PLATFORM_ADMIN_PASSWORD
+load_secret INTEGRATIONS_KEY
 
 exec "$@"

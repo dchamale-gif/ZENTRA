@@ -17,6 +17,7 @@ const receivablesRoutes = require('./src/routes/receivables');
 const comprasRoutes = require('./src/routes/compras');
 const ventasRoutes = require('./src/routes/ventas');
 const posRoutes = require('./src/routes/pos');
+const integracionesRoutes = require('./src/routes/integraciones');
 const cajaRoutes = require('./src/routes/caja');
 const clientesRoutes = require('./src/routes/clientes');
 const notificationsRoutes = require('./src/routes/notifications');
@@ -116,6 +117,7 @@ app.use('/api/compras', comprasRoutes);
 // Ventas e inventario
 app.use('/api/ventas', ventasRoutes);
 app.use('/api/pos', posRoutes);
+app.use('/api/integraciones', integracionesRoutes);
 
 
 
