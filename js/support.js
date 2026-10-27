@@ -14,6 +14,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('addCompanyButton').addEventListener('click', () => {
         document.getElementById('companyModal').classList.remove('hidden');
     });
+    document.getElementById('companyContract').addEventListener('change', toggleContractFields);
     document.getElementById('cancelCompanyButton').addEventListener('click', closeCompanyModal);
     document.getElementById('cancelModulesButton').addEventListener('click', closeModules);
     document.getElementById('modulesForm').addEventListener('submit', saveModules);
@@ -223,6 +224,49 @@ async function updateLicense(id, action, button) {
         showMessage(error.message, 'error');
     }
 }
+// Primer día del mes siguiente, en formato del campo de fecha.
+const firstOfNextMonth = () => {
+    const today = new Date();
+    const next = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+    return `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}-01`;
+};
+
+// Muestra los datos del contrato y carga la lista de módulos la primera vez.
+async function toggleContractFields() {
+    const enabled = document.getElementById('companyContract').checked;
+    const fields = document.getElementById('contractFields');
+    fields.classList.toggle('hidden', !enabled);
+    ['contractPrice', 'contractPos', 'contractStart'].forEach(id => { document.getElementById(id).required = enabled; });
+    if (!enabled) return;
+    const start = document.getElementById('contractStart');
+    if (!start.value) start.value = firstOfNextMonth();
+    const container = document.getElementById('contractModules');
+    if (container.children.length) return;
+    try {
+        if (!state.modules.length) state.modules = (await apiRequest('/modules')).modules;
+    } catch (error) {
+        showMessage(error.message, 'error');
+        return;
+    }
+    container.innerHTML = state.modules.map(module => `
+        <label><input type="checkbox" value="${module.key}" checked> ${escapeHtml(module.label)}</label>
+    `).join('') + '<label><input type="checkbox" value="fel" checked> Facturación electrónica (FEL)</label>';
+}
+
+const contractData = () => {
+    if (!document.getElementById('companyContract').checked) return undefined;
+    const selected = [...document.querySelectorAll('#contractModules input:checked')].map(input => input.value);
+    return {
+        enviar: true,
+        mensualidad: Number(document.getElementById('contractPrice').value),
+        puntosVenta: Number(document.getElementById('contractPos').value),
+        inicioCobro: document.getElementById('contractStart').value,
+        certificador: document.getElementById('contractCertifier').value.trim(),
+        modulos: selected.filter(key => key !== 'fel'),
+        fel: selected.includes('fel')
+    };
+};
+
 async function createCompany(event) {
     event.preventDefault();
     try {
@@ -236,12 +280,16 @@ async function createCompany(event) {
                 nit: document.getElementById('companyNit').value.trim(),
                 plan: document.getElementById('companyPlan').value.trim(),
                 durationDays: Number(document.getElementById('companyDays').value),
-                maxUsers: Number(document.getElementById('companyMaxUsers').value)
+                maxUsers: Number(document.getElementById('companyMaxUsers').value),
+                contrato: contractData()
             })
         });
         closeCompanyModal();
         document.getElementById('companyForm').reset();
-        showMessage(`${data.message}. Licencia: ${data.organization.licenseKey}`, data.correo?.enviado === false ? 'error' : 'success');
+        document.getElementById('contractModules').innerHTML = '';
+        toggleContractFields();
+        const fallo = data.correo?.enviado === false || data.documentos?.enviado === false;
+        showMessage(`${data.message} Licencia: ${data.organization.licenseKey}`, fallo ? 'error' : 'success');
         await loadOrganizations();
     } catch (error) {
         showMessage(error.message, 'error');

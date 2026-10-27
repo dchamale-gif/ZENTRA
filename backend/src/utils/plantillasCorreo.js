@@ -50,4 +50,17 @@ const credenciales = ({ nombre, empresa, url, email, password, diasPrueba }) => 
   texto: `Hola ${nombre}:\n\nTu correo quedó confirmado. Datos para entrar a ${empresa}:\n\nUsuario: ${email}\nContraseña temporal: ${password}\n\nEntra en: ${url}/login.html\n\nAl entrar por primera vez te pediremos crear tu propia contraseña.`
 });
 
-module.exports = { verificacion, credenciales };
+const documentosContrato = ({ nombre, empresa, numero, documentos }) => ({
+  asunto: `Documentos de contratación de BotEngine ERP · ${empresa} (${numero})`,
+  html: marco('Tus documentos de contratación', `
+    <p>Hola ${escapeHtml(nombre)}:</p>
+    <p>Adjuntamos los documentos de contratación de BotEngine ERP para <strong>${escapeHtml(empresa)}</strong>:</p>
+    <ul style="padding-left:20px;line-height:1.7">
+      ${documentos.map((documento) => `<li>${escapeHtml(documento)}</li>`).join('')}
+    </ul>
+    <p>Revisa la propuesta y el contrato, completa los datos en blanco y firma la propuesta, el contrato y el Anexo A (con tus iniciales en cada página). Envíanos una copia escaneada respondiendo a este correo junto con los requisitos de la propuesta.</p>
+    <p style="font-size:13px;color:#64748b">El acta de entrega se firma el día de la puesta en marcha; te la enviamos desde ahora para que conozcas lo que se verificará.</p>`),
+  texto: `Hola ${nombre}:\n\nAdjuntamos los documentos de contratación de BotEngine ERP para ${empresa}:\n\n${documentos.map((documento) => `- ${documento}`).join('\n')}\n\nCompleta los datos en blanco y firma la propuesta, el contrato y el Anexo A (con tus iniciales en cada página). Envíanos una copia escaneada respondiendo a este correo junto con los requisitos de la propuesta.\n\nEl acta de entrega se firma el día de la puesta en marcha.`
+});
+
+module.exports = { verificacion, credenciales, documentosContrato };

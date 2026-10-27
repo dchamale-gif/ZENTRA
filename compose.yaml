@@ -58,6 +58,7 @@ services:
       EMAIL_API_KEY_FILE: /run/secrets/email_api_key
       EMAIL_FROM: ${EMAIL_FROM:-}
       EMAIL_FROM_NAME: ${EMAIL_FROM_NAME:-BotEngine ERP}
+      SOPORTE_CORREO: ${SOPORTE_CORREO:-}
     # Permite llegar a una base de datos instalada en el mismo servidor, fuera de Docker.
     extra_hosts:
       - "host.docker.internal:host-gateway"

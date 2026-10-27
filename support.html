@@ -53,7 +53,7 @@
         .suspended, .cancelled { background: #fee2e2; color: #991b1b; }
         .actions { display: flex; flex-wrap: wrap; gap: 6px; }
         .actions button { min-height: 30px; padding: 0 10px; font-size: 12.5px; }
-        .modal { background: rgba(15, 23, 42, .45); inset: 0; position: fixed; }
+        .modal { background: rgba(15, 23, 42, .45); inset: 0; overflow-y: auto; position: fixed; }
         .modal-content { background: #fff; border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 24px 48px -12px rgba(15, 23, 42, .3); margin: 7vh auto; max-width: 520px; padding: 24px; width: calc(100% - 32px); }
         .modal-content h2 { color: var(--text); font-size: 17px; margin-top: 0; }
         .form-group { margin-bottom: 14px; }
@@ -67,6 +67,11 @@
         .module-checks label:has(input:checked) { background: #eff6ff; border-color: #bfdbfe; }
         .module-checks input { accent-color: var(--primary); height: 16px; min-height: 0; width: 16px; }
         .modules-extra-title { font-size: 14px; margin: 20px 0 10px; }
+        .check-row { align-items: center; color: var(--text); display: flex; font-size: 13.5px; font-weight: 500; gap: 10px; margin: 6px 0 14px; }
+        .check-row input { accent-color: var(--primary); height: 16px; min-height: 0; width: 16px; }
+        .contract-fields { border-top: 1px solid var(--border); margin-bottom: 14px; padding-top: 14px; }
+        .form-row { display: grid; gap: 12px; grid-template-columns: 1fr 1fr; }
+        @media (max-width: 480px) { .form-row { grid-template-columns: 1fr; } }
         .field-hint { color: #64748b; display: block; font-size: 12px; margin-top: 4px; }
         .mail-state { display: inline-block; font-size: 12px; margin-top: 4px; }
         .mail-state.ok { color: #166534; }
@@ -154,6 +159,23 @@
                 <div class="form-group"><label for="companyPlan">Plan</label><input id="companyPlan" value="Demo" maxlength="50"></div>
                 <div class="form-group"><label for="companyMaxUsers">Usuarios permitidos</label><input id="companyMaxUsers" type="number" min="1" max="1000" value="3" required></div>
                 <div class="form-group"><label for="companyDays">Días de prueba</label><input id="companyDays" type="number" min="1" max="3650" value="30" required></div>
+                <label class="check-row"><input type="checkbox" id="companyContract"> Enviar contrato y documentos al cliente</label>
+                <div id="contractFields" class="contract-fields hidden">
+                    <p class="modal-hint">Se envían al correo del administrador la propuesta, el contrato, el Anexo A y el acta de entrega. Lo que falte (DPI, registro mercantil) queda en blanco para llenarse al firmar.</p>
+                    <div class="form-row">
+                        <div class="form-group"><label for="contractPrice">Mensualidad con IVA (Q)</label><input id="contractPrice" type="number" min="0.01" step="0.01" value="1120"></div>
+                        <div class="form-group"><label for="contractPos">Puntos de venta</label><input id="contractPos" type="number" min="1" max="100" value="1"></div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group"><label for="contractStart">Inicio del cobro</label><input id="contractStart" type="date"></div>
+                        <div class="form-group"><label for="contractCertifier">Certificador FEL (opcional)</label><input id="contractCertifier" maxlength="100"></div>
+                    </div>
+                    <div class="form-group">
+                        <label>Módulos contratados</label>
+                        <div class="module-checks" id="contractModules"></div>
+                        <small class="field-hint">La empresa queda habilitada solo con estos módulos.</small>
+                    </div>
+                </div>
                 <div class="modal-actions"><button class="secondary" id="cancelCompanyButton" type="button">Cancelar</button><button class="primary" type="submit">Guardar empresa</button></div>
             </form>
         </div>

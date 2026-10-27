@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const pool = require('../db/platformConnection');
 const authPool = require('../db/authConnection');
 const { enviarVerificacion, reenviar, hashInutilizable } = require('../utils/onboarding');
+const { leerContrato, registrarContrato, enviarDocumentos } = require('../utils/contratos');
 const { MODULES, MODULE_KEYS } = require('../utils/modules');
 
 const LICENSE_STATUSES = new Set(['trial', 'active', 'suspended', 'cancelled']);
@@ -133,6 +134,8 @@ const createOrganization = async (req, res) => {
       return res.status(400).json({ error: 'Los usuarios permitidos deben estar entre 1 y 1000' });
     }
     const nombreAdmin = String(adminName || '').trim().replace(/\s+/g, ' ').slice(0, 100) || 'Administrador';
+    // Datos comerciales para la propuesta y el contrato; null si no se pidió enviarlos.
+    const contrato = leerContrato(req.body);
 
     // Empresa y administrador en una sola transacción (rol de autenticación, que puede crear usuarios).
     client = await authPool.connect();
@@ -146,8 +149,8 @@ const createOrganization = async (req, res) => {
       `INSERT INTO organizations
        (nombre, slug, sector_comercial, email, nit, subscription_status,
         license_plan, license_key, license_issued_at, license_max_users,
-        trial_started_at, trial_ends_at)
-       VALUES ($1, $2, $3, $4, $5, 'trial', $6, $7, NOW(), $9, NOW(), NOW() + ($8 * INTERVAL '1 day'))
+        trial_started_at, trial_ends_at, modulos_habilitados, fel_habilitada)
+       VALUES ($1, $2, $3, $4, $5, 'trial', $6, $7, NOW(), $9, NOW(), NOW() + ($8 * INTERVAL '1 day'), $10, $11)
        RETURNING id, nombre, sector_comercial, email, nit, subscription_status,
                  license_plan, license_key, license_issued_at, license_max_users, modulos_habilitados, fel_habilitada, trial_ends_at,
                  subscription_started_at, subscription_ends_at, created_at,
@@ -161,7 +164,10 @@ const createOrganization = async (req, res) => {
         String(plan).trim().slice(0, 50) || 'Demo',
         generateLicenseKey(),
         days,
-        userLimit
+        userLimit,
+        // Con contrato, la empresa queda solo con los módulos contratados (null = todos).
+        contrato && contrato.modulos.length < MODULE_KEYS.size ? contrato.modulos : null,
+        contrato ? contrato.fel : false
       ]
     );
     const organization = result.rows[0];
@@ -176,6 +182,12 @@ const createOrganization = async (req, res) => {
       `INSERT INTO user_roles (user_id, role_id) SELECT $1, id FROM roles WHERE nombre = 'admin'`,
       [usuario.rows[0].id]
     );
+    const registro = contrato && await registrarContrato(client, {
+      organizationId: organization.id,
+      contrato,
+      cliente: { nombre: organization.nombre, nit: organization.nit, contacto: nombreAdmin, correo },
+      usuarios: userLimit
+    });
     await client.query('COMMIT');
     client.release();
     client = null;
@@ -189,19 +201,36 @@ const createOrganization = async (req, res) => {
       if (!error.expose) console.error('Error enviando verificación:', error);
     }
 
+    let documentos = null;
+    if (registro) {
+      documentos = { numero: registro.datos.numero, enviado: true };
+      try {
+        await enviarDocumentos(registro);
+      } catch (error) {
+        documentos = { ...documentos, enviado: false, error: error.expose ? error.message : 'No se pudieron generar o enviar los documentos' };
+        if (!error.expose) console.error('Error enviando documentos de contratación:', error);
+      }
+    }
+    const avisoDocumentos = !documentos ? ''
+      : documentos.enviado
+        ? ` También enviamos la propuesta, el contrato, el anexo y el acta (${documentos.numero}).`
+        : ` Los documentos ${documentos.numero} no salieron: ${documentos.error}.`;
+
     res.status(201).json({
       success: true,
-      message: correoVerificacion.enviado
-        ? `Empresa agregada. Enviamos el enlace de verificación a ${correo}`
-        : `Empresa agregada, pero el correo no salió: ${correoVerificacion.error}. Usa «Reenviar correo».`,
+      message: (correoVerificacion.enviado
+        ? `Empresa agregada. Enviamos el enlace de verificación a ${correo}.`
+        : `Empresa agregada, pero el correo no salió: ${correoVerificacion.error}. Usa «Reenviar correo».`) + avisoDocumentos,
       organization: mapOrganization({ ...organization, admin_estado: { email: correo, verificado: false, pendienteCambio: true } }),
-      correo: correoVerificacion
+      correo: correoVerificacion,
+      documentos
     });
   } catch (error) {
     if (client) {
       await client.query('ROLLBACK').catch(() => {});
       client.release();
     }
+    if (error.expose) return res.status(error.status || 400).json({ error: error.message });
     console.error('Error creando organización desde soporte:', error);
     res.status(500).json({ error: 'Error agregando empresa' });
   }

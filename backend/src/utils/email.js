@@ -13,7 +13,8 @@ const correoConfigurado = () => Boolean(process.env.EMAIL_API_KEY && process.env
 const appUrl = () => (process.env.APP_URL || (process.env.CORS_ORIGIN || '').split(',')[0] || 'http://localhost:5500')
   .trim().replace(/\/$/, '');
 
-const enviarCorreo = async ({ para, nombre, asunto, html, texto }) => {
+// adjuntos: [{ nombre, contenido (Buffer) }]
+const enviarCorreo = async ({ para, nombre, asunto, html, texto, adjuntos = [] }) => {
   if (!correoConfigurado()) {
     throw emailError(503, 'El envío de correos no está configurado en el servidor (falta la clave de Brevo o el remitente)');
   }
@@ -34,7 +35,10 @@ const enviarCorreo = async ({ para, nombre, asunto, html, texto }) => {
         to: [{ email: para, ...(nombre ? { name: nombre } : {}) }],
         subject: asunto,
         htmlContent: html,
-        textContent: texto
+        textContent: texto,
+        ...(adjuntos.length
+          ? { attachment: adjuntos.map(({ nombre: name, contenido }) => ({ name, content: contenido.toString('base64') })) }
+          : {})
       })
     });
   } catch (error) {
