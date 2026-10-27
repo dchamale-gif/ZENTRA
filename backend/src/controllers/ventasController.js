@@ -238,33 +238,44 @@ const getReceptores = async (req, res) => {
   }
 };
 
+// Registra la venta completa (existencias, correlativo, líneas y pago) dentro de la
+// transacción del llamador. La usan Ventas y el cobro de cuentas del punto de venta.
+const registrarVenta = async (client, body, userId) => {
+  const header = normalizeHeader(body);
+  const items = normalizeItems(body.items);
+  const subtotal = Number(items.reduce((sum, item) => sum + item.subtotal, 0).toFixed(2));
+
+  await validateReceiver(client, header.clienteId);
+  await client.query("SELECT pg_advisory_xact_lock(hashtext('ventas_numero_correlativo'))");
+  await validateAndDiscountStock(client, items);
+  const numeroVenta = await getNextNumeroVenta(client);
+  const ventaId = `VTA-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+  const result = await client.query(
+    `INSERT INTO ventas
+     (id, numero_venta, cliente_id, user_id, fecha, hora, subtotal,
+      descuento, impuesto, total, metodo_pago, estado, observaciones)
+     VALUES ($1, $2, $3, $4, $5, CURRENT_TIME, $6, 0, 0, $6, $7, 'completada', $8)
+     RETURNING *`,
+    [ventaId, numeroVenta, header.clienteId, userId,
+      header.fecha, subtotal, header.metodoPago, header.observaciones]
+  );
+  await insertItems(client, ventaId, items);
+  await aplicarPago(client, { ...result.rows[0], fecha: header.fecha }, userId);
+  return result.rows[0];
+};
+
 const createVenta = async (req, res) => {
   let client;
   try {
-    const header = normalizeHeader(req.body);
-    const items = normalizeItems(req.body.items);
-    const subtotal = Number(items.reduce((sum, item) => sum + item.subtotal, 0).toFixed(2));
+    // Validar antes de pedir conexión: los errores de datos no deben ocupar el pool.
+    normalizeHeader(req.body);
+    normalizeItems(req.body.items);
 
     client = await pool.connect();
     await client.query('BEGIN');
-    await validateReceiver(client, header.clienteId);
-    await client.query("SELECT pg_advisory_xact_lock(hashtext('ventas_numero_correlativo'))");
-    await validateAndDiscountStock(client, items);
-    const numeroVenta = await getNextNumeroVenta(client);
-    const ventaId = `VTA-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
-    const result = await client.query(
-      `INSERT INTO ventas
-       (id, numero_venta, cliente_id, user_id, fecha, hora, subtotal,
-        descuento, impuesto, total, metodo_pago, estado, observaciones)
-       VALUES ($1, $2, $3, $4, $5, CURRENT_TIME, $6, 0, 0, $6, $7, 'completada', $8)
-       RETURNING *`,
-      [ventaId, numeroVenta, header.clienteId, req.user.id,
-        header.fecha, subtotal, header.metodoPago, header.observaciones]
-    );
-    await insertItems(client, ventaId, items);
-    await aplicarPago(client, { ...result.rows[0], fecha: header.fecha }, req.user.id);
+    const venta = await registrarVenta(client, req.body, req.user.id);
     await client.query('COMMIT');
-    res.status(201).json({ success: true, message: 'Venta creada exitosamente', venta: result.rows[0] });
+    res.status(201).json({ success: true, message: 'Venta creada exitosamente', venta });
   } catch (error) {
     if (client) await client.query('ROLLBACK');
     sendError(res, error, 'Error creando venta');
@@ -339,4 +350,7 @@ const deleteVenta = async (req, res) => {
   }
 };
 
-module.exports = { getVentas, getReceptores, createVenta, updateVenta, deleteVenta };
+module.exports = {
+  getVentas, getReceptores, createVenta, updateVenta, deleteVenta,
+  registrarVenta, sendError, httpError
+};

@@ -20,6 +20,11 @@ router.get('/siguiente-codigo', rolePermissionMiddleware(['inventario_view']), c
 // GET - Listar artículos
 router.get('/', rolePermissionMiddleware(['inventario_view', 'ventas_view', 'compras_view']), codigosArticulosController.getArticulos);
 
+// Foto del artículo: se ve desde Artículos, Ventas, Compras y el punto de venta.
+router.get('/:id/foto', rolePermissionMiddleware(['inventario_view', 'ventas_view', 'compras_view']), codigosArticulosController.getFoto);
+router.put('/:id/foto', rolePermissionMiddleware(['inventario_edit']), codigosArticulosController.setFoto);
+router.delete('/:id/foto', rolePermissionMiddleware(['inventario_edit']), codigosArticulosController.setFoto);
+
 // GET - Obtener artículo específico
 router.get('/:id', rolePermissionMiddleware(['inventario_view']), codigosArticulosController.getArticuloById);
 

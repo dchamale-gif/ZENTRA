@@ -312,7 +312,7 @@ const updateLicense = async (req, res) => {
 // Resumen de visitas del sitio web (WebBotEngine). La clave queda en el servidor.
 const getWebsiteAnalytics = async (req, res) => {
   const baseUrl = (process.env.WEBSITE_ANALYTICS_URL || '').replace(/\/$/, '');
-  const apiKey = process.env.WEBSITE_ANALYTICS_KEY;
+  const apiKey = (process.env.WEBSITE_ANALYTICS_KEY || '').trim();
   if (!baseUrl || !apiKey) {
     return res.status(503).json({ error: 'Configura WEBSITE_ANALYTICS_URL y WEBSITE_ANALYTICS_KEY en el servidor' });
   }

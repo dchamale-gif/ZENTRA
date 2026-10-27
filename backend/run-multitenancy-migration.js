@@ -44,7 +44,9 @@ const run = async () => {
       'compras-conceptos-migration.sql',
       'migrate-dpi-y-clasificaciones.sql',
       'integracion-ventas-compras.sql',
-      'modulos-y-usuarios.sql'
+      'modulos-y-usuarios.sql',
+      'punto-de-venta.sql',
+      'articulos-fotos.sql'
     ];
     for (const file of featureMigrations) {
       console.log(`Aplicando ${file}...`);

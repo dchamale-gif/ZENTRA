@@ -1,6 +1,7 @@
 const pool = require('../db/connection');
 const { getNextCodigo } = require('./codigosArticulosController');
 const { text, number, bool, runImport, rowError } = require('../utils/bulkImport');
+const { guardarFoto } = require('../utils/fotos');
 
 const isDryRun = (req) => req.body.dryRun === true;
 
@@ -74,6 +75,7 @@ const importProveedores = async (req, res) => {
 /**
  * POST /api/codigos-articulos/import
  * Upsert por código; si no viene código se genera el siguiente correlativo.
+ * Cada fila puede traer «foto» en base64; si no la trae, la foto actual se conserva.
  */
 const importArticulos = async (req, res) => {
   try {
@@ -132,6 +134,7 @@ const importArticulos = async (req, res) => {
               data.cantidad_disponible, data.unidad_medida, data.codigo_barras,
               data.tipo, data.activo, existing.rows[0].id]
           );
+          await guardarFoto(client, existing.rows[0].id, text(raw.foto) || undefined);
           return 'updated';
         }
       } else {
@@ -146,14 +149,16 @@ const importArticulos = async (req, res) => {
       const generatedId = `ART-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
       const offset = requiresManualId ? 2 : 1;
 
-      await client.query(
+      const inserted = await client.query(
         `INSERT INTO codigos_articulos
          (${requiresManualId ? 'id, ' : ''}codigo, nombre_articulo, descripcion, categoria, familia,
           subfamilia, precio_unitario, precio_costo, cantidad_disponible, unidad_medida,
           codigo_barras, tipo, activo, created_at, updated_at)
-         VALUES (${requiresManualId ? '$1, ' : ''}${values.map((_, i) => `$${i + offset}`).join(', ')}, NOW(), NOW())`,
+         VALUES (${requiresManualId ? '$1, ' : ''}${values.map((_, i) => `$${i + offset}`).join(', ')}, NOW(), NOW())
+         RETURNING id`,
         requiresManualId ? [generatedId, ...values] : values
       );
+      await guardarFoto(client, inserted.rows[0].id, text(raw.foto) || undefined);
       return 'created';
     }, { dryRun: isDryRun(req) });
 

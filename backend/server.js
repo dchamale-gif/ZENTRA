@@ -16,6 +16,7 @@ const expensesRoutes = require('./src/routes/expenses');
 const receivablesRoutes = require('./src/routes/receivables');
 const comprasRoutes = require('./src/routes/compras');
 const ventasRoutes = require('./src/routes/ventas');
+const posRoutes = require('./src/routes/pos');
 const cajaRoutes = require('./src/routes/caja');
 const clientesRoutes = require('./src/routes/clientes');
 const notificationsRoutes = require('./src/routes/notifications');
@@ -60,7 +61,8 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
-// Body parser
+// Body parser. La importación de artículos admite más porque cada fila puede traer su foto en base64.
+app.use('/api/codigos-articulos/import', express.json({ limit: '50mb' }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
@@ -113,6 +115,7 @@ app.use('/api/compras', comprasRoutes);
 
 // Ventas e inventario
 app.use('/api/ventas', ventasRoutes);
+app.use('/api/pos', posRoutes);
 
 
 

@@ -1,5 +1,6 @@
 const pool = require('../db/connection');
 const { LOW_STOCK_THRESHOLD, validateArticleNumbers, dbInputErrorMessage } = require('../utils/inventory');
+const { parseFotoBase64, guardarFoto, FOTO_VERSION_COLUMN } = require('../utils/fotos');
 
 const ARTICLE_COLUMNS = `
   id, codigo, nombre_articulo, descripcion, categoria, familia,
@@ -37,7 +38,7 @@ const getArticulos = async (req, res) => {
   try {
     const { categoria, familia, activo, search } = req.query;
     
-    let query = `SELECT ${ARTICLE_COLUMNS} FROM codigos_articulos WHERE 1=1`;
+    let query = `SELECT ${ARTICLE_COLUMNS}, ${FOTO_VERSION_COLUMN} FROM codigos_articulos WHERE 1=1`;
     const params = [];
     let paramIndex = 1;
 
@@ -97,7 +98,7 @@ const getArticuloById = async (req, res) => {
     const { id } = req.params;
 
     const result = await pool.query(
-      `SELECT ${ARTICLE_COLUMNS} FROM codigos_articulos WHERE id = $1`,
+      `SELECT ${ARTICLE_COLUMNS}, ${FOTO_VERSION_COLUMN} FROM codigos_articulos WHERE id = $1`,
       [id]
     );
 
@@ -151,7 +152,8 @@ const createArticulo = async (req, res) => {
       codigo_alternativo,
       descripcion2,
       tipo,
-      activo = true
+      activo = true,
+      foto
     } = req.body;
 
     // Validar campos requeridos
@@ -162,6 +164,7 @@ const createArticulo = async (req, res) => {
     }
     const numberError = validateArticleNumbers(req.body);
     if (numberError) return res.status(400).json({ error: numberError });
+    if (foto) parseFotoBase64(foto);
 
     client = await pool.connect();
     await client.query('BEGIN');
@@ -195,6 +198,7 @@ const createArticulo = async (req, res) => {
        RETURNING ${ARTICLE_COLUMNS}`,
       requiresManualId ? [generatedId, ...values] : values
     );
+    await guardarFoto(client, result.rows[0].id, foto || undefined);
 
     await client.query('COMMIT');
 
@@ -205,6 +209,7 @@ const createArticulo = async (req, res) => {
     });
   } catch (error) {
     if (client) await client.query('ROLLBACK');
+    if (error.status === 400) return res.status(400).json({ error: error.message });
     const inputError = dbInputErrorMessage(error);
     if (inputError) return res.status(400).json({ error: inputError });
     console.error('Error en createArticulo:', error);
@@ -236,7 +241,8 @@ const updateArticulo = async (req, res) => {
       codigo_alternativo,
       descripcion2,
       tipo,
-      activo
+      activo,
+      foto
     } = req.body;
 
     const numberError = validateArticleNumbers(req.body);
@@ -244,6 +250,7 @@ const updateArticulo = async (req, res) => {
     if (nombre_articulo !== undefined && !String(nombre_articulo).trim()) {
       return res.status(400).json({ error: 'Nombre del artículo es requerido' });
     }
+    if (foto) parseFotoBase64(foto);
 
     // Verificar que existe
     const existing = await pool.query(
@@ -279,6 +286,7 @@ const updateArticulo = async (req, res) => {
        precio_unitario, precio_costo, cantidad_disponible, unidad_medida,
        codigo_barras, codigo_alternativo, descripcion2, tipo, activo, id]
     );
+    await guardarFoto(pool, id, foto);
 
     res.status(200).json({
       success: true,
@@ -286,10 +294,59 @@ const updateArticulo = async (req, res) => {
       articulo: result.rows[0]
     });
   } catch (error) {
+    if (error.status === 400) return res.status(400).json({ error: error.message });
     const inputError = dbInputErrorMessage(error);
     if (inputError) return res.status(400).json({ error: inputError });
     console.error('Error en updateArticulo:', error);
     res.status(500).json({ error: 'Error actualizando artículo' });
+  }
+};
+
+/**
+ * GET /api/codigos-articulos/:id/foto
+ * Devuelve la imagen. Con ?v=<foto_version> el navegador la guarda sin volver a pedirla.
+ */
+const getFoto = async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT mime_type, datos, hash FROM articulo_fotos WHERE articulo_id = $1',
+      [req.params.id]
+    );
+    const foto = result.rows[0];
+    if (!foto) return res.status(404).json({ error: 'El artículo no tiene foto' });
+    const etag = `"${foto.hash}"`;
+    res.set({
+      'Content-Type': foto.mime_type,
+      ETag: etag,
+      'Cache-Control': req.query.v === foto.hash ? 'private, max-age=31536000, immutable' : 'private, no-cache'
+    });
+    if (req.headers['if-none-match'] === etag) return res.status(304).end();
+    res.status(200).send(foto.datos);
+  } catch (error) {
+    console.error('Error en getFoto:', error);
+    res.status(500).json({ error: 'Error obteniendo la foto' });
+  }
+};
+
+/**
+ * PUT /api/codigos-articulos/:id/foto  { foto: "<base64>" }
+ * DELETE /api/codigos-articulos/:id/foto
+ */
+const setFoto = async (req, res) => {
+  try {
+    const foto = req.method === 'DELETE' ? null : req.body.foto;
+    if (req.method !== 'DELETE' && !foto) {
+      return res.status(400).json({ error: 'Envía la foto en base64 en el campo «foto»' });
+    }
+    const existing = await pool.query('SELECT id FROM codigos_articulos WHERE id = $1', [req.params.id]);
+    if (existing.rows.length === 0) return res.status(404).json({ error: 'Artículo no encontrado' });
+    await guardarFoto(pool, req.params.id, foto);
+    const version = await pool.query('SELECT hash FROM articulo_fotos WHERE articulo_id = $1', [req.params.id]);
+    res.status(200).json({ success: true, foto_version: version.rows[0]?.hash || null });
+  } catch (error) {
+    if (error.status === 400) return res.status(400).json({ error: error.message });
+    console.error('Error en setFoto:', error);
+    res.status(500).json({ error: 'Error guardando la foto' });
   }
 };
 
@@ -388,6 +445,8 @@ const getArticulosStockBajo = async (req, res) => {
 module.exports = {
   getArticulos,
   getArticuloById,
+  getFoto,
+  setFoto,
   getSiguienteCodigo,
   createArticulo,
   updateArticulo,
