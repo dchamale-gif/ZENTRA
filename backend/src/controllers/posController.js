@@ -2,6 +2,7 @@ const pool = require('../db/connection');
 const { generateId } = require('../utils/helpers');
 const { registrarVenta, sendError, httpError } = require('./ventasController');
 const { FOTO_VERSION_COLUMN } = require('../utils/fotos');
+const { prepararFactura, emitirFactura } = require('./felController');
 
 // El punto de venta cobra al momento; las ventas al crédito se registran en Ventas.
 const METODOS_COBRO = new Set(['efectivo', 'tarjeta', 'transferencia']);
@@ -188,6 +189,9 @@ const cobrarCuenta = async (req, res) => {
   try {
     const metodoPago = String(req.body.metodo_pago || 'efectivo').toLowerCase();
     if (!METODOS_COBRO.has(metodoPago)) throw httpError(400, 'Elige efectivo, tarjeta o transferencia');
+    // Factura: se revisan configuración y NIT antes de cobrar, para no registrar la venta con datos malos.
+    const conFactura = req.body.comprobante === 'factura';
+    if (conFactura) await prepararFactura(req.body.receptor);
 
     client = await pool.connect();
     await client.query('BEGIN');
@@ -221,7 +225,19 @@ const cobrarCuenta = async (req, res) => {
       [venta.id, cuenta.id]
     );
     await client.query('COMMIT');
-    res.status(200).json({ success: true, venta });
+    client.release();
+    client = null;
+
+    // La venta ya quedó cobrada; si la certificación falla, la factura queda pendiente de reintento.
+    let factura = null;
+    if (conFactura) {
+      try {
+        factura = await emitirFactura(venta.id, req.body.receptor, req.user.id);
+      } catch (error) {
+        factura = { estado: 'error', error: error.expose ? error.message : 'No se pudo emitir la factura' };
+      }
+    }
+    res.status(200).json({ success: true, venta, factura });
   } catch (error) {
     if (client) await client.query('ROLLBACK');
     sendError(res, error, 'Error cobrando la cuenta');

@@ -11,6 +11,9 @@ const VENTA_SELECT = `
          COALESCE(c.nombre, 'Consumidor final') AS receptor_nombre,
          CASE WHEN v.cliente_id IS NOT NULL THEN 'cliente' ELSE 'consumidor' END AS receptor_tipo,
          COALESCE(pg.pagado, 0) AS pagado,
+         (SELECT row_to_json(f) FROM (
+            SELECT id, estado, tipo_dte, serie, numero, uuid, receptor_id, receptor_nombre, error, ambiente
+            FROM fel_documentos WHERE venta_id = v.id ORDER BY created_at DESC LIMIT 1) f) AS factura,
          GREATEST(v.total - COALESCE(pg.pagado, 0), 0) AS pendiente,
          COALESCE(
            json_agg(
@@ -161,6 +164,24 @@ const validateReceiver = async (client, customerId) => {
   return receiver.rows[0];
 };
 
+// Una venta con factura FEL vigente no se puede cambiar: primero hay que anular la factura.
+const assertSinFacturaVigente = async (client, ventaId, accion) => {
+  const result = await client.query(
+    `SELECT serie, numero, estado FROM fel_documentos
+     WHERE venta_id = $1 AND estado IN ('pendiente', 'certificado', 'anulado')
+     ORDER BY created_at DESC`,
+    [ventaId]
+  );
+  const vigente = result.rows.find((row) => row.estado !== 'anulado');
+  if (vigente) {
+    throw httpError(409, `La venta tiene la factura ${vigente.serie || ''}-${vigente.numero || ''} vigente; anúlala antes de ${accion}`);
+  }
+  // Las facturas anuladas se conservan como registro fiscal junto con su venta.
+  if (accion === 'eliminarla' && result.rows.length) {
+    throw httpError(409, 'La venta tiene facturas anuladas que deben conservarse; no se puede eliminar');
+  }
+};
+
 // Abonos registrados en Cuentas por Cobrar (no incluye el pago automático de contado).
 const getAbonos = async (client, ventaId) => {
   const result = await client.query(
@@ -296,6 +317,7 @@ const updateVenta = async (req, res) => {
     await validateReceiver(client, header.clienteId);
     const existing = await client.query('SELECT id FROM ventas WHERE id = $1 FOR UPDATE', [req.params.id]);
     if (existing.rows.length === 0) throw httpError(404, 'Venta no encontrada');
+    await assertSinFacturaVigente(client, req.params.id, 'modificarla');
 
     const abonos = await getAbonos(client, req.params.id);
     if (abonos > 0 && header.metodoPago !== 'credito') {
@@ -334,6 +356,7 @@ const deleteVenta = async (req, res) => {
     await client.query('BEGIN');
     const existing = await client.query('SELECT id FROM ventas WHERE id = $1 FOR UPDATE', [req.params.id]);
     if (existing.rows.length === 0) throw httpError(404, 'Venta no encontrada');
+    await assertSinFacturaVigente(client, req.params.id, 'eliminarla');
     if (await getAbonos(client, req.params.id) > 0) {
       throw httpError(409, 'La venta tiene abonos registrados en Cuentas por Cobrar y no se puede eliminar');
     }
