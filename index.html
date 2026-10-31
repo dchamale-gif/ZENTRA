@@ -707,6 +707,14 @@
                                             <input type="text" id="intCol-precio" class="form-input" data-columna="precio" list="intColumnas" autocomplete="off" spellcheck="false">
                                         </div>
                                         <div class="form-group">
+                                            <label for="intCol-costo">Precio de compra (costo)</label>
+                                            <input type="text" id="intCol-costo" class="form-input" data-columna="costo" list="intColumnas" autocomplete="off" spellcheck="false">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="intCol-existencia">Existencia</label>
+                                            <input type="text" id="intCol-existencia" class="form-input" data-columna="existencia" list="intColumnas" autocomplete="off" spellcheck="false">
+                                        </div>
+                                        <div class="form-group">
                                             <label for="intCol-categoria">Sección o categoría</label>
                                             <input type="text" id="intCol-categoria" class="form-input" data-columna="categoria" list="intColumnas" autocomplete="off" spellcheck="false">
                                         </div>
@@ -719,8 +727,12 @@
                                             <input type="text" id="intCol-descripcion" class="form-input" data-columna="descripcion" list="intColumnas" autocomplete="off" spellcheck="false">
                                         </div>
                                         <div class="form-group">
-                                            <label for="intCol-existencia">Existencia</label>
-                                            <input type="text" id="intCol-existencia" class="form-input" data-columna="existencia" list="intColumnas" autocomplete="off" spellcheck="false">
+                                            <label for="intCol-codigo_barras">Código de barras</label>
+                                            <input type="text" id="intCol-codigo_barras" class="form-input" data-columna="codigo_barras" list="intColumnas" autocomplete="off" spellcheck="false">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="intCol-unidad">Unidad de medida</label>
+                                            <input type="text" id="intCol-unidad" class="form-input" data-columna="unidad" list="intColumnas" autocomplete="off" spellcheck="false">
                                         </div>
                                         <div class="form-group">
                                             <label for="intCol-foto">Foto (base64)</label>
@@ -728,8 +740,15 @@
                                         </div>
                                     </div>
                                     <datalist id="intColumnas"></datalist>
-                                    <label class="checkbox-line"><input type="checkbox" id="intCopiarExistencia"> Copiar también la existencia desde la web</label>
-                                    <small class="integracion-help">Déjalo sin marcar si la existencia la lleva el ERP con compras y ventas; si no, cada sincronización la reemplaza por la de la web.</small>
+                                    <div class="form-group">
+                                        <label for="intInventario">Existencia y precio de compra desde la web</label>
+                                        <select id="intInventario" class="form-input" aria-describedby="intInventarioHint">
+                                            <option value="inicial">Solo al crear el artículo; después los llevan las compras y ventas del ERP</option>
+                                            <option value="siempre">Siempre: cada sincronización los reemplaza por los de la web</option>
+                                            <option value="nunca">Nunca: el ERP los lleva desde cero</option>
+                                        </select>
+                                        <small id="intInventarioHint" class="integracion-help">Si registras las compras en el ERP, usa «Solo al crear»: con «Siempre», la siguiente sincronización borraría lo que sumó la compra.</small>
+                                    </div>
                                     <div class="form-row">
                                         <div class="form-group">
                                             <label for="intAuto">Sincronizar sola</label>

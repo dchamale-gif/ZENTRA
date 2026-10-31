@@ -10,7 +10,15 @@ const {
 // Integración «web»: el ERP lee los productos de la base de datos de la página web de
 // la empresa y los carga en Artículos (una vía: web → ERP).
 const TIPO = 'web_db';
-const CAMPOS = ['codigo', 'nombre', 'precio', 'categoria', 'familia', 'descripcion', 'existencia', 'foto'];
+const CAMPOS = ['codigo', 'nombre', 'precio', 'costo', 'existencia', 'categoria', 'familia', 'descripcion', 'codigo_barras', 'unidad', 'foto'];
+// Existencia y precio de compra también los mueven las compras y ventas del ERP:
+// 'inicial' los copia solo al crear el artículo, 'siempre' en cada sincronización, 'nunca' no los toca.
+const MODOS_INVENTARIO = new Set(['inicial', 'siempre', 'nunca']);
+
+// Configuraciones guardadas antes de existir el modo: copiarExistencia true equivalía a 'siempre'.
+const modoInventario = (config) => (MODOS_INVENTARIO.has(config.inventarioDesdeWeb)
+  ? config.inventarioDesdeWeb
+  : config.copiarExistencia === true ? 'siempre' : 'nunca');
 const FOTO_BATCH = 100;
 const MAX_AUTO_MINUTOS = 1440;
 
@@ -38,7 +46,7 @@ const normalizeConfig = (body) => {
     ssl: body.ssl === true,
     tabla: text(body.tabla, 130),
     columnas: {},
-    copiarExistencia: body.copiarExistencia === true,
+    inventarioDesdeWeb: MODOS_INVENTARIO.has(body.inventarioDesdeWeb) ? body.inventarioDesdeWeb : 'inicial',
     autoMinutos: Math.min(Math.max(Math.round(Number(body.autoMinutos) || 0), 0), MAX_AUTO_MINUTOS)
   };
   if (!['postgres', 'mysql'].includes(config.motor)) throw httpError(400, 'Elige el motor de la base: PostgreSQL o MySQL');
@@ -194,7 +202,10 @@ const mapRow = (row) => ({
   categoria: row.categoria ?? null,
   familia: row.familia ?? null,
   descripcion: row.descripcion ?? null,
-  existencia: row.existencia ?? null
+  existencia: row.existencia ?? null,
+  costo: row.costo ?? null,
+  codigo_barras: row.codigo_barras == null ? null : String(row.codigo_barras).trim(),
+  unidad: row.unidad ?? null
 });
 
 const sincronizarWeb = async (row) => {
@@ -243,6 +254,7 @@ const sincronizarWeb = async (row) => {
     conn.close();
   }
 
+  const modo = modoInventario(config);
   const importRows = rows
     .map((r) => ({ r, data: mapRow(r) }))
     .filter(({ data }) => data.codigo)
@@ -253,8 +265,12 @@ const sincronizarWeb = async (row) => {
       categoria: data.categoria,
       familia: data.familia,
       descripcion: data.descripcion,
-      // La existencia la lleva el ERP (las ventas la descuentan) salvo que se pida copiarla.
-      cantidad_disponible: config.copiarExistencia ? data.existencia : undefined,
+      codigo_barras: data.codigo_barras,
+      unidad_medida: data.unidad,
+      cantidad_disponible: modo === 'nunca' ? undefined : data.existencia,
+      precio_costo: modo === 'nunca' ? undefined : data.costo,
+      // Con 'inicial', compras y ventas del ERP mandan una vez creado el artículo.
+      _soloAlCrear: modo === 'inicial' ? ['cantidad_disponible', 'precio_costo'] : [],
       _foto: fotos.get(data.codigo)
     }));
   const sinCodigo = rows.length - importRows.length;

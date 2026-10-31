@@ -5,17 +5,21 @@
 // ============================================
 
 const IntegracionModule = {
-    CAMPOS: ['codigo', 'nombre', 'precio', 'categoria', 'familia', 'descripcion', 'existencia', 'foto'],
+    CAMPOS: ['codigo', 'nombre', 'precio', 'costo', 'existencia', 'categoria', 'familia', 'descripcion', 'codigo_barras', 'unidad', 'foto'],
     state: { data: null, initialized: false, busy: false, autoSyncing: null, prueba: null },
     ETIQUETAS: {
-        codigo: 'Código o SKU', nombre: 'Nombre', precio: 'Precio de venta', categoria: 'Sección o categoría',
-        familia: 'Familia', descripcion: 'Descripción', existencia: 'Existencia', foto: 'Foto (base64)'
+        codigo: 'Código o SKU', nombre: 'Nombre', precio: 'Precio de venta', costo: 'Precio de compra (costo)',
+        existencia: 'Existencia', categoria: 'Sección o categoría', familia: 'Familia', descripcion: 'Descripción',
+        codigo_barras: 'Código de barras', unidad: 'Unidad de medida', foto: 'Foto (base64)'
     },
     // Nombres de columna habituales para proponer el mapeo; el primero que coincida gana.
     SUGERENCIAS: {
-        codigo: [/^(sku|codigo|code|cod|referencia|ref|barcode|codigo_barras|upc|ean)$/i, /sku|codigo|code/i],
+        codigo: [/^(sku|codigo|code|cod|referencia|ref)$/i, /^(?!.*(barra|bar)).*(sku|codigo|code)/i],
         nombre: [/^(nombre|name|title|titulo|producto|product|product_name|nombre_producto)$/i, /nombre|name|title|titulo/i],
-        precio: [/^(precio|price|precio_venta|sale_price|regular_price|pvp|precio_publico)$/i, /precio|price/i],
+        costo: [/^(costo|cost|precio_costo|precio_compra|cost_price|purchase_price|costo_unitario|unit_cost)$/i, /cost|compra/i],
+        precio: [/^(precio|price|precio_venta|sale_price|regular_price|pvp|precio_publico)$/i, /^(?!.*(cost|compra)).*(precio|price)/i],
+        codigo_barras: [/^(codigo_barras|barcode|ean|upc|gtin|cod_barras)$/i, /barra|barcode|ean|gtin/i],
+        unidad: [/^(unidad|unit|uom|unidad_medida|medida)$/i],
         categoria: [/categor|seccion|section/i],
         familia: [/familia|family|subcateg/i],
         descripcion: [/descrip|detalle|detail/i],
@@ -86,7 +90,9 @@ const IntegracionModule = {
         this.CAMPOS.forEach((campo) => {
             this.field(`intCol-${campo}`).value = config.columnas?.[campo] || '';
         });
-        this.field('intCopiarExistencia').checked = Boolean(config.copiarExistencia);
+        // Configuraciones anteriores: copiarExistencia true equivalía a «siempre».
+        this.field('intInventario').value = config.inventarioDesdeWeb
+            || (config.motor ? (config.copiarExistencia ? 'siempre' : 'nunca') : 'inicial');
         this.field('intAuto').value = String(config.autoMinutos ?? 5);
         this.field('intActiva').checked = info.configurada ? info.activa : true;
 
@@ -161,7 +167,7 @@ const IntegracionModule = {
             ssl: this.field('intSsl').checked,
             tabla: this.field('intTabla').value.trim(),
             columnas,
-            copiarExistencia: this.field('intCopiarExistencia').checked,
+            inventarioDesdeWeb: this.field('intInventario').value,
             autoMinutos: Number(this.field('intAuto').value),
             activa: this.field('intActiva').checked
         };
@@ -278,10 +284,10 @@ const IntegracionModule = {
             partes.push('<p>Indica cuál columna es el <strong>código</strong> y cuál el <strong>nombre</strong> (con los selectores de arriba) y vuelve a probar para ver cómo se leerán los productos.</p>');
         }
         if (data.muestra.length) {
-            const rows = data.muestra.map((row) => `<tr><td>${esc(row.codigo)}</td><td>${esc(row.nombre)}</td><td class="text-right">${esc(row.precio)}</td><td>${esc(row.categoria)}</td><td>${esc(row.foto)}</td></tr>`).join('');
+            const rows = data.muestra.map((row) => `<tr><td>${esc(row.codigo)}</td><td>${esc(row.nombre)}</td><td class="text-right">${esc(row.precio)}</td><td class="text-right">${esc(row.costo)}</td><td class="text-right">${esc(row.existencia)}</td><td>${esc(row.categoria)}</td><td>${esc(row.foto)}</td></tr>`).join('');
             partes.push(`<p><strong>${data.total} productos</strong> en «${esc(config.tabla)}». Así se leerán los primeros:</p>
                 <div class="table-responsive"><table class="data-table">
-                    <thead><tr><th>Código</th><th>Nombre</th><th class="text-right">Precio</th><th>Sección</th><th>Foto</th></tr></thead>
+                    <thead><tr><th>Código</th><th>Nombre</th><th class="text-right">Precio</th><th class="text-right">Costo</th><th class="text-right">Existencia</th><th>Sección</th><th>Foto</th></tr></thead>
                     <tbody>${rows}</tbody>
                 </table></div>`);
         }

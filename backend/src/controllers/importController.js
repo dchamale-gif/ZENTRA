@@ -95,6 +95,7 @@ const ARTICULO_UPDATE_COLUMNS = [
  * Crea o actualiza un artículo por código (lo usan la importación desde Excel y la
  * sincronización con la web). Los campos que no vienen conservan su valor.
  * raw._foto = { valor, origenHash } viene de la sincronización; raw.foto, de la importación.
+ * raw._soloAlCrear: columnas que se usan al crear el artículo pero no al actualizarlo.
  * Devuelve 'created', 'updated' o 'unchanged'.
  */
 const upsertArticulo = async (client, raw, index, { requiresManualId }) => {
@@ -129,6 +130,8 @@ const upsertArticulo = async (client, raw, index, { requiresManualId }) => {
     );
     if (existing.rows.length > 0) {
       const id = existing.rows[0].id;
+      // Lo que solo se copia al crear (p. ej. existencia de la web) no pisa al artículo existente.
+      (raw._soloAlCrear || []).forEach((column) => { data[column] = null; });
       // nombre_articulo siempre viene; el resto conserva su valor si llega vacío.
       const values = ARTICULO_UPDATE_COLUMNS.map((column) => data[column]);
       const expressions = ARTICULO_UPDATE_COLUMNS.map((column, i) =>
