@@ -4,6 +4,7 @@ const { encrypt, decrypt } = require('../utils/secretBox');
 const { runImport, rowError, MAX_IMPORT_ROWS } = require('../utils/bulkImport');
 const { upsertArticulo, articuloIdIsManual } = require('./importController');
 const { prepararFoto } = require('../utils/fotoRemota');
+const { parseFotoBase64 } = require('../utils/fotos');
 const {
   connect, describeConnectionError, listColumns, describeSchema, previewTable, parseIdentifier, quoteWith, md5Expression, allowedHosts, httpError
 } = require('../utils/webDb');
@@ -134,7 +135,7 @@ const saveConfig = async (req, res) => {
       throw httpError(400, 'Para sincronizar la existencia en las dos direcciones indica la columna de existencia');
     }
     const existing = await loadIntegracion();
-    // Al empezar a conciliar, las bases anteriores ya no valen: la primera vez manda el ERP.
+    // Al empezar a conciliar, las bases anteriores ya no valen: la primera vez manda la web.
     if (config.inventarioDesdeWeb === 'dosVias' && (!existing || modoInventario(existing.config) !== 'dosVias')) {
       await pool.query('UPDATE codigos_articulos SET existencia_web_base = NULL WHERE existencia_web_base IS NOT NULL');
     }
@@ -190,6 +191,20 @@ const probar = async (req, res) => {
         total = Number((await conn.query(`SELECT COUNT(*) AS total FROM ${table}`))[0].total);
         const rows = await conn.query(`${selectSinFoto(conn.motor, config)} LIMIT 3`);
         muestra = rows.map((row) => ({ ...mapRow(row), foto: row.foto_md5 ? 'sí' : 'no' }));
+        // Se lee la foto de la muestra como en la sincronización, para ver si el formato sirve.
+        if (config.columnas.foto) {
+          const fotoCol = quote(parseIdentifier(config.columnas.foto, 'foto'));
+          const codigoCol = quote(parseIdentifier(config.columnas.codigo, 'codigo'));
+          for (const item of muestra.filter((m) => m.foto === 'sí')) {
+            const [fila] = await conn.query(`SELECT ${fotoCol} AS foto FROM ${table} WHERE ${codigoCol} = ${conn.param(1)}`, [item.codigo]);
+            try {
+              const { mime, buffer } = parseFotoBase64(await prepararFoto(fila?.foto, config.urlFotos));
+              item.foto = `${mime.replace('image/', '').toUpperCase()}, ${Math.ceil(buffer.length / 1024)} KB`;
+            } catch (error) {
+              item.foto = `no se puede leer: ${error.expose ? error.message : 'formato desconocido'}`;
+            }
+          }
+        }
       }
     }
     res.status(200).json({
@@ -378,7 +393,8 @@ const sincronizarWeb = async (row) => {
  * Dos vías: la existencia nueva suma lo que se movió en cada lado desde la última vez que
  * coincidieron (existencia_web_base): ERP + web − base. En los dos lados se escribe como
  * suma, así una venta que ocurra en medio no se pierde: queda para la siguiente conciliación.
- * Un artículo que aún no tiene base toma la existencia del ERP.
+ * Un artículo que aún no tiene base toma la existencia de la web (la tienda en línea es la
+ * existencia real al conectar; un ERP recién importado suele estar en 0).
  */
 const conciliarExistencias = async (conn, config, rows) => {
   const quote = quoteWith(conn.motor);
@@ -397,7 +413,7 @@ const conciliarExistencias = async (conn, config, rows) => {
     if (webRaw === null || webRaw === undefined || webRaw === '' || !Number.isFinite(webAhora)) continue;
     const erpAhora = Number(articulo.cantidad_disponible) || 0;
     const base = articulo.existencia_web_base;
-    let nueva = Math.round(base === null ? erpAhora : erpAhora + webAhora - base);
+    let nueva = Math.round(base === null ? webAhora : erpAhora + webAhora - base);
     if (nueva < 0) {
       resultado.errores.push(`«${articulo.codigo}»: entre el ERP y la web se vendió más de lo que había; quedó en 0`);
       nueva = 0;

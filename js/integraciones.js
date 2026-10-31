@@ -128,8 +128,8 @@ const IntegracionModule = {
     explicarInventario() {
         const modo = this.field('intInventario').value;
         const textos = {
-            dosVias: 'La existencia se suma desde los dos lados: lo que compres o vendas en el ERP llega a la web y lo que se venda en la web llega al ERP. El precio de compra solo se copia al crear el artículo.',
-            inicial: 'La web da la existencia y el costo al crear cada artículo; después los llevan las compras y ventas del ERP y la web no se entera.',
+            dosVias: 'Al activarlo, el ERP toma la existencia actual de la web. Desde ahí se suma desde los dos lados: lo que compres o vendas en el ERP llega a la web y lo que se venda en la web llega al ERP. El precio de compra solo se copia al crear el artículo.',
+            inicial: 'La web da la existencia y el costo solo al crear cada artículo; después los llevan las compras y ventas del ERP. Los artículos que ya existían no toman la existencia de la web: para eso usa «En las dos direcciones».',
             siempre: 'Cada sincronización reemplaza existencia y costo por los de la web. No registres compras en el ERP: se perderían.',
             nunca: 'El ERP lleva existencia y costo desde cero; la web no los toca.'
         };

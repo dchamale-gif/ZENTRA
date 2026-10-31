@@ -9,7 +9,8 @@ const SIGNATURES = [
   ['image/jpeg', (b) => b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff],
   ['image/png', (b) => b.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))],
   ['image/webp', (b) => b.toString('ascii', 0, 4) === 'RIFF' && b.toString('ascii', 8, 12) === 'WEBP'],
-  ['image/gif', (b) => b.toString('ascii', 0, 4) === 'GIF8']
+  ['image/gif', (b) => b.toString('ascii', 0, 4) === 'GIF8'],
+  ['image/avif', (b) => b.toString('ascii', 4, 8) === 'ftyp' && /^avi[fs]$/.test(b.toString('ascii', 8, 12))]
 ];
 
 // status para las rutas y expose para la importación masiva (mensaje por fila).
@@ -17,32 +18,61 @@ const fotoError = (message) => Object.assign(new Error(message), { status: 400, 
 
 const detectMime = (buffer) => (buffer.length > 12 ? SIGNATURES.find(([, test]) => test(buffer))?.[0] : null);
 
+// Inicio del valor para los avisos: igual en todas las fotos con el mismo formato, así se agrupan.
+const inicioDe = (texto) => texto.slice(0, 24).replace(/\s+/g, ' ');
+
+// Desde otra base, la foto puede venir envuelta: lista JSON («["data:image/…"]»), objeto
+// ({"url": "…"}), etiqueta HTML (<img src="data:…">) o entre comillas. Se busca la imagen adentro.
+const extraerBase64 = (texto) => {
+  const dataUrl = texto.match(/data:image\/[\w.+-]+(?:;[^,;"'\s]*)*;base64,([A-Za-z0-9+/=_%\s-]+)/i);
+  if (dataUrl) return dataUrl[1];
+  if (/^[[{]/.test(texto)) {
+    try {
+      const buscar = (valor) => {
+        if (typeof valor === 'string') return valor;
+        if (Array.isArray(valor)) return valor.map(buscar).find(Boolean);
+        if (valor && typeof valor === 'object') return Object.values(valor).map(buscar).find(Boolean);
+        return null;
+      };
+      const encontrado = buscar(JSON.parse(texto));
+      if (encontrado) return encontrado;
+    } catch {
+      // No era JSON: se intenta como base64 tal cual.
+    }
+  }
+  return texto.replace(/^["']+|["']+$/g, '');
+};
+
 /**
- * Acepta base64 puro o con prefijo «data:image/...;base64,», con saltos de línea
- * o en variante URL (-_). Desde otra base de datos también puede llegar la imagen
- * binaria (BLOB/BYTEA). Devuelve { mime, buffer, hash } o lanza un error 400.
+ * Acepta base64 puro o con prefijo «data:image/...;base64,» (aunque traiga más parámetros),
+ * dentro de JSON o HTML, con saltos de línea, codificado para URL (%2B), sin relleno «=»
+ * o en variante URL (-_). Desde otra base de datos también puede llegar la imagen binaria
+ * (BLOB/BYTEA). Devuelve { mime, buffer, hash } o lanza un error 400.
  */
 const parseFotoBase64 = (value) => {
   if (Buffer.isBuffer(value)) {
-    if (value.length > MAX_FOTO_BYTES) {
+    if (value.length > MAX_FOTO_BYTES * 1.4) {
       throw fotoError(`La foto pesa más de ${MAX_FOTO_BYTES / 1024 / 1024} MB; redúcela antes de enviarla`);
     }
     if (detectMime(value)) value = value.toString('base64');
     else value = value.toString('latin1'); // texto base64 guardado en una columna binaria
   }
-  let raw = String(value).trim();
-  const dataUrl = raw.match(/^data:[^;,]*;base64,(.*)$/s);
-  if (dataUrl) raw = dataUrl[1];
-  raw = raw.replace(/\s+/g, '').replace(/-/g, '+').replace(/_/g, '/');
-  if (!raw || !/^[A-Za-z0-9+/]+={0,2}$/.test(raw)) {
-    throw fotoError('La foto no es un texto base64 válido');
+  const original = String(value).trim();
+  let raw = extraerBase64(original);
+  if (/%[0-9a-f]{2}/i.test(raw)) {
+    try { raw = decodeURIComponent(raw); } catch { /* se deja como venía */ }
   }
+  raw = raw.replace(/\s+/g, '').replace(/-/g, '+').replace(/_/g, '/').replace(/=+$/, '');
+  if (!raw || !/^[A-Za-z0-9+/]+$/.test(raw)) {
+    throw fotoError(`La foto no es una imagen en base64 (empieza con «${inicioDe(original)}»)`);
+  }
+  raw += '='.repeat((4 - (raw.length % 4)) % 4);
   if (Math.floor(raw.length * 3 / 4) > MAX_FOTO_BYTES + 3) {
     throw fotoError(`La foto pesa más de ${MAX_FOTO_BYTES / 1024 / 1024} MB; redúcela antes de enviarla`);
   }
   const buffer = Buffer.from(raw, 'base64');
   const mime = detectMime(buffer);
-  if (!mime) throw fotoError('La foto debe ser una imagen JPG, PNG, WebP o GIF');
+  if (!mime) throw fotoError(`La foto debe ser una imagen JPG, PNG, WebP, GIF o AVIF (empieza con «${inicioDe(original)}»)`);
   const hash = crypto.createHash('sha256').update(buffer).digest('hex').slice(0, 16);
   return { mime, buffer, hash };
 };

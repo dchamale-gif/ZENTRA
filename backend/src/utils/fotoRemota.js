@@ -42,7 +42,8 @@ const verificarHost = async (url) => {
 const pareceUrl = (valor) => {
   if (typeof valor !== 'string') return false;
   const texto = valor.trim();
-  if (/^data:/i.test(texto) || (texto.length > 100 && /^[A-Za-z0-9+/=\s_-]+$/.test(texto))) return false;
+  // Una imagen incrustada (también dentro de JSON o HTML) no se descarga.
+  if (/data:image\//i.test(texto) || (texto.length > 100 && /^[A-Za-z0-9+/=\s_%-]+$/.test(texto))) return false;
   return /^https?:\/\//i.test(texto) || /^\.{0,2}\//.test(texto) || /^\[/.test(texto) ||
     /\.(jpe?g|png|webp|gif)(\?.*)?$/i.test(texto);
 };
