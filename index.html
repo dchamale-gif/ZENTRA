@@ -64,6 +64,10 @@
                     <i class="fas fa-barcode"></i>
                     <span>Artículos e inventario</span>
                 </a>
+                <a href="#" class="nav-item" data-page="precios" data-module="articulos">
+                    <i class="fas fa-tags"></i>
+                    <span>Precios</span>
+                </a>
                 <a href="#" class="nav-item" data-page="compras" data-module="compras">
                     <i class="fas fa-cart-shopping"></i>
                     <span>Compras</span>
@@ -741,6 +745,14 @@
                                     </div>
                                     <datalist id="intColumnas"></datalist>
                                     <div class="form-group">
+                                        <label for="intPrecios">Precio de venta</label>
+                                        <select id="intPrecios" class="form-input" aria-describedby="intPreciosHint">
+                                            <option value="erp">Lo calcula y publica el ERP (pantalla Precios)</option>
+                                            <option value="web">Lo manda la web: cada sincronización trae el de la web</option>
+                                        </select>
+                                        <small id="intPreciosHint" class="integracion-help">Con el ERP, el precio de la web solo se usa al crear el artículo, y al publicar desde Precios se escribe en la web (el usuario de la base necesita permiso para modificar la columna de precio).</small>
+                                    </div>
+                                    <div class="form-group">
                                         <label for="intInventario">Existencia y precio de compra desde la web</label>
                                         <select id="intInventario" class="form-input" aria-describedby="intInventarioHint">
                                             <option value="dosVias">En las dos direcciones: compras y ventas del ERP actualizan la web, y las ventas de la web, el ERP</option>
@@ -840,6 +852,86 @@
                 </div>
 
                 <!-- Compras Page -->
+                <div id="page-precios" class="page">
+                    <div class="page-header">
+                        <div>
+                            <h1>Precios</h1>
+                            <p class="page-subtitle">El precio de venta se calcula con el precio de compra y el margen de beneficio. Revisa los sugeridos y publícalos en el punto de venta y en la página web.</p>
+                        </div>
+                    </div>
+
+                    <section class="panel precios-config" aria-labelledby="preciosConfigTitle">
+                        <h2 id="preciosConfigTitle" class="sr-only">Margen de la empresa</h2>
+                        <form id="preciosConfigForm" class="precios-config-form">
+                            <div class="form-group">
+                                <label for="preciosMargenDefecto">Margen por defecto sobre el costo (%)</label>
+                                <input type="text" id="preciosMargenDefecto" class="form-input" inputmode="decimal" autocomplete="off" required>
+                                <small>Para los artículos sin margen propio. Costo Q100 con 30 % → Q130.</small>
+                            </div>
+                            <div class="form-group">
+                                <label for="preciosRedondeo">Redondear el precio hacia arriba a</label>
+                                <select id="preciosRedondeo" class="form-input">
+                                    <option value="0.01">El centavo (Q35.10)</option>
+                                    <option value="0.25">Q0.25 (Q35.25)</option>
+                                    <option value="0.5">Q0.50 (Q35.50)</option>
+                                    <option value="1">Q1 (Q36.00)</option>
+                                    <option value="5">Q5 (Q40.00)</option>
+                                </select>
+                            </div>
+                            <div class="form-group precios-config-actions">
+                                <button type="submit" class="btn btn-secondary" id="preciosConfigGuardar">Guardar</button>
+                            </div>
+                        </form>
+                    </section>
+
+                    <div class="stat-strip" id="preciosResumen"></div>
+
+                    <div class="toolbar precios-toolbar">
+                        <label class="search-field">
+                            <i class="fas fa-magnifying-glass" aria-hidden="true"></i>
+                            <span class="sr-only">Buscar artículos</span>
+                            <input type="search" id="preciosBuscar" class="form-input" placeholder="Buscar por nombre o código">
+                        </label>
+                        <label class="sr-only" for="preciosFiltro">Mostrar</label>
+                        <select id="preciosFiltro" class="form-input">
+                            <option value="pendientes">Por publicar</option>
+                            <option value="todos">Todos</option>
+                            <option value="sinCosto">Sin precio de compra</option>
+                        </select>
+                        <label class="sr-only" for="preciosSeccion">Sección</label>
+                        <select id="preciosSeccion" class="form-input">
+                            <option value="">Todas las secciones</option>
+                        </select>
+                    </div>
+
+                    <div class="precios-bulk" id="preciosBulk" hidden>
+                        <span id="preciosSeleccion">0 seleccionados</span>
+                        <label class="sr-only" for="preciosMargenLote">Margen para los seleccionados (%)</label>
+                        <input type="text" id="preciosMargenLote" class="form-input" inputmode="decimal" placeholder="Margen %" autocomplete="off">
+                        <button type="button" class="btn btn-secondary" id="preciosAplicarMargen">Aplicar margen</button>
+                        <button type="button" class="btn btn-primary" id="preciosPublicar"><i class="fas fa-upload" aria-hidden="true"></i> Publicar seleccionados</button>
+                    </div>
+
+                    <div class="panel table-card">
+                        <div class="table-responsive">
+                            <table class="data-table precios-table">
+                                <thead>
+                                    <tr>
+                                        <th scope="col"><input type="checkbox" id="preciosTodos" aria-label="Seleccionar todos los que se ven"></th>
+                                        <th scope="col">Artículo</th>
+                                        <th scope="col" class="text-right">Precio de compra</th>
+                                        <th scope="col" class="text-right">Margen</th>
+                                        <th scope="col" class="text-right">Precio publicado</th>
+                                        <th scope="col" class="text-right">Sugerido</th>
+                                        <th scope="col"><span class="sr-only">Publicar</span></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="preciosBody"><tr><td colspan="7">Cargando precios…</td></tr></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
                 <div id="page-compras" class="page">
                     <div class="page-header">
                         <h1>Gestión de Compras</h1>
@@ -1658,6 +1750,17 @@
                             <small>Opcional. Lo que te cuesta una unidad; sirve para calcular tu ganancia.</small>
                         </div>
                     </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="articuloMargen">Margen de beneficio sobre el costo (%)</label>
+                            <input type="text" id="articuloMargen" class="form-input" inputmode="decimal" autocomplete="off" aria-describedby="articuloMargenHint">
+                            <small id="articuloMargenHint">Vacío = el margen de la empresa.</small>
+                        </div>
+                        <div class="form-group articulo-sugerido">
+                            <span class="label-like">Precio sugerido</span>
+                            <p><strong id="articuloSugerido">—</strong> <button type="button" class="btn-link" id="articuloUsarSugerido" hidden>Usar como precio de venta</button></p>
+                        </div>
+                    </div>
 
                     <div class="form-row">
                         <div class="form-group">
@@ -2113,6 +2216,7 @@
     <script src="js/ventas.js"></script>
     <script src="js/punto-de-venta.js"></script>
     <script src="js/integraciones.js"></script>
+    <script src="js/precios.js"></script>
     <script src="js/fel.js"></script>
     <script src="js/caja.js"></script>
     <script src="js/cuentas-por-cobrar.js"></script>

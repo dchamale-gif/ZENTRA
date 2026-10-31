@@ -95,6 +95,7 @@ const IntegracionModule = {
         this.field('intInventario').value = config.inventarioDesdeWeb
             || (config.motor ? (config.copiarExistencia ? 'siempre' : 'nunca') : 'inicial');
         this.explicarInventario();
+        this.field('intPrecios').value = config.preciosDesde || 'erp';
         this.field('intAuto').value = String(config.autoMinutos ?? 5);
         this.field('intActiva').checked = info.configurada ? info.activa : true;
 
@@ -187,6 +188,7 @@ const IntegracionModule = {
             tabla: this.field('intTabla').value.trim(),
             columnas,
             inventarioDesdeWeb: this.field('intInventario').value,
+            preciosDesde: this.field('intPrecios').value,
             autoMinutos: Number(this.field('intAuto').value),
             activa: this.field('intActiva').checked
         };

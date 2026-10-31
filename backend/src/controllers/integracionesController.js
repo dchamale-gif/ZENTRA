@@ -49,6 +49,8 @@ const normalizeConfig = (body) => {
     tabla: text(body.tabla, 130),
     columnas: {},
     inventarioDesdeWeb: MODOS_INVENTARIO.has(body.inventarioDesdeWeb) ? body.inventarioDesdeWeb : 'inicial',
+    // 'erp': el precio de venta lo calcula y publica el ERP (pantalla Precios); 'web': lo trae la web.
+    preciosDesde: body.preciosDesde === 'web' ? 'web' : 'erp',
     autoMinutos: Math.min(Math.max(Math.round(Number(body.autoMinutos) || 0), 0), MAX_AUTO_MINUTOS)
   };
   if (!['postgres', 'mysql'].includes(config.motor)) throw httpError(400, 'Elige el motor de la base: PostgreSQL o MySQL');
@@ -277,7 +279,11 @@ const sincronizarWeb = async (row) => {
         precio_costo: modo === 'nunca' ? undefined : data.costo,
         // Con 'inicial', compras y ventas del ERP mandan una vez creado el artículo; con
         // 'dosVias' la existencia de los que ya existen la ajusta la conciliación.
-        _soloAlCrear: ['inicial', 'dosVias'].includes(modo) ? ['cantidad_disponible', 'precio_costo'] : [],
+        _soloAlCrear: [
+        ...(['inicial', 'dosVias'].includes(modo) ? ['cantidad_disponible', 'precio_costo'] : []),
+        // Si el ERP publica los precios, el de la web solo sirve para crear el artículo.
+        ...(config.preciosDesde === 'web' ? [] : ['precio_unitario'])
+      ],
         _foto: fotos.get(data.codigo)
       }));
     const sinCodigo = rows.length - importRows.length;
@@ -296,6 +302,20 @@ const sincronizarWeb = async (row) => {
 
     const conciliacion = dosVias ? await conciliarExistencias(conn, config, rows) : null;
 
+    // Con precios del ERP, avisar si en la web alguien dejó otro precio (el ERP no lo toma).
+    let preciosDistintos = 0;
+    if (config.preciosDesde !== 'web' && config.columnas.precio) {
+      const { rows: publicados } = await pool.query(
+        'SELECT codigo, precio_unitario FROM codigos_articulos WHERE codigo = ANY($1)',
+        [importRows.map((r) => r.codigo)]
+      );
+      const enErp = new Map(publicados.map((r) => [r.codigo, Number(r.precio_unitario)]));
+      preciosDistintos = importRows.filter((r) => {
+        const web = Number(r.precio_unitario);
+        return enErp.has(r.codigo) && Number.isFinite(web) && Math.abs(web - enErp.get(r.codigo)) >= 0.005;
+      }).length;
+    }
+
     const resultado = {
       ok: true,
       total: rows.length,
@@ -310,7 +330,8 @@ const sincronizarWeb = async (row) => {
           ? '1 producto sin código en la web no se importó'
           : `${sinCodigo} productos sin código en la web no se importaron`] : []),
         ...summary.errors.slice(0, 20).map((error) => error.message),
-        ...(conciliacion?.errores || []).slice(0, 10)
+        ...(conciliacion?.errores || []).slice(0, 10),
+        ...(preciosDistintos ? [`${preciosDistintos} artículo${preciosDistintos === 1 ? ' tiene' : 's tienen'} en la web un precio distinto al publicado en el ERP; en Precios elige «Todos», selecciónalos y pulsa «Publicar seleccionados»`] : [])
       ],
       segundos: Math.round((Date.now() - started) / 100) / 10
     };
@@ -382,6 +403,47 @@ const guardarResultado = (resultado) => pool.query(
   'UPDATE integraciones SET ultima_sync_at = NOW(), ultima_sync_resultado = $2 WHERE tipo = $1',
   [TIPO, resultado]
 );
+
+/**
+ * Escribe en la web los precios publicados en el ERP. items: [{ codigo, precio }].
+ * Devuelve null si la web no está conectada o no tiene columna de precio; si no, { actualizados }.
+ * Lanza un error expuesto si la web rechaza la escritura (p. ej. sin permiso).
+ */
+const publicarPreciosWeb = async (items) => {
+  const row = await loadIntegracion();
+  const config = row?.config;
+  if (!row?.activa || !config?.columnas?.precio || !items.length) return null;
+  const conn = await connect({ ...config, password: passwordFor(row), escritura: true });
+  try {
+    const quote = quoteWith(conn.motor);
+    const table = quote(parseIdentifier(config.tabla, 'La tabla'));
+    const codigoCol = quote(parseIdentifier(config.columnas.codigo, 'codigo'));
+    const precioCol = quote(parseIdentifier(config.columnas.precio, 'precio'));
+    let actualizados = 0;
+    for (const item of items) {
+      try {
+        await conn.query(
+          `UPDATE ${table} SET ${precioCol} = ${conn.param(1)} WHERE ${codigoCol} = ${conn.param(2)}`,
+          [item.precio, item.codigo]
+        );
+      } catch (error) {
+        throw httpError(502, `No se pudieron publicar los precios en la web (${describeConnectionError(error)}). ` +
+          `El usuario de la base de la web necesita permiso para modificar la columna «${config.columnas.precio}» de «${config.tabla}».`);
+      }
+      actualizados += 1;
+    }
+    return { actualizados };
+  } finally {
+    conn.close();
+  }
+};
+
+// Un precio cambiado en el formulario de artículos: va a la web solo si el ERP manda los precios.
+const precioWebDesdeErp = async (item) => {
+  const row = await loadIntegracion();
+  if (!item.codigo || row?.config?.preciosDesde === 'web') return null;
+  return publicarPreciosWeb([item]);
+};
 
 // Pedidas mientras otra corría (p. ej. dos ventas seguidas): se repite una vez al terminar.
 const repetir = new Set();
@@ -459,4 +521,4 @@ const sincronizar = async (req, res) => {
   }
 };
 
-module.exports = { getConfig, saveConfig, deleteConfig, probar, sincronizar, sincronizarTrasMovimiento };
+module.exports = { getConfig, saveConfig, deleteConfig, probar, sincronizar, sincronizarTrasMovimiento, publicarPreciosWeb, precioWebDesdeErp };

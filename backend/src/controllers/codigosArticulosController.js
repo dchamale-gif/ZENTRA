@@ -6,8 +6,35 @@ const ARTICLE_COLUMNS = `
   id, codigo, nombre_articulo, descripcion, categoria, familia,
   precio_unitario, cantidad_disponible, activo, created_at, updated_at,
   tipo, subfamilia, precio_costo, unidad_medida, codigo_barras,
-  codigo_alternativo, descripcion2
+  codigo_alternativo, descripcion2, margen
 `;
+
+// Precio de venta cambiado a mano: si el ERP manda los precios, se publica también en la web.
+// Se requiere aquí (y no arriba) porque integracionesController depende de este archivo.
+const publicarPrecioEnWeb = (articulo) => {
+  const { precioWebDesdeErp } = require('./integracionesController');
+  precioWebDesdeErp({ codigo: articulo.codigo, precio: Number(articulo.precio_unitario) })
+    .catch((error) => console.error('No se publicó el precio en la web:', error.message));
+};
+
+// Margen de beneficio propio del artículo (%), si viene en el formulario; vacío = el de la empresa.
+// Devuelve undefined si no viene, null si viene vacío o el número; lanza un 400 si no es válido.
+const leerMargen = (body) => {
+  if (!Object.prototype.hasOwnProperty.call(body, 'margen')) return undefined;
+  if (body.margen === null || body.margen === '') return null;
+  const margen = Math.round(Number(body.margen) * 100) / 100;
+  if (!Number.isFinite(margen) || margen < 0 || margen > 1000) {
+    throw Object.assign(new Error('El margen debe estar entre 0 % y 1000 %'), { status: 400 });
+  }
+  return margen;
+};
+
+const guardarMargen = async (db, id, body, row) => {
+  const margen = leerMargen(body);
+  if (margen === undefined) return;
+  await db.query('UPDATE codigos_articulos SET margen = $1 WHERE id = $2', [margen, id]);
+  if (row) row.margen = margen;
+};
 
 const getNextCodigo = async (databaseClient) => {
   const result = await databaseClient.query(
@@ -162,6 +189,7 @@ const createArticulo = async (req, res) => {
         error: 'Nombre del artículo es requerido'
       });
     }
+    leerMargen(req.body);
     const numberError = validateArticleNumbers(req.body);
     if (numberError) return res.status(400).json({ error: numberError });
     if (foto) parseFotoBase64(foto);
@@ -199,6 +227,7 @@ const createArticulo = async (req, res) => {
       requiresManualId ? [generatedId, ...values] : values
     );
     await guardarFoto(client, result.rows[0].id, foto || undefined);
+    await guardarMargen(client, result.rows[0].id, req.body, result.rows[0]);
 
     await client.query('COMMIT');
 
@@ -245,6 +274,7 @@ const updateArticulo = async (req, res) => {
       foto
     } = req.body;
 
+    leerMargen(req.body);
     const numberError = validateArticleNumbers(req.body);
     if (numberError) return res.status(400).json({ error: numberError });
     if (nombre_articulo !== undefined && !String(nombre_articulo).trim()) {
@@ -287,6 +317,8 @@ const updateArticulo = async (req, res) => {
        codigo_barras, codigo_alternativo, descripcion2, tipo, activo, id]
     );
     await guardarFoto(pool, id, foto);
+    await guardarMargen(pool, id, req.body, result.rows[0]);
+    if (precio_unitario !== undefined && precio_unitario !== null) publicarPrecioEnWeb(result.rows[0]);
 
     res.status(200).json({
       success: true,

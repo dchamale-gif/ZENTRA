@@ -365,6 +365,9 @@ function navigateToPage(pageId, { fromHistory = false } = {}) {
             IntegracionModule.autoSync().then((changed) => changed && CodigosArticulosModule.loadData());
         }
     }
+    if (pageId === 'precios' && typeof PreciosModule !== 'undefined') {
+        PreciosModule.load();
+    }
     if (pageId === 'clientes') {
         ClientesModule.load();
     }

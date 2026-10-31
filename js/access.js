@@ -22,6 +22,8 @@ const AccessControl = {
     },
 
     canEdit(key) {
+        // Soporte en solo lectura: todo se ve como consulta (el servidor rechazaría los cambios).
+        if (this.user().soporte && this.user().soporte.modo !== 'editar') return false;
         const modules = this.modules();
         return !modules || modules.some((entry) => entry.modulo === key && entry.nivel === 'editar');
     },

@@ -102,6 +102,7 @@ const CodigosArticulosModule = {
             subfamiliaId: articulo.subfamilia || '',
             precioCompra: Number(articulo.precio_costo) || 0,
             precioVenta: Number(articulo.precio_unitario) || 0,
+            margen: articulo.margen === null || articulo.margen === undefined ? null : Number(articulo.margen),
             cantidadDisponible: Number(articulo.cantidad_disponible) || 0,
             unidadMedida: articulo.unidad_medida || '',
             codigoAlternativo: articulo.codigo_alternativo || '',
@@ -571,6 +572,7 @@ const CodigosArticulosModule = {
             this.renderSubfamiliasForModal();
             document.getElementById('precioCompra').value = articulo.precioCompra;
             document.getElementById('precioVenta').value = articulo.precioVenta;
+            document.getElementById('articuloMargen').value = articulo.margen ?? '';
             document.getElementById('articuloCantidad').value = articulo.cantidadDisponible;
             document.getElementById('articuloUnidadMedida').value = articulo.unidadMedida;
             document.getElementById('articuloSubfamilia').value = articulo.subfamiliaId;
@@ -582,12 +584,61 @@ const CodigosArticulosModule = {
             document.getElementById('codigoVenta').value = 'Cargando...';
         }
 
+        if (!articulo) document.getElementById('articuloMargen').value = '';
+        this.prepararSugerido();
+
         modal.style.display = 'flex';
         document.body.style.overflow = 'hidden';
 
         if (!articulo) {
             await this.loadNextCodigo();
         }
+    },
+
+    // ---------- Precio sugerido ----------
+    // Precio de compra × (1 + margen / 100), redondeado hacia arriba como en la pantalla Precios.
+
+    async prepararSugerido() {
+        if (!this.state.sugeridoListo) {
+            this.state.sugeridoListo = true;
+            ['precioCompra', 'articuloMargen'].forEach((id) => {
+                document.getElementById(id).addEventListener('input', () => this.updateSugerido());
+            });
+            document.getElementById('articuloUsarSugerido').addEventListener('click', () => {
+                document.getElementById('precioVenta').value = this.state.sugerido.toFixed(2);
+                this.updateSugerido();
+            });
+        }
+        this.updateSugerido();
+        try {
+            const response = await authManager.fetchWithAuth('/api/precios/config');
+            if (response?.ok) this.state.configPrecios = (await response.json()).config;
+        } catch (error) {
+            // Sin la configuración se usa la que ya se tenía (o 30 %).
+        }
+        this.updateSugerido();
+    },
+
+    updateSugerido() {
+        const config = this.state.configPrecios || { margenDefecto: 30, redondeo: 0.01 };
+        const costo = this.parseDecimal(document.getElementById('precioCompra').value);
+        const margenTexto = document.getElementById('articuloMargen').value.trim();
+        const margen = margenTexto ? this.parseDecimal(margenTexto) : config.margenDefecto;
+        document.getElementById('articuloMargenHint').textContent = `Vacío = el de la empresa (${config.margenDefecto} %).`;
+        const salida = document.getElementById('articuloSugerido');
+        const boton = document.getElementById('articuloUsarSugerido');
+        if (!(costo > 0) || Number.isNaN(margen) || margen < 0) {
+            salida.textContent = costo > 0 ? '—' : 'Escribe el precio de compra';
+            boton.hidden = true;
+            this.state.sugerido = null;
+            return;
+        }
+        const paso = Math.round(config.redondeo * 100);
+        const sugerido = Math.ceil(Math.round(costo * (1 + margen / 100) * 10000) / 100 / paso - 1e-9) * paso / 100;
+        this.state.sugerido = sugerido;
+        salida.textContent = formatQ(sugerido);
+        const venta = this.parseDecimal(document.getElementById('precioVenta').value);
+        boton.hidden = Math.abs(sugerido - venta) < 0.005;
     },
 
     // ---------- Foto ----------
@@ -758,6 +809,10 @@ const CodigosArticulosModule = {
         check('precioCompra', Number.isNaN(values.precioCompra), 'Escribe un número, por ejemplo 18.00, o déjalo vacío.');
         check('precioCompra', values.precioCompra < 0, 'El precio de compra no puede ser negativo.');
         check('precioCompra', values.precioCompra > MAX_PRICE, 'El precio es demasiado grande.');
+        const margenTexto = document.getElementById('articuloMargen').value.trim();
+        values.margen = margenTexto ? this.parseDecimal(margenTexto) : null;
+        fields.margen = document.getElementById('articuloMargen');
+        check('margen', Number.isNaN(values.margen) || values.margen < 0 || values.margen > 1000, 'Escribe un margen entre 0 y 1000, o déjalo vacío.');
         check('cantidad', Number.isNaN(values.cantidad), 'Escribe cuántas unidades tienes hoy (0 si no tienes).');
         check('cantidad', values.cantidad < 0, 'La existencia no puede ser negativa.');
         check('cantidad', !Number.isInteger(values.cantidad), 'La existencia debe ser un número entero.');
@@ -793,7 +848,7 @@ const CodigosArticulosModule = {
             this.showNotification('Revisa los campos marcados en rojo.', 'warning');
             return;
         }
-        const { precioVenta, precioCompra, cantidad } = numbers;
+        const { precioVenta, precioCompra, cantidad, margen } = numbers;
 
         const saveButton = document.getElementById('saveArticuloBtn');
         this.state.saving = true;
@@ -809,6 +864,7 @@ const CodigosArticulosModule = {
                 subfamilia: subfamilia || null,
                 precio_unitario: precioVenta,
                 precio_costo: precioCompra,
+                margen,
                 cantidad_disponible: cantidad,
                 unidad_medida: unidadMedida || null,
                 codigo_barras: codigoCompra || null,
