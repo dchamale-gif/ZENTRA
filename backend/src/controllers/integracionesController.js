@@ -4,7 +4,7 @@ const { encrypt, decrypt } = require('../utils/secretBox');
 const { runImport, rowError, MAX_IMPORT_ROWS } = require('../utils/bulkImport');
 const { upsertArticulo, articuloIdIsManual } = require('./importController');
 const {
-  connect, listTables, listColumns, parseIdentifier, quoteWith, md5Expression, allowedHosts, httpError
+  connect, listColumns, describeSchema, previewTable, parseIdentifier, quoteWith, md5Expression, allowedHosts, httpError
 } = require('../utils/webDb');
 
 // Integración «web»: el ERP lee los productos de la base de datos de la página web de
@@ -130,22 +130,27 @@ const deleteConfig = async (req, res) => {
 };
 
 // Prueba con lo que hay en el formulario (sin guardar): tablas, columnas y una muestra.
+// Conecta y devuelve el esquema (tablas, columnas, filas aproximadas). Con una tabla elegida,
+// también sus primeras filas y, si el mapeo está completo, cómo se leerían los productos.
 const probar = async (req, res) => {
   let conn;
   try {
     const config = normalizeConfig(req.body);
     const password = passwordFor(await loadIntegracion(), req.body.password);
     conn = await connect({ ...config, password });
-    const tablas = await listTables(conn);
+    const esquema = await describeSchema(conn);
     let columnas = [];
+    let vistaPrevia = [];
+    let faltantes = [];
     let muestra = [];
     let total = null;
     if (config.tabla) {
       columnas = await listColumns(conn, config.tabla);
       if (!columnas.length) throw httpError(400, `No se encontró la tabla «${config.tabla}» o el usuario no puede leerla`);
-      const faltantes = Object.values(config.columnas).filter((column) => !columnas.includes(column));
-      if (faltantes.length) throw httpError(400, `Estas columnas no existen en «${config.tabla}»: ${faltantes.join(', ')}`);
-      if (config.columnas.codigo && config.columnas.nombre) {
+      vistaPrevia = await previewTable(conn, config.tabla);
+      // Al cambiar de tabla, el mapeo anterior puede no aplicar: se avisa en vez de fallar.
+      faltantes = Object.values(config.columnas).filter((column) => !columnas.includes(column));
+      if (!faltantes.length && config.columnas.codigo && config.columnas.nombre) {
         const quote = quoteWith(conn.motor);
         const table = quote(parseIdentifier(config.tabla, 'La tabla'));
         total = Number((await conn.query(`SELECT COUNT(*) AS total FROM ${table}`))[0].total);
@@ -153,7 +158,16 @@ const probar = async (req, res) => {
         muestra = rows.map((row) => ({ ...mapRow(row), foto: row.foto_md5 ? 'sí' : 'no' }));
       }
     }
-    res.status(200).json({ success: true, tablas, columnas, muestra, total });
+    res.status(200).json({
+      success: true,
+      esquema,
+      tablas: esquema.map((tabla) => tabla.nombre),
+      columnas,
+      vistaPrevia,
+      faltantes,
+      muestra,
+      total
+    });
   } catch (error) {
     sendError(res, error, 'Error probando la conexión');
   } finally {

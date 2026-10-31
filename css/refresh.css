@@ -316,6 +316,8 @@ tr.is-inactive td { color: var(--text-gray); }
 /* ---------- Paneles (Configuración) ---------- */
 .settings-stack {
     display: grid;
+    /* Sin esto la columna crece con su contenido más ancho (p. ej. la vista previa de la web). */
+    grid-template-columns: minmax(0, 1fr);
     gap: 16px;
     max-width: 1100px;
 }
@@ -907,6 +909,8 @@ tr.is-inactive td { color: var(--text-gray); }
 .checkbox-line input { width: 16px; height: 16px; margin: 0; }
 .integracion-activa { margin-top: 28px; }
 .integracion-prueba {
+    min-width: 0;
+    max-width: 100%;
     margin: 0 0 16px;
     padding: 12px 14px;
     border: 1px solid var(--border-color);
@@ -918,6 +922,29 @@ tr.is-inactive td { color: var(--text-gray); }
 .integracion-prueba p { margin: 0 0 8px; }
 .integracion-prueba p:last-child { margin-bottom: 0; }
 .integracion-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* Explorador de la base de la web: tablas, columnas y primeras filas */
+.integracion-form { min-width: 0; }
+.int-explorador { min-width: 0; margin: 0 0 14px; }
+.int-filtro { margin-bottom: 8px; max-width: 360px; }
+.int-tablas { display: grid; gap: 6px; list-style: none; margin: 0; max-height: 300px; overflow-y: auto; padding: 0 4px 0 0; }
+.int-tablas li[hidden] { display: none; }
+.int-tabla { display: grid; gap: 2px; width: 100%; padding: 8px 12px; border: 1px solid var(--border-color, #e5e9f0); border-radius: 8px; background: #fff; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.int-tabla:hover { border-color: #93c5fd; }
+.int-tabla.is-actual { border-color: var(--primary-color); background: var(--primary-soft, #eff6ff); }
+.int-tabla-nombre { color: var(--text-dark); font-weight: 600; overflow-wrap: anywhere; }
+.int-tabla-meta { color: var(--text-gray); font-size: 12px; }
+.int-tabla-columnas { overflow: hidden; color: var(--text-gray); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.int-chip { margin-left: 6px; padding: 1px 8px; border-radius: 999px; background: #dcfce7; color: #166534; font-size: 11px; font-weight: 600; }
+.int-vista-titulo { margin-top: 4px; }
+.int-vista { max-width: 100%; margin-bottom: 12px; max-height: 360px; overflow: auto; }
+.int-vista th { min-width: 150px; vertical-align: top; }
+.int-vista td { max-width: 260px; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.int-col-nombre { display: block; color: var(--text-dark); text-transform: none; }
+.int-col-tipo { display: block; margin-bottom: 6px; color: var(--text-gray); font-size: 11px; font-weight: 400; text-transform: none; }
+.int-usar { min-height: 32px; padding: 4px 8px; font-size: 12.5px; text-transform: none; }
+.int-nulo { color: var(--text-gray); font-style: italic; }
+.integracion-aviso-columnas { color: #b45309; }
 .btn-danger-text { color: var(--danger-color); }
 .integracion-estado { margin: 12px 0 0; color: var(--text-gray); font-size: 13px; }
 .integracion-estado.is-error { color: var(--danger-color); }

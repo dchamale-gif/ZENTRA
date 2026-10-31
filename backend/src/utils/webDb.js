@@ -119,12 +119,69 @@ const listColumns = async (conn, tabla) => {
   return rows.map((row) => row.nombre ?? row.NOMBRE);
 };
 
+const MAX_TABLAS = 300;
+
+// Todas las tablas con sus columnas (nombre y tipo) y las filas aproximadas, en dos consultas.
+const describeSchema = async (conn) => {
+  const [columnas, filas] = conn.motor === 'mysql'
+    ? await Promise.all([
+      conn.query(
+        `SELECT table_name AS tabla, column_name AS columna, data_type AS tipo
+         FROM information_schema.columns
+         WHERE table_schema = DATABASE() ORDER BY table_name, ordinal_position LIMIT 20000`),
+      conn.query(
+        `SELECT table_name AS tabla, table_rows AS filas FROM information_schema.tables
+         WHERE table_schema = DATABASE()`)
+    ])
+    : await Promise.all([
+      conn.query(
+        `SELECT CASE WHEN table_schema = current_schema() THEN table_name
+                     ELSE table_schema || '.' || table_name END AS tabla,
+                column_name AS columna, data_type AS tipo
+         FROM information_schema.columns
+         WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
+         ORDER BY table_schema <> current_schema(), table_schema, table_name, ordinal_position LIMIT 20000`),
+      conn.query(
+        `SELECT CASE WHEN schemaname = current_schema() THEN relname
+                     ELSE schemaname || '.' || relname END AS tabla, n_live_tup AS filas
+         FROM pg_stat_user_tables`)
+    ]);
+  const estimadas = new Map(filas.map((row) => [row.tabla ?? row.TABLA, row.filas ?? row.FILAS]));
+  const tablas = new Map();
+  for (const row of columnas) {
+    const tabla = row.tabla ?? row.TABLA;
+    if (!tablas.has(tabla)) {
+      if (tablas.size >= MAX_TABLAS) break;
+      const estimada = estimadas.get(tabla);
+      tablas.set(tabla, { nombre: tabla, filas: estimada === undefined || estimada === null ? null : Number(estimada), columnas: [] });
+    }
+    tablas.get(tabla).columnas.push({ nombre: row.columna ?? row.COLUMNA, tipo: row.tipo ?? row.TIPO });
+  }
+  return [...tablas.values()];
+};
+
+// Valor de una celda para mostrarlo en la vista previa: corto y sin traer imágenes completas.
+const resumirValor = (value) => {
+  if (value === null || value === undefined) return null;
+  if (Buffer.isBuffer(value)) return `[binario, ${Math.ceil(value.length / 1024)} KB]`;
+  const texto = value instanceof Date ? value.toISOString() : typeof value === 'object' ? JSON.stringify(value) : String(value);
+  if (texto.length > 300) return `[texto de ${Math.ceil(texto.length / 1024)} KB: ${texto.slice(0, 40)}…]`;
+  return texto.length > 80 ? `${texto.slice(0, 80)}…` : texto;
+};
+
+// Primeras filas de una tabla con todas sus columnas, para reconocer qué guarda cada una.
+const previewTable = async (conn, tabla, limite = 5) => {
+  const table = quoteWith(conn.motor)(parseIdentifier(tabla, 'La tabla'));
+  const rows = await conn.query(`SELECT * FROM ${table} LIMIT ${Number(limite)}`);
+  return rows.map((row) => Object.fromEntries(Object.entries(row).map(([key, value]) => [key, resumirValor(value)])));
+};
+
 // Huella del valor de la foto calculada en la base remota: evita traer la imagen si no cambió.
 const md5Expression = (motor, quotedColumn) => (motor === 'mysql'
   ? `MD5(${quotedColumn})`
   : `md5(${quotedColumn}::text)`);
 
 module.exports = {
-  connect, listTables, listColumns, parseIdentifier, quoteWith, md5Expression,
+  connect, listTables, listColumns, describeSchema, previewTable, parseIdentifier, quoteWith, md5Expression,
   allowedHosts, httpError
 };
