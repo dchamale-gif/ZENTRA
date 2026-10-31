@@ -39,7 +39,9 @@ const quoteWith = (motor) => (parts) => parts
   .map((part) => (motor === 'mysql' ? `\`${part}\`` : `"${part}"`))
   .join('.');
 
-const connect = async ({ motor, host, puerto, base, usuario, password, ssl }) => {
+// escritura: true solo para devolver la existencia a la web (modo de dos vías); si no, la
+// sesión queda en solo lectura aunque el usuario de la base pueda escribir.
+const connect = async ({ motor, host, puerto, base, usuario, password, ssl, escritura = false }) => {
   if (!MOTORES.has(motor)) throw httpError(400, 'Elige el motor de la base: PostgreSQL o MySQL');
   assertHostAllowed(host);
   const port = Number(puerto) || (motor === 'mysql' ? 3306 : 5432);
@@ -54,7 +56,7 @@ const connect = async ({ motor, host, puerto, base, usuario, password, ssl }) =>
       });
       client.on('error', () => {});
       await client.connect();
-      await client.query('SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY');
+      if (!escritura) await client.query('SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY');
       return {
         motor,
         param: (index) => `$${index}`,
@@ -67,7 +69,7 @@ const connect = async ({ motor, host, puerto, base, usuario, password, ssl }) =>
       host, port, database: base, user: usuario, password,
       ssl: sslOption, connectTimeout: CONNECT_TIMEOUT_MS, dateStrings: true, supportBigNumbers: true
     });
-    await connection.query('SET SESSION TRANSACTION READ ONLY');
+    if (!escritura) await connection.query('SET SESSION TRANSACTION READ ONLY');
     return {
       motor,
       param: () => '?',
@@ -88,6 +90,7 @@ const describeConnectionError = (error) => {
   if (code === 'ETIMEDOUT' || /timeout/i.test(error.message)) return 'el servidor no respondió a tiempo';
   if (['28P01', 'ER_ACCESS_DENIED_ERROR'].includes(code)) return 'usuario o contraseña incorrectos';
   if (['3D000', 'ER_BAD_DB_ERROR'].includes(code)) return 'la base de datos no existe';
+  if (['42501', 'ER_TABLEACCESS_DENIED_ERROR', 'ER_COLUMNACCESS_DENIED_ERROR'].includes(code)) return 'el usuario no tiene permiso';
   return 'revisa servidor, puerto, base, usuario y contraseña';
 };
 
@@ -182,6 +185,6 @@ const md5Expression = (motor, quotedColumn) => (motor === 'mysql'
   : `md5(${quotedColumn}::text)`);
 
 module.exports = {
-  connect, listTables, listColumns, describeSchema, previewTable, parseIdentifier, quoteWith, md5Expression,
+  connect, describeConnectionError, listTables, listColumns, describeSchema, previewTable, parseIdentifier, quoteWith, md5Expression,
   allowedHosts, httpError
 };

@@ -673,7 +673,7 @@
                                         <div class="form-group">
                                             <label for="intUsuario">Usuario <span class="required">*</span></label>
                                             <input type="text" id="intUsuario" class="form-input" autocomplete="off" spellcheck="false">
-                                            <small>Usa un usuario que solo pueda leer.</small>
+                                            <small id="intUsuarioHint">Usa un usuario que solo pueda leer.</small>
                                         </div>
                                         <div class="form-group">
                                             <label for="intPassword">Contraseña</label>
@@ -743,11 +743,12 @@
                                     <div class="form-group">
                                         <label for="intInventario">Existencia y precio de compra desde la web</label>
                                         <select id="intInventario" class="form-input" aria-describedby="intInventarioHint">
+                                            <option value="dosVias">En las dos direcciones: compras y ventas del ERP actualizan la web, y las ventas de la web, el ERP</option>
                                             <option value="inicial">Solo al crear el artículo; después los llevan las compras y ventas del ERP</option>
                                             <option value="siempre">Siempre: cada sincronización los reemplaza por los de la web</option>
                                             <option value="nunca">Nunca: el ERP los lleva desde cero</option>
                                         </select>
-                                        <small id="intInventarioHint" class="integracion-help">Si registras las compras en el ERP, usa «Solo al crear»: con «Siempre», la siguiente sincronización borraría lo que sumó la compra.</small>
+                                        <small id="intInventarioHint" class="integracion-help">Si registras las compras en el ERP, no uses «Siempre»: la siguiente sincronización borraría lo que sumó la compra.</small>
                                     </div>
                                     <div class="form-row">
                                         <div class="form-group">

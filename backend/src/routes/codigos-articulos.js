@@ -1,4 +1,6 @@
 const express = require('express');
+// Si la existencia va en las dos direcciones con la web, cada movimiento se lleva a la web.
+const { sincronizarTrasMovimiento } = require('../controllers/integracionesController');
 const codigosArticulosController = require('../controllers/codigosArticulosController');
 const importController = require('../controllers/importController');
 const { authMiddleware, rolePermissionMiddleware } = require('../middleware/auth');
@@ -9,7 +11,7 @@ const router = express.Router();
 router.use(authMiddleware);
 
 // POST - Importación masiva (filas JSON desde Excel)
-router.post('/import', rolePermissionMiddleware(['inventario_create']), importController.importArticulos);
+router.post('/import', sincronizarTrasMovimiento, rolePermissionMiddleware(['inventario_create']), importController.importArticulos);
 
 // GET - Stock bajo (PRIMERO - evitar conflicto con :id)
 router.get('/stock/bajo', rolePermissionMiddleware(['inventario_view']), codigosArticulosController.getArticulosStockBajo);
@@ -29,15 +31,15 @@ router.delete('/:id/foto', rolePermissionMiddleware(['inventario_edit']), codigo
 router.get('/:id', rolePermissionMiddleware(['inventario_view']), codigosArticulosController.getArticuloById);
 
 // POST - Crear artículo
-router.post('/', rolePermissionMiddleware(['inventario_create']), codigosArticulosController.createArticulo);
+router.post('/', sincronizarTrasMovimiento, rolePermissionMiddleware(['inventario_create']), codigosArticulosController.createArticulo);
 
 // PUT - Actualizar artículo
-router.put('/:id', rolePermissionMiddleware(['inventario_edit']), codigosArticulosController.updateArticulo);
+router.put('/:id', sincronizarTrasMovimiento, rolePermissionMiddleware(['inventario_edit']), codigosArticulosController.updateArticulo);
 
 // PUT - Actualizar cantidad
-router.put('/:id/cantidad', rolePermissionMiddleware(['inventario_edit']), codigosArticulosController.actualizarCantidad);
+router.put('/:id/cantidad', sincronizarTrasMovimiento, rolePermissionMiddleware(['inventario_edit']), codigosArticulosController.actualizarCantidad);
 
 // DELETE - Eliminar artículo
-router.delete('/:id', rolePermissionMiddleware(['inventario_delete']), codigosArticulosController.deleteArticulo);
+router.delete('/:id', sincronizarTrasMovimiento, rolePermissionMiddleware(['inventario_delete']), codigosArticulosController.deleteArticulo);
 
 module.exports = router;

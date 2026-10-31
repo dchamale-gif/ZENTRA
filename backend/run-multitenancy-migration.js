@@ -51,7 +51,8 @@ const run = async () => {
       'fel.sql',
       'correos.sql',
       'contratos.sql',
-      'soporte-crm.sql'
+      'soporte-crm.sql',
+      'integracion-dos-vias.sql'
     ];
     for (const file of featureMigrations) {
       console.log(`Aplicando ${file}...`);

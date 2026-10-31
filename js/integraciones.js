@@ -39,6 +39,7 @@ const IntegracionModule = {
         document.getElementById('intProbarBtn')?.addEventListener('click', () => this.probar());
         document.getElementById('intSyncBtn')?.addEventListener('click', () => this.sincronizar());
         document.getElementById('intQuitarBtn')?.addEventListener('click', () => this.quitar());
+        document.getElementById('intInventario')?.addEventListener('change', () => this.explicarInventario());
         document.getElementById('intMotor')?.addEventListener('change', (event) => {
             document.getElementById('intPuerto').placeholder = event.target.value === 'mysql' ? '3306' : '5432';
         });
@@ -93,6 +94,7 @@ const IntegracionModule = {
         // Configuraciones anteriores: copiarExistencia true equivalía a «siempre».
         this.field('intInventario').value = config.inventarioDesdeWeb
             || (config.motor ? (config.copiarExistencia ? 'siempre' : 'nunca') : 'inicial');
+        this.explicarInventario();
         this.field('intAuto').value = String(config.autoMinutos ?? 5);
         this.field('intActiva').checked = info.configurada ? info.activa : true;
 
@@ -118,6 +120,21 @@ const IntegracionModule = {
         pill.className = `status-pill ${info.activa ? 'is-ok' : 'is-off'}`;
         this.renderEstado();
         this.showError('');
+    },
+
+    // Qué hace el modo elegido y qué permiso necesita el usuario de la base de la web.
+    explicarInventario() {
+        const modo = this.field('intInventario').value;
+        const textos = {
+            dosVias: 'La existencia se suma desde los dos lados: lo que compres o vendas en el ERP llega a la web y lo que se venda en la web llega al ERP. El precio de compra solo se copia al crear el artículo.',
+            inicial: 'La web da la existencia y el costo al crear cada artículo; después los llevan las compras y ventas del ERP y la web no se entera.',
+            siempre: 'Cada sincronización reemplaza existencia y costo por los de la web. No registres compras en el ERP: se perderían.',
+            nunca: 'El ERP lleva existencia y costo desde cero; la web no los toca.'
+        };
+        this.field('intInventarioHint').textContent = textos[modo];
+        this.field('intUsuarioHint').textContent = modo === 'dosVias'
+            ? `Este usuario necesita permiso para modificar la columna de existencia${this.field('intCol-existencia').value.trim() ? ` («${this.field('intCol-existencia').value.trim()}»)` : ''}; con el resto basta leer.`
+            : 'Usa un usuario que solo pueda leer.';
     },
 
     fillOptions(id, values = []) {
@@ -146,6 +163,8 @@ const IntegracionModule = {
             r.actualizados ? `${r.actualizados} actualizados` : '',
             r.sinCambios ? `${r.sinCambios} sin cambios` : '',
             r.fotosDescargadas ? `${r.fotosDescargadas} fotos nuevas` : '',
+            r.enviadosWeb ? `existencia enviada a la web en ${r.enviadosWeb}` : '',
+            r.recibidosWeb ? `existencia recibida de la web en ${r.recibidosWeb}` : '',
             r.fallidos ? `${r.fallidos} con error` : ''
         ].filter(Boolean);
         return `${partes.join(', ')}${r.segundos !== undefined ? ` (${r.segundos} s)` : ''}.`;
@@ -175,6 +194,11 @@ const IntegracionModule = {
 
     // Revisa en el navegador lo que el servidor rechazaría, y enfoca el primer campo.
     validate(config, { requireMapping }) {
+        if (requireMapping && config.inventarioDesdeWeb === 'dosVias' && !config.columnas.existencia) {
+            this.showError('Para sincronizar la existencia en las dos direcciones indica la columna de existencia.');
+            this.field('intCol-existencia').focus();
+            return false;
+        }
         const missing = [
             ['intHost', config.host, 'el servidor'],
             ['intBase', config.base, 'la base de datos'],

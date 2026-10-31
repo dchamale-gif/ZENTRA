@@ -1,19 +1,21 @@
 const pool = require('../db/connection');
-const { getTenantId } = require('../db/tenantContext');
+const { getTenantId, runWithTenant } = require('../db/tenantContext');
 const { encrypt, decrypt } = require('../utils/secretBox');
 const { runImport, rowError, MAX_IMPORT_ROWS } = require('../utils/bulkImport');
 const { upsertArticulo, articuloIdIsManual } = require('./importController');
 const {
-  connect, listColumns, describeSchema, previewTable, parseIdentifier, quoteWith, md5Expression, allowedHosts, httpError
+  connect, describeConnectionError, listColumns, describeSchema, previewTable, parseIdentifier, quoteWith, md5Expression, allowedHosts, httpError
 } = require('../utils/webDb');
 
 // Integración «web»: el ERP lee los productos de la base de datos de la página web de
-// la empresa y los carga en Artículos (una vía: web → ERP).
+// la empresa y los carga en Artículos. Con el modo 'dosVias', además, la existencia se
+// concilia en las dos direcciones (las compras y ventas del ERP llegan a la web).
 const TIPO = 'web_db';
 const CAMPOS = ['codigo', 'nombre', 'precio', 'costo', 'existencia', 'categoria', 'familia', 'descripcion', 'codigo_barras', 'unidad', 'foto'];
 // Existencia y precio de compra también los mueven las compras y ventas del ERP:
-// 'inicial' los copia solo al crear el artículo, 'siempre' en cada sincronización, 'nunca' no los toca.
-const MODOS_INVENTARIO = new Set(['inicial', 'siempre', 'nunca']);
+// 'inicial' los copia solo al crear el artículo, 'siempre' en cada sincronización, 'nunca' no los toca,
+// 'dosVias' copia el costo al crear y concilia la existencia en los dos sentidos.
+const MODOS_INVENTARIO = new Set(['inicial', 'siempre', 'nunca', 'dosVias']);
 
 // Configuraciones guardadas antes de existir el modo: copiarExistencia true equivalía a 'siempre'.
 const modoInventario = (config) => (MODOS_INVENTARIO.has(config.inventarioDesdeWeb)
@@ -111,7 +113,14 @@ const saveConfig = async (req, res) => {
     if (!config.tabla || !config.columnas.codigo || !config.columnas.nombre) {
       throw httpError(400, 'Indica la tabla de productos y las columnas de código y nombre');
     }
+    if (config.inventarioDesdeWeb === 'dosVias' && !config.columnas.existencia) {
+      throw httpError(400, 'Para sincronizar la existencia en las dos direcciones indica la columna de existencia');
+    }
     const existing = await loadIntegracion();
+    // Al empezar a conciliar, las bases anteriores ya no valen: la primera vez manda el ERP.
+    if (config.inventarioDesdeWeb === 'dosVias' && (!existing || modoInventario(existing.config) !== 'dosVias')) {
+      await pool.query('UPDATE codigos_articulos SET existencia_web_base = NULL WHERE existencia_web_base IS NOT NULL');
+    }
     const secreto = req.body.password
       ? encrypt(String(req.body.password), getTenantId())
       : existing?.secreto || null;
@@ -211,11 +220,12 @@ const mapRow = (row) => ({
 const sincronizarWeb = async (row) => {
   const { config } = row;
   const started = Date.now();
-  const conn = await connect({ ...config, password: passwordFor(row) });
-  let rows;
-  const fotos = new Map();
+  const modo = modoInventario(config);
+  const dosVias = modo === 'dosVias' && Boolean(config.columnas.existencia);
+  const conn = await connect({ ...config, password: passwordFor(row), escritura: dosVias });
   try {
-    rows = await conn.query(`${selectSinFoto(conn.motor, config)} LIMIT ${MAX_IMPORT_ROWS + 1}`);
+    const fotos = new Map();
+    const rows = await conn.query(`${selectSinFoto(conn.motor, config)} LIMIT ${MAX_IMPORT_ROWS + 1}`);
     if (rows.length > MAX_IMPORT_ROWS) {
       throw httpError(400, `La tabla tiene más de ${MAX_IMPORT_ROWS} productos; pide a soporte que amplíe el límite`);
     }
@@ -250,60 +260,121 @@ const sincronizarWeb = async (row) => {
         if (!r.foto_md5 && origen.get(codigo)) fotos.set(codigo, { valor: null, origenHash: null });
       });
     }
+
+    const importRows = rows
+      .map((r) => ({ r, data: mapRow(r) }))
+      .filter(({ data }) => data.codigo)
+      .map(({ data }) => ({
+        codigo: data.codigo,
+        nombre_articulo: data.nombre,
+        precio_unitario: data.precio,
+        categoria: data.categoria,
+        familia: data.familia,
+        descripcion: data.descripcion,
+        codigo_barras: data.codigo_barras,
+        unidad_medida: data.unidad,
+        cantidad_disponible: modo === 'nunca' ? undefined : data.existencia,
+        precio_costo: modo === 'nunca' ? undefined : data.costo,
+        // Con 'inicial', compras y ventas del ERP mandan una vez creado el artículo; con
+        // 'dosVias' la existencia de los que ya existen la ajusta la conciliación.
+        _soloAlCrear: ['inicial', 'dosVias'].includes(modo) ? ['cantidad_disponible', 'precio_costo'] : [],
+        _foto: fotos.get(data.codigo)
+      }));
+    const sinCodigo = rows.length - importRows.length;
+
+    let summary = { total: 0, created: 0, updated: 0, unchanged: 0, failed: 0, errors: [] };
+    if (importRows.length) {
+      const options = { requiresManualId: await articuloIdIsManual(pool) };
+      summary = await runImport(pool, importRows, async (client, raw, index) => {
+        try {
+          return await upsertArticulo(client, raw, index, options);
+        } catch (error) {
+          throw rowError(`«${raw.codigo}»: ${error.expose ? error.message : 'no se pudo guardar'}`);
+        }
+      });
+    }
+
+    const conciliacion = dosVias ? await conciliarExistencias(conn, config, rows) : null;
+
+    const resultado = {
+      ok: true,
+      total: rows.length,
+      ...(conciliacion ? { enviadosWeb: conciliacion.enviados, recibidosWeb: conciliacion.recibidos } : {}),
+      creados: summary.created,
+      actualizados: summary.updated,
+      sinCambios: summary.unchanged,
+      fallidos: summary.failed + sinCodigo,
+      fotosDescargadas: [...fotos.values()].filter((foto) => foto.valor).length,
+      errores: [
+        ...(sinCodigo ? [sinCodigo === 1
+          ? '1 producto sin código en la web no se importó'
+          : `${sinCodigo} productos sin código en la web no se importaron`] : []),
+        ...summary.errors.slice(0, 20).map((error) => error.message),
+        ...(conciliacion?.errores || []).slice(0, 10)
+      ],
+      segundos: Math.round((Date.now() - started) / 100) / 10
+    };
+    await guardarResultado(resultado);
+    return resultado;
   } finally {
     conn.close();
   }
+};
 
-  const modo = modoInventario(config);
-  const importRows = rows
-    .map((r) => ({ r, data: mapRow(r) }))
-    .filter(({ data }) => data.codigo)
-    .map(({ data }) => ({
-      codigo: data.codigo,
-      nombre_articulo: data.nombre,
-      precio_unitario: data.precio,
-      categoria: data.categoria,
-      familia: data.familia,
-      descripcion: data.descripcion,
-      codigo_barras: data.codigo_barras,
-      unidad_medida: data.unidad,
-      cantidad_disponible: modo === 'nunca' ? undefined : data.existencia,
-      precio_costo: modo === 'nunca' ? undefined : data.costo,
-      // Con 'inicial', compras y ventas del ERP mandan una vez creado el artículo.
-      _soloAlCrear: modo === 'inicial' ? ['cantidad_disponible', 'precio_costo'] : [],
-      _foto: fotos.get(data.codigo)
-    }));
-  const sinCodigo = rows.length - importRows.length;
+/**
+ * Dos vías: la existencia nueva suma lo que se movió en cada lado desde la última vez que
+ * coincidieron (existencia_web_base): ERP + web − base. En los dos lados se escribe como
+ * suma, así una venta que ocurra en medio no se pierde: queda para la siguiente conciliación.
+ * Un artículo que aún no tiene base toma la existencia del ERP.
+ */
+const conciliarExistencias = async (conn, config, rows) => {
+  const quote = quoteWith(conn.motor);
+  const table = quote(parseIdentifier(config.tabla, 'La tabla'));
+  const codigoCol = quote(parseIdentifier(config.columnas.codigo, 'codigo'));
+  const stockCol = quote(parseIdentifier(config.columnas.existencia, 'existencia'));
+  const web = new Map(rows.map((r) => [String(r.codigo ?? '').trim(), r.existencia]).filter(([codigo]) => codigo));
+  const { rows: articulos } = await pool.query(
+    'SELECT id, codigo, cantidad_disponible, existencia_web_base FROM codigos_articulos WHERE codigo = ANY($1)',
+    [[...web.keys()]]
+  );
+  const resultado = { enviados: 0, recibidos: 0, errores: [] };
+  for (const articulo of articulos) {
+    const webRaw = web.get(articulo.codigo);
+    const webAhora = Number(webRaw);
+    if (webRaw === null || webRaw === undefined || webRaw === '' || !Number.isFinite(webAhora)) continue;
+    const erpAhora = Number(articulo.cantidad_disponible) || 0;
+    const base = articulo.existencia_web_base;
+    let nueva = Math.round(base === null ? erpAhora : erpAhora + webAhora - base);
+    if (nueva < 0) {
+      resultado.errores.push(`«${articulo.codigo}»: entre el ERP y la web se vendió más de lo que había; quedó en 0`);
+      nueva = 0;
+    }
 
-  let summary = { total: 0, created: 0, updated: 0, unchanged: 0, failed: 0, errors: [] };
-  if (importRows.length) {
-    const options = { requiresManualId: await articuloIdIsManual(pool) };
-    summary = await runImport(pool, importRows, async (client, raw, index) => {
+    const haciaWeb = nueva - webAhora;
+    if (haciaWeb !== 0) {
       try {
-        return await upsertArticulo(client, raw, index, options);
+        await conn.query(
+          `UPDATE ${table} SET ${stockCol} = ${stockCol} + ${conn.param(1)} WHERE ${codigoCol} = ${conn.param(2)}`,
+          [haciaWeb, articulo.codigo]
+        );
       } catch (error) {
-        throw rowError(`«${raw.codigo}»: ${error.expose ? error.message : 'no se pudo guardar'}`);
+        throw httpError(502, `No se pudo actualizar la existencia en la web (${describeConnectionError(error)}). ` +
+          `El usuario de la base de la web necesita permiso para modificar la columna «${config.columnas.existencia}» de «${config.tabla}».`);
       }
-    });
+      resultado.enviados += 1;
+    }
+    const haciaErp = nueva - erpAhora;
+    if (haciaErp !== 0 || base !== nueva) {
+      await pool.query(
+        `UPDATE codigos_articulos
+         SET cantidad_disponible = COALESCE(cantidad_disponible, 0) + $1, existencia_web_base = $2,
+             updated_at = CASE WHEN $1 <> 0 THEN NOW() ELSE updated_at END
+         WHERE id = $3`,
+        [haciaErp, nueva, articulo.id]
+      );
+      if (haciaErp !== 0) resultado.recibidos += 1;
+    }
   }
-
-  const resultado = {
-    ok: true,
-    total: rows.length,
-    creados: summary.created,
-    actualizados: summary.updated,
-    sinCambios: summary.unchanged,
-    fallidos: summary.failed + sinCodigo,
-    fotosDescargadas: [...fotos.values()].filter((foto) => foto.valor).length,
-    errores: [
-      ...(sinCodigo ? [sinCodigo === 1
-        ? '1 producto sin código en la web no se importó'
-        : `${sinCodigo} productos sin código en la web no se importaron`] : []),
-      ...summary.errors.slice(0, 20).map((error) => error.message)
-    ],
-    segundos: Math.round((Date.now() - started) / 100) / 10
-  };
-  await guardarResultado(resultado);
   return resultado;
 };
 
@@ -311,6 +382,50 @@ const guardarResultado = (resultado) => pool.query(
   'UPDATE integraciones SET ultima_sync_at = NOW(), ultima_sync_resultado = $2 WHERE tipo = $1',
   [TIPO, resultado]
 );
+
+// Pedidas mientras otra corría (p. ej. dos ventas seguidas): se repite una vez al terminar.
+const repetir = new Set();
+
+// Una sincronización por empresa a la vez; quien llega mientras corre espera la misma.
+const iniciarSincronizacion = (organizationId, row) => {
+  if (!enCurso.has(organizationId)) {
+    enCurso.set(organizationId, sincronizarWeb(row)
+      .catch(async (error) => {
+        // Se registra el fallo para que el administrador lo vea en Configuración.
+        await guardarResultado({ ok: false, error: error.expose || error.status ? error.message : 'Error inesperado' })
+          .catch(() => {});
+        throw error;
+      })
+      .finally(() => {
+        enCurso.delete(organizationId);
+        if (repetir.delete(organizationId)) sincronizarEnSegundoPlano(organizationId);
+      }));
+  }
+  return enCurso.get(organizationId);
+};
+
+// Tras una compra, venta o ajuste: si la existencia va en las dos direcciones, se lleva a la web.
+const sincronizarEnSegundoPlano = (organizationId) => runWithTenant(organizationId, async () => {
+  try {
+    if (enCurso.has(organizationId)) {
+      repetir.add(organizationId);
+      return;
+    }
+    const row = await loadIntegracion();
+    if (!row?.activa || modoInventario(row.config) !== 'dosVias') return;
+    await iniciarSincronizacion(organizationId, row);
+  } catch (error) {
+    // El resultado (con el error) queda en Configuración; quien vendió no debe ver el fallo.
+  }
+});
+
+// Middleware para las rutas que mueven existencia; actúa cuando la respuesta salió bien.
+const sincronizarTrasMovimiento = (req, res, next) => {
+  res.on('finish', () => {
+    if (res.statusCode < 400 && req.organization?.id) sincronizarEnSegundoPlano(req.organization.id);
+  });
+  next();
+};
 
 /**
  * POST /api/integraciones/web/sincronizar   { auto?: true }
@@ -337,21 +452,11 @@ const sincronizar = async (req, res) => {
       }
     }
 
-    if (!enCurso.has(organizationId)) {
-      enCurso.set(organizationId, sincronizarWeb(row)
-        .catch(async (error) => {
-          // Se registra el fallo para que el administrador lo vea en Configuración.
-          await guardarResultado({ ok: false, error: error.expose || error.status ? error.message : 'Error inesperado' })
-            .catch(() => {});
-          throw error;
-        })
-        .finally(() => enCurso.delete(organizationId)));
-    }
-    const resultado = await enCurso.get(organizationId);
+    const resultado = await iniciarSincronizacion(organizationId, row);
     res.status(200).json({ success: true, resultado });
   } catch (error) {
     sendError(res, error, 'Error sincronizando con la página web');
   }
 };
 
-module.exports = { getConfig, saveConfig, deleteConfig, probar, sincronizar };
+module.exports = { getConfig, saveConfig, deleteConfig, probar, sincronizar, sincronizarTrasMovimiento };

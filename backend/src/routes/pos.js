@@ -1,4 +1,6 @@
 const express = require('express');
+// Si la existencia va en las dos direcciones con la web, cada movimiento se lleva a la web.
+const { sincronizarTrasMovimiento } = require('../controllers/integracionesController');
 const posController = require('../controllers/posController');
 const { authMiddleware, rolePermissionMiddleware } = require('../middleware/auth');
 
@@ -13,7 +15,7 @@ router.put('/cuentas/:id', rolePermissionMiddleware(['ventas_create']), posContr
 router.post('/cuentas/:id/items', rolePermissionMiddleware(['ventas_create']), posController.addItem);
 router.put('/cuentas/:id/items/:itemId', rolePermissionMiddleware(['ventas_create']), posController.changeItem);
 router.delete('/cuentas/:id/items/:itemId', rolePermissionMiddleware(['ventas_create']), posController.removeItem);
-router.post('/cuentas/:id/cobrar', rolePermissionMiddleware(['ventas_create']), posController.cobrarCuenta);
-router.delete('/cuentas/:id', rolePermissionMiddleware(['ventas_delete']), posController.anularCuenta);
+router.post('/cuentas/:id/cobrar', sincronizarTrasMovimiento, rolePermissionMiddleware(['ventas_create']), posController.cobrarCuenta);
+router.delete('/cuentas/:id', sincronizarTrasMovimiento, rolePermissionMiddleware(['ventas_delete']), posController.anularCuenta);
 
 module.exports = router;
