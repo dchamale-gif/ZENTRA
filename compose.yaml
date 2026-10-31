@@ -59,6 +59,8 @@ services:
       EMAIL_FROM: ${EMAIL_FROM:-}
       EMAIL_FROM_NAME: ${EMAIL_FROM_NAME:-BotEngine ERP}
       SOPORTE_CORREO: ${SOPORTE_CORREO:-}
+      # Forma de pago que sale en las facturas a clientes (banco, cuenta, a nombre de quién).
+      FACTURA_DATOS_PAGO: ${FACTURA_DATOS_PAGO:-}
     # Permite llegar a una base de datos instalada en el mismo servidor, fuera de Docker.
     extra_hosts:
       - "host.docker.internal:host-gateway"

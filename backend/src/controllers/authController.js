@@ -3,7 +3,7 @@ const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const pool = require('../db/authConnection');
 const platformPool = require('../db/platformConnection');
-const { clearSessionCookie, setSessionCookie } = require('../utils/sessionCookie');
+const { clearSessionCookie, getSessionToken, setSessionCookie } = require('../utils/sessionCookie');
 const { resolveUserAccess } = require('../utils/modules');
 const { verificarCorreo } = require('../utils/onboarding');
 
@@ -48,17 +48,21 @@ const getOrganizationPayload = (row) => {
   };
 };
 
-const createToken = (user, roles, permissions) => jwt.sign(
+const createToken = (user, roles, permissions, { soporte, expiresIn } = {}) => jwt.sign(
   {
     userId: user.id,
     organizationId: user.organization_id,
     email: user.email,
     roles,
-    permissions
+    permissions,
+    // Sesión abierta por soporte para ver la empresa como este usuario: { adminId, nombre, modo }.
+    ...(soporte ? { soporte } : {})
   },
   process.env.JWT_SECRET,
-  { expiresIn: process.env.JWT_EXPIRATION || '7d' }
+  { expiresIn: expiresIn || process.env.JWT_EXPIRATION || '7d' }
 );
+
+const SESION_SOPORTE_HORAS = 2;
 
 const createPlatformToken = (platformAdmin) => jwt.sign(
   {
@@ -70,6 +74,18 @@ const createPlatformToken = (platformAdmin) => jwt.sign(
   process.env.JWT_SECRET,
   { expiresIn: process.env.JWT_EXPIRATION || '7d' }
 );
+
+const platformSessionPayload = (platformAdmin) => ({
+  token: createPlatformToken(platformAdmin),
+  platformAdmin: true,
+  user: {
+    id: platformAdmin.id,
+    email: platformAdmin.email,
+    nombre: platformAdmin.nombre,
+    roles: ['platform_admin'],
+    platformAdmin: true
+  }
+});
 
 const loginPlatformAdmin = async (email, password) => {
   const result = await platformPool.query(
@@ -89,18 +105,77 @@ const loginPlatformAdmin = async (email, password) => {
     [platformAdmin.id]
   );
 
+  return { message: 'Acceso de soporte exitoso', ...platformSessionPayload(platformAdmin) };
+};
+
+/**
+ * Sesión de soporte dentro de una empresa, como uno de sus usuarios. modo 'ver' bloquea
+ * cualquier cambio (ver middleware/auth.js). Devuelve { token, user, expiresMs }.
+ */
+const crearSesionSoporte = async ({ userId, platformAdmin, modo }) => {
+  const result = await pool.query(
+    `SELECT u.id, u.organization_id, u.email, u.nombre, u.apellido,
+            o.nombre AS organization_name, o.slug AS organization_slug,
+            o.sector_comercial AS organization_sector,
+            o.email AS organization_email,
+            o.license_key AS organization_license_key,
+            o.license_plan AS organization_license_plan,
+            o.license_issued_at AS organization_license_issued_at,
+            o.license_max_users AS organization_max_users,
+            o.modulos_habilitados AS organization_modules,
+            o.fel_habilitada AS organization_fel,
+            o.subscription_status, o.trial_ends_at, o.subscription_ends_at
+     FROM users u JOIN organizations o ON o.id = u.organization_id
+     WHERE u.id = $1`,
+    [userId]
+  );
+  const user = result.rows[0];
+  const access = await resolveUserAccess(pool, user.id, user.organization_modules);
+  const soporte = { adminId: platformAdmin.id, nombre: platformAdmin.nombre, modo };
+  const organization = getOrganizationPayload(user);
   return {
-    message: 'Acceso de soporte exitoso',
-    token: createPlatformToken(platformAdmin),
-    platformAdmin: true,
+    token: createToken(user, access.roles, access.permissions, { soporte, expiresIn: `${SESION_SOPORTE_HORAS}h` }),
+    expiresMs: SESION_SOPORTE_HORAS * 3600000,
     user: {
-      id: platformAdmin.id,
-      email: platformAdmin.email,
-      nombre: platformAdmin.nombre,
-      roles: ['platform_admin'],
-      platformAdmin: true
+      id: user.id,
+      email: user.email,
+      nombre: user.nombre,
+      apellido: user.apellido,
+      roles: access.roles,
+      permissions: access.permissions,
+      modules: access.modules,
+      isAdmin: access.isAdmin,
+      soporte,
+      organization
     }
   };
+};
+
+// Termina la sesión dentro de una empresa y devuelve la de soporte, sin pedir contraseña otra vez.
+const salirDeSoporte = async (req, res) => {
+  try {
+    const token = getSessionToken(req);
+    const decoded = token ? jwt.verify(token, process.env.JWT_SECRET) : null;
+    if (!decoded?.soporte?.adminId) {
+      return res.status(400).json({ error: 'No hay una sesión de soporte abierta' });
+    }
+    const result = await platformPool.query(
+      'SELECT id, email, nombre, activo FROM platform_admins WHERE id = $1',
+      [decoded.soporte.adminId]
+    );
+    const platformAdmin = result.rows[0];
+    if (!platformAdmin || !platformAdmin.activo) {
+      clearSessionCookie(res);
+      return res.status(401).json({ error: 'Cuenta de soporte inactiva' });
+    }
+    const session = platformSessionPayload(platformAdmin);
+    const sessionExpiresAt = setSessionCookie(res, session.token);
+    delete session.token;
+    res.json({ ...session, sessionExpiresAt });
+  } catch (error) {
+    clearSessionCookie(res);
+    res.status(401).json({ error: 'La sesión de soporte venció; vuelve a iniciar sesión' });
+  }
 };
 
 // REGISTRO: Crear empresa y su usuario administrador
@@ -383,6 +458,8 @@ const getProfile = async (req, res) => {
         permissions: access.permissions,
         modules: access.modules,
         isAdmin: access.isAdmin,
+        // Soporte ve la empresa sin pasar por el cambio de contraseña del usuario.
+        ...(req.soporte ? { soporte: req.soporte, debeCambiarPassword: false } : {}),
         organization: req.organization
       }
     });
@@ -423,6 +500,8 @@ const verifyEmail = async (req, res) => {
 };
 
 module.exports = {
+  crearSesionSoporte,
+  salirDeSoporte,
   verifyEmail,
   changePassword,
   register,

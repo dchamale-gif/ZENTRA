@@ -11,6 +11,7 @@ router.get('/verificar-correo', authController.verifyEmail);
 
 // Rutas protegidas
 router.post('/logout', authController.logout);
+router.post('/salir-soporte', authController.salirDeSoporte);
 router.get('/profile', authMiddleware, authController.getProfile);
 router.post('/change-password', authMiddleware, authController.changePassword);
 

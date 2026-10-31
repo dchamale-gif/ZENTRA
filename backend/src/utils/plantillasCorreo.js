@@ -36,18 +36,25 @@ const verificacion = ({ nombre, empresa, enlace, horas }) => ({
   texto: `Hola ${nombre}:\n\nCreamos la cuenta de ${empresa} en BotEngine ERP. Confirma tu correo abriendo este enlace y te enviaremos tu usuario y contraseña:\n\n${enlace}\n\nEl enlace vence en ${horas} horas.`
 });
 
-const credenciales = ({ nombre, empresa, url, email, password, diasPrueba }) => ({
+// motivo: 'verificado' (alta de la empresa), 'nuevo' (usuario creado por soporte) o 'restablecida'.
+const INTRO_CREDENCIALES = {
+  verificado: 'Tu correo quedó confirmado. Estos son tus datos para entrar a',
+  nuevo: 'Te crearon un usuario en BotEngine ERP. Estos son tus datos para entrar a',
+  restablecida: 'Restablecimos tu contraseña. Estos son tus datos para entrar a'
+};
+
+const credenciales = ({ nombre, empresa, url, email, password, diasPrueba, motivo = 'verificado' }) => ({
   asunto: `Tus datos de acceso a BotEngine ERP · ${empresa}`,
-  html: marco('Tu cuenta está lista', `
+  html: marco(motivo === 'restablecida' ? 'Tu nueva contraseña temporal' : 'Tu cuenta está lista', `
     <p>Hola ${escapeHtml(nombre)}:</p>
-    <p>Tu correo quedó confirmado. Estos son tus datos para entrar a <strong>${escapeHtml(empresa)}</strong>${diasPrueba ? ` (prueba gratuita de ${diasPrueba} días)` : ''}:</p>
+    <p>${INTRO_CREDENCIALES[motivo]} <strong>${escapeHtml(empresa)}</strong>${diasPrueba ? ` (prueba gratuita de ${diasPrueba} días)` : ''}:</p>
     <table role="presentation" cellpadding="0" cellspacing="0" style="margin:16px 0;border:1px solid #e5e9f0;border-radius:8px;width:100%">
       <tr><td style="padding:10px 14px;color:#64748b;width:120px">Usuario</td><td style="padding:10px 14px"><strong>${escapeHtml(email)}</strong></td></tr>
       <tr><td style="padding:10px 14px;color:#64748b;border-top:1px solid #e5e9f0">Contraseña temporal</td><td style="padding:10px 14px;border-top:1px solid #e5e9f0;font-family:Consolas,Menlo,monospace;font-size:15px"><strong>${escapeHtml(password)}</strong></td></tr>
     </table>
     ${boton(`${url}/login.html`, 'Entrar a BotEngine ERP')}
     <p style="font-size:13px;color:#64748b">Al entrar por primera vez te pediremos crear tu propia contraseña; la temporal deja de funcionar en ese momento.</p>`),
-  texto: `Hola ${nombre}:\n\nTu correo quedó confirmado. Datos para entrar a ${empresa}:\n\nUsuario: ${email}\nContraseña temporal: ${password}\n\nEntra en: ${url}/login.html\n\nAl entrar por primera vez te pediremos crear tu propia contraseña.`
+  texto: `Hola ${nombre}:\n\n${INTRO_CREDENCIALES[motivo]} ${empresa}:\n\nUsuario: ${email}\nContraseña temporal: ${password}\n\nEntra en: ${url}/login.html\n\nAl entrar por primera vez te pediremos crear tu propia contraseña.`
 });
 
 const documentosContrato = ({ nombre, empresa, numero, documentos }) => ({
@@ -63,4 +70,26 @@ const documentosContrato = ({ nombre, empresa, numero, documentos }) => ({
   texto: `Hola ${nombre}:\n\nAdjuntamos los documentos de contratación de BotEngine ERP para ${empresa}:\n\n${documentos.map((documento) => `- ${documento}`).join('\n')}\n\nCompleta los datos en blanco y firma la propuesta, el contrato y el Anexo A (con tus iniciales en cada página). Envíanos una copia escaneada respondiendo a este correo junto con los requisitos de la propuesta.\n\nEl acta de entrega se firma el día de la puesta en marcha.`
 });
 
-module.exports = { verificacion, credenciales, documentosContrato };
+// Factura nueva o recordatorio de una pendiente (vencida = ya pasó la fecha de pago).
+const factura = ({ nombre, empresa, numero, concepto, total, vence, vencida }) => ({
+  asunto: vencida
+    ? `Recordatorio: factura ${numero} de BotEngine ERP pendiente de pago`
+    : `Factura ${numero} de BotEngine ERP · ${empresa}`,
+  html: marco(vencida ? 'Tienes un pago pendiente' : 'Tu factura de BotEngine ERP', `
+    <p>Hola ${escapeHtml(nombre)}:</p>
+    <p>${vencida
+      ? `La factura <strong>${escapeHtml(numero)}</strong> de <strong>${escapeHtml(empresa)}</strong> venció el ${escapeHtml(vence)} y aún no registramos el pago.`
+      : `Adjuntamos la factura <strong>${escapeHtml(numero)}</strong> de <strong>${escapeHtml(empresa)}</strong>.`}</p>
+    <table role="presentation" cellpadding="0" cellspacing="0" style="margin:16px 0;border:1px solid #e5e9f0;border-radius:8px;width:100%">
+      <tr><td style="padding:10px 14px;color:#64748b;width:120px">Concepto</td><td style="padding:10px 14px">${escapeHtml(concepto)}</td></tr>
+      <tr><td style="padding:10px 14px;color:#64748b;border-top:1px solid #e5e9f0">Total</td><td style="padding:10px 14px;border-top:1px solid #e5e9f0"><strong>${escapeHtml(total)}</strong></td></tr>
+      <tr><td style="padding:10px 14px;color:#64748b;border-top:1px solid #e5e9f0">${vencida ? 'Venció' : 'Vence'}</td><td style="padding:10px 14px;border-top:1px solid #e5e9f0">${escapeHtml(vence)}</td></tr>
+    </table>
+    <p>La forma de pago está en el PDF adjunto. Cuando pagues, responde a este correo con el comprobante.</p>
+    ${vencida ? '<p style="font-size:13px;color:#64748b">Si ya pagaste, ignora este mensaje; lo registraremos en cuanto lo confirmemos.</p>' : ''}`),
+  texto: `Hola ${nombre}:\n\n${vencida
+    ? `La factura ${numero} de ${empresa} venció el ${vence} y aún no registramos el pago.`
+    : `Adjuntamos la factura ${numero} de ${empresa}.`}\n\nConcepto: ${concepto}\nTotal: ${total}\n${vencida ? 'Venció' : 'Vence'}: ${vence}\n\nLa forma de pago está en el PDF adjunto. Cuando pagues, responde a este correo con el comprobante.`
+});
+
+module.exports = { verificacion, credenciales, documentosContrato, factura };

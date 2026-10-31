@@ -161,4 +161,4 @@ const reenviar = async (organizationId) => {
   return `Credenciales nuevas enviadas a ${usuario.email}; la contraseña temporal anterior dejó de funcionar`;
 };
 
-module.exports = { enviarVerificacion, verificarCorreo, reenviar, hashInutilizable, HORAS_VIGENCIA };
+module.exports = { enviarVerificacion, verificarCorreo, reenviar, hashInutilizable, passwordTemporal, HORAS_VIGENCIA };

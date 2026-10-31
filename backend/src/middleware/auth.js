@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const pool = require('../db/authConnection');
+const platformPool = require('../db/platformConnection');
 const { runWithTenant } = require('../db/tenantContext');
 const { getSessionToken } = require('../utils/sessionCookie');
 const { moduleOfPermission, resolveUserAccess } = require('../utils/modules');
@@ -11,6 +12,14 @@ const hasOrganizationAccess = (organization) => {
   }
   return organization.subscription_status === 'trial' &&
     new Date(organization.trial_ends_at).getTime() > Date.now();
+};
+
+const LECTURA = new Set(['GET', 'HEAD', 'OPTIONS']);
+
+// Sesión que soporte abrió dentro de la empresa: vale mientras la cuenta de soporte siga activa.
+const validarSoporte = async (soporte) => {
+  const result = await platformPool.query('SELECT activo FROM platform_admins WHERE id = $1', [soporte.adminId]);
+  return result.rows[0]?.activo === true;
 };
 
 // Middleware: Verificar JWT Token
@@ -50,13 +59,30 @@ const authMiddleware = async (req, res, next) => {
       return res.status(401).json({ error: 'Usuario no encontrado' });
     }
     
-    if (!result.rows[0].activo) {
+    const soporte = decoded.soporte || null;
+    if (soporte && !(await validarSoporte(soporte))) {
+      return res.status(401).json({ error: 'Cuenta de soporte inactiva' });
+    }
+    if (soporte) {
+      // Soporte no cambia contraseñas ajenas; en modo «ver» tampoco guarda nada.
+      const esAuth = req.originalUrl.startsWith('/api/auth/');
+      if (req.originalUrl.startsWith('/api/auth/change-password') ||
+          (soporte.modo !== 'editar' && !LECTURA.has(req.method) && !esAuth)) {
+        return res.status(403).json({
+          error: 'Estás viendo esta empresa en modo solo lectura de soporte; no se guardó ningún cambio',
+          code: 'SUPPORT_READ_ONLY'
+        });
+      }
+    }
+
+    if (!result.rows[0].activo && !soporte) {
       console.log('❌ Usuario inactivo:', decoded.userId);
       return res.status(401).json({ error: 'Usuario inactivo' });
     }
 
     const user = result.rows[0];
-    if (!hasOrganizationAccess(user)) {
+    // Soporte puede revisar también empresas en prueba vencida o suspendidas.
+    if (!soporte && !hasOrganizationAccess(user)) {
       return res.status(403).json({
         error: user.subscription_status === 'trial'
           ? 'El período de prueba de tu empresa ha finalizado'
@@ -72,7 +98,7 @@ const authMiddleware = async (req, res, next) => {
     }
 
     // Con contraseña temporal solo se permite cambiarla (y ver el perfil o salir).
-    if (user.debe_cambiar_password && !req.originalUrl.startsWith('/api/auth/')) {
+    if (!soporte && user.debe_cambiar_password && !req.originalUrl.startsWith('/api/auth/')) {
       return res.status(403).json({
         error: 'Antes de continuar crea tu propia contraseña',
         code: 'PASSWORD_CHANGE_REQUIRED'
@@ -81,6 +107,7 @@ const authMiddleware = async (req, res, next) => {
 
     console.log('✅ Usuario autenticado:', user.email);
     req.user = user;
+    req.soporte = soporte;
     req.organization = {
       id: user.organization_id,
       name: user.organization_name,

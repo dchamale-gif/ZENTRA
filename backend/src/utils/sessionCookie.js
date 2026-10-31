@@ -10,8 +10,8 @@ const parseDuration = (value = '7d') => {
 
 const sessionDurationMs = () => parseDuration(process.env.JWT_EXPIRATION);
 
-const setSessionCookie = (res, token) => {
-  const maxAge = sessionDurationMs();
+// maxAge: duración propia (la sesión de soporte dentro de una empresa dura menos).
+const setSessionCookie = (res, token, maxAge = sessionDurationMs()) => {
   res.cookie(COOKIE_NAME, token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',

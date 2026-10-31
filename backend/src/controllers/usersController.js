@@ -208,4 +208,5 @@ const resetPassword = async (req, res) => {
   }
 };
 
-module.exports = { listUsers, createUser, updateUser, resetPassword };
+// normalizeModules, saveRoleAndModules y countActiveAdmins también los usa el panel de soporte.
+module.exports = { listUsers, createUser, updateUser, resetPassword, normalizeModules, saveRoleAndModules, countActiveAdmins };

@@ -53,7 +53,7 @@
         .suspended, .cancelled { background: #fee2e2; color: #991b1b; }
         .actions { display: flex; flex-wrap: wrap; gap: 6px; }
         .actions button { min-height: 30px; padding: 0 10px; font-size: 12.5px; }
-        .modal { background: rgba(15, 23, 42, .45); inset: 0; overflow-y: auto; position: fixed; }
+        .modal { background: rgba(15, 23, 42, .45); inset: 0; overflow-y: auto; position: fixed; z-index: 20; }
         .modal-content { background: #fff; border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 24px 48px -12px rgba(15, 23, 42, .3); margin: 7vh auto; max-width: 520px; padding: 24px; width: calc(100% - 32px); }
         .modal-content h2 { color: var(--text); font-size: 17px; margin-top: 0; }
         .form-group { margin-bottom: 14px; }
@@ -109,7 +109,92 @@
         .rank-row .track span { background: var(--primary); border-radius: 4px; display: block; height: 100%; }
         .empty-note { color: var(--muted); font-size: 13px; }
         .section-title { color: var(--text); font-size: 16px; margin: 0 0 12px; }
-        @media (max-width: 700px) { header { padding: 12px 16px; } main { padding: 16px; } .toolbar { align-items: stretch; flex-direction: column; } }
+        .sr-only { clip: rect(0 0 0 0); height: 1px; overflow: hidden; position: absolute; white-space: nowrap; width: 1px; }
+        .views { background: #fff; border-bottom: 1px solid var(--border); display: flex; gap: 4px; overflow-x: auto; padding: 0 28px; }
+        .views button { align-items: center; background: none; border: 0; border-bottom: 2px solid transparent; color: var(--muted); cursor: pointer; display: inline-flex; font-size: 13.5px; font-weight: 600; gap: 8px; min-height: 46px; padding: 0 14px; white-space: nowrap; }
+        .views button:hover { color: var(--text); }
+        .views button[aria-current="page"] { border-bottom-color: var(--primary); color: var(--text); }
+        .view[hidden] { display: none; }
+        .toolbar-filters { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+        .toolbar-filters input[type="search"] { max-width: 360px; width: 100%; }
+        .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+        .chips button { background: #fff; border: 1px solid var(--border-strong); border-radius: 999px; color: var(--body); cursor: pointer; font-size: 12.5px; font-weight: 500; min-height: 30px; padding: 0 12px; }
+        .chips button[aria-pressed="true"] { background: #eff6ff; border-color: #93c5fd; color: var(--primary); font-weight: 600; }
+        .chips .count { color: var(--muted); font-weight: 500; margin-left: 4px; }
+        th.num, td.num { font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+        .owes { color: #b91c1c; font-weight: 600; }
+        .link { background: none; border: 0; color: var(--primary); cursor: pointer; font-size: 13px; font-weight: 600; padding: 4px 0; }
+        .link:hover { text-decoration: underline; }
+        .row-link { background: none; border: 0; color: var(--text); cursor: pointer; font: inherit; font-weight: 600; padding: 0; text-align: left; }
+        .row-link:hover { color: var(--primary); text-decoration: underline; }
+        .vencida { background: #fee2e2; color: #991b1b; }
+        .pendiente { background: #fef3c7; color: #92400e; }
+        .pagada { background: #dcfce7; color: #166534; }
+        .anulada { background: #f1f5f9; color: #475569; }
+        .stat.is-danger .value { color: #b91c1c; }
+        .stat.is-good .value { color: #166534; }
+        .two-col { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+        .card-head { align-items: center; display: flex; justify-content: space-between; margin-bottom: 10px; }
+        .card-head h3 { margin: 0; }
+        .mini-list { list-style: none; margin: 0; padding: 0; }
+        .mini-list li { align-items: center; border-top: 1px solid #eef1f5; display: flex; gap: 12px; justify-content: space-between; padding: 10px 0; }
+        .mini-list li:first-child { border-top: 0; }
+        .mini-list small { color: var(--muted); display: block; }
+        .drawer-backdrop { background: rgba(15, 23, 42, .45); inset: 0; position: fixed; z-index: 10; }
+        .drawer-backdrop[hidden] { display: none; }
+        .drawer { background: #fff; box-shadow: -24px 0 48px -12px rgba(15, 23, 42, .3); display: flex; flex-direction: column; height: 100%; margin-left: auto; max-width: 860px; width: 100%; }
+        .drawer-head { align-items: flex-start; border-bottom: 1px solid var(--border); display: flex; gap: 12px; justify-content: space-between; padding: 20px 24px 12px; }
+        .drawer-head h2 { color: var(--text); font-size: 18px; margin: 0; }
+        .drawer-sub { color: var(--muted); font-size: 13px; margin: 4px 0 0; }
+        .drawer-head-actions { display: flex; flex-shrink: 0; gap: 8px; }
+        .icon { align-items: center; background: #fff; border: 1px solid var(--border-strong); border-radius: 8px; color: var(--text); cursor: pointer; display: inline-flex; height: 36px; justify-content: center; width: 36px; }
+        .icon:hover { background: #f1f5f9; }
+        .drawer-tabs { margin: 0; padding: 0 24px; }
+        .drawer-body { flex: 1; overflow-y: auto; padding: 20px 24px 32px; }
+        .drawer-body h3 { color: var(--text); font-size: 14px; margin: 22px 0 10px; }
+        .drawer-body h3:first-child { margin-top: 0; }
+        .drawer-body table { min-width: 0; }
+        .drawer-body .table-wrap { border: 1px solid var(--border); border-radius: 10px; }
+        .facts { display: grid; gap: 10px 16px; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); margin: 0 0 6px; }
+        .facts dt { color: var(--muted); font-size: 12px; }
+        .facts dd { color: var(--text); font-weight: 600; margin: 2px 0 0; }
+        .section-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+        .form-group textarea { border: 1px solid var(--border-strong); border-radius: 8px; color: var(--text); font: inherit; font-size: 13.5px; min-height: 80px; padding: 8px 12px; resize: vertical; width: 100%; }
+        .form-group textarea:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(29, 78, 216, .16); outline: none; }
+        .notes { list-style: none; margin: 16px 0 0; padding: 0; }
+        .notes li { border-left: 3px solid #bfdbfe; margin-bottom: 14px; padding: 2px 0 2px 12px; }
+        .notes p { color: var(--text); margin: 0 0 4px; white-space: pre-wrap; }
+        .notes small { color: var(--muted); }
+        .notes .link { font-size: 12px; margin-left: 8px; }
+        .label { color: var(--body); display: block; font-size: 12.5px; font-weight: 500; margin-bottom: 6px; }
+        .module-levels { display: grid; gap: 6px; }
+        .module-levels .level-row { align-items: center; border: 1px solid var(--border); border-radius: 8px; display: grid; gap: 10px; grid-template-columns: 1fr 150px; padding: 6px 6px 6px 12px; }
+        .module-levels .level-row span { color: var(--text); font-size: 13.5px; }
+        .module-levels select { min-height: 32px; padding: 4px 8px; }
+        .credentials { display: grid; gap: 8px 16px; grid-template-columns: auto 1fr; margin: 0 0 12px; }
+        .credentials dt { color: var(--muted); }
+        .credentials dd { font-size: 15px; margin: 0; user-select: all; }
+        .modal-content.wide-form { max-width: 680px; }
+        .invoice-items { display: grid; gap: 8px; margin-bottom: 6px; }
+        .invoice-item { display: grid; gap: 8px; grid-template-columns: 1fr 80px 120px 36px; }
+        .invoice-item input { min-width: 0; width: 100%; }
+        .invoice-total { color: var(--text); font-size: 15px; margin: 4px 0 12px; text-align: right; }
+        .radio-group { border: 0; display: grid; gap: 8px; margin: 0 0 6px; padding: 0; }
+        .radio-group legend { color: var(--body); font-size: 12.5px; font-weight: 500; margin-bottom: 6px; padding: 0; }
+        .radio-group label { align-items: flex-start; border: 1px solid var(--border); border-radius: 8px; cursor: pointer; display: flex; gap: 10px; margin: 0; padding: 10px 12px; }
+        .radio-group label:has(input:checked) { background: #eff6ff; border-color: #bfdbfe; }
+        .radio-group input { accent-color: var(--primary); margin-top: 3px; min-height: 0; }
+        .radio-group small { color: var(--muted); font-weight: 400; }
+        .user-tag { background: #f1f5f9; border-radius: 999px; color: var(--body); font-size: 11px; font-weight: 600; margin-left: 6px; padding: 2px 8px; }
+        .inactive-row td { color: var(--muted); }
+        :focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+        @media (max-width: 700px) {
+            header { padding: 12px 16px; } main { padding: 16px; } .views { padding: 0 8px; }
+            .toolbar { align-items: stretch; flex-direction: column; }
+            .drawer-head { flex-direction: column; padding: 16px; } .drawer-tabs { overflow-x: auto; padding: 0 8px; } .drawer-body { padding: 16px; }
+            .invoice-item { grid-template-columns: 72px 1fr 36px; }
+            .invoice-item [data-field="descripcion"] { grid-column: 1 / -1; }
+        }
     </style>
 </head>
 <body>
@@ -117,9 +202,78 @@
         <h1><img src="img/botengine-mark-light.svg" alt=""><span class="brand">BotEngine <span class="brand-sub">ERP</span></span><span class="tag">Soporte</span></h1>
         <button id="logoutButton" type="button">Cerrar sesión</button>
     </header>
+    <nav class="views" aria-label="Secciones del panel">
+        <button type="button" data-view="inicio" aria-current="page"><i class="fas fa-gauge" aria-hidden="true"></i> Inicio</button>
+        <button type="button" data-view="empresas"><i class="fas fa-building" aria-hidden="true"></i> Empresas</button>
+        <button type="button" data-view="facturas"><i class="fas fa-file-invoice-dollar" aria-hidden="true"></i> Facturas</button>
+        <button type="button" data-view="sitio"><i class="fas fa-chart-line" aria-hidden="true"></i> Sitio web</button>
+    </nav>
     <main>
-        <div id="message" class="message"></div>
-        <section class="analytics" aria-labelledby="analyticsTitle">
+        <div id="message" class="message" role="status"></div>
+
+        <section id="view-inicio" class="view">
+            <div class="stat-grid" id="kpis"><div class="card empty-note">Cargando resumen...</div></div>
+            <div class="two-col">
+                <section class="card list-card">
+                    <div class="card-head"><h3>Cobros vencidos</h3><button class="link" type="button" data-goto="facturas" data-estado="vencida">Ver todos</button></div>
+                    <div id="overdueList" class="empty-note">Cargando...</div>
+                </section>
+                <section class="card list-card">
+                    <div class="card-head"><h3>Licencias por vencer (15 días)</h3><button class="link" type="button" data-goto="empresas" data-filtro="vence">Ver todas</button></div>
+                    <div id="expiringList" class="empty-note">Cargando...</div>
+                </section>
+            </div>
+        </section>
+
+        <section id="view-empresas" class="view" hidden>
+            <section class="toolbar">
+                <div class="toolbar-filters">
+                    <label class="sr-only" for="companySearch">Buscar empresa</label>
+                    <input id="companySearch" type="search" placeholder="Buscar por nombre, correo o NIT" autocomplete="off">
+                    <div class="chips" id="companyFilters" role="group" aria-label="Filtrar empresas">
+                        <button type="button" data-filtro="todas" aria-pressed="true">Todas</button>
+                        <button type="button" data-filtro="active" aria-pressed="false">Activas</button>
+                        <button type="button" data-filtro="trial" aria-pressed="false">En prueba</button>
+                        <button type="button" data-filtro="vence" aria-pressed="false">Por vencer</button>
+                        <button type="button" data-filtro="saldo" aria-pressed="false">Con saldo</button>
+                        <button type="button" data-filtro="suspended" aria-pressed="false">Suspendidas</button>
+                        <button type="button" data-filtro="cancelled" aria-pressed="false">Canceladas</button>
+                    </div>
+                </div>
+                <button id="refreshButton" class="secondary" type="button"><i class="fas fa-rotate" aria-hidden="true"></i> Actualizar</button>
+                <button id="addCompanyButton" class="primary" type="button"><i class="fas fa-plus" aria-hidden="true"></i> Agregar empresa</button>
+            </section>
+            <section class="card table-wrap">
+                <table>
+                    <thead><tr><th>Empresa</th><th>Estado</th><th>Licencia</th><th>Usuarios</th><th class="num">Cuota</th><th class="num">Saldo</th><th>Vencimiento</th><th>Acciones</th></tr></thead>
+                    <tbody id="organizationsBody"><tr><td colspan="8">Cargando empresas...</td></tr></tbody>
+                </table>
+            </section>
+        </section>
+
+        <section id="view-facturas" class="view" hidden>
+            <section class="toolbar">
+                <div class="toolbar-filters">
+                    <div class="chips" id="invoiceFilters" role="group" aria-label="Filtrar facturas">
+                        <button type="button" data-estado="pendiente" aria-pressed="true">Pendientes</button>
+                        <button type="button" data-estado="vencida" aria-pressed="false">Vencidas</button>
+                        <button type="button" data-estado="pagada" aria-pressed="false">Pagadas</button>
+                        <button type="button" data-estado="anulada" aria-pressed="false">Anuladas</button>
+                        <button type="button" data-estado="" aria-pressed="false">Todas</button>
+                    </div>
+                </div>
+                <button id="monthlyButton" class="secondary" type="button"><i class="fas fa-calendar-plus" aria-hidden="true"></i> Generar mensualidades</button>
+                <button id="newInvoiceButton" class="primary" type="button"><i class="fas fa-plus" aria-hidden="true"></i> Nueva factura</button>
+            </section>
+            <section class="card table-wrap">
+                <table>
+                    <thead><tr><th>Número</th><th>Empresa</th><th>Concepto</th><th class="num">Total</th><th>Emitida</th><th>Vence</th><th>Estado</th><th>Acciones</th></tr></thead>
+                    <tbody id="invoicesBody"><tr><td colspan="8">Cargando facturas...</td></tr></tbody>
+                </table>
+            </section>
+        </section>
+
+        <section id="view-sitio" class="view analytics" aria-labelledby="analyticsTitle" hidden>
             <div class="analytics-head">
                 <div>
                     <h2 id="analyticsTitle">Visitas del sitio web</h2>
@@ -133,27 +287,159 @@
             </div>
             <div id="analyticsBody"><div class="card empty-note">Cargando visitas...</div></div>
         </section>
-        <h2 class="section-title">Empresas</h2>
-        <section class="toolbar">
-            <div>
-                <label for="expiringDays">Mostrar próximas a vencer en</label>
-                <select id="expiringDays">
-                    <option value="30">30 días</option>
-                    <option value="60">60 días</option>
-                    <option value="90">90 días</option>
-                    <option value="365">1 año</option>
-                </select>
-            </div>
-            <button id="refreshButton" class="secondary" type="button"><i class="fas fa-rotate"></i> Actualizar</button>
-            <button id="addCompanyButton" class="primary" type="button"><i class="fas fa-plus"></i> Agregar empresa</button>
-        </section>
-        <section class="card table-wrap">
-            <table>
-                <thead><tr><th>Empresa</th><th>Contacto</th><th>Estado</th><th>Licencia</th><th>Usuarios</th><th>Módulos</th><th>Vencimiento</th><th>Acciones</th></tr></thead>
-                <tbody id="organizationsBody"><tr><td colspan="8">Cargando empresas...</td></tr></tbody>
-            </table>
-        </section>
     </main>
+
+    <!-- Ficha de la empresa -->
+    <div id="drawer" class="drawer-backdrop" hidden>
+        <aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="drawerTitle">
+            <div class="drawer-head">
+                <div>
+                    <h2 id="drawerTitle">Empresa</h2>
+                    <p id="drawerSub" class="drawer-sub"></p>
+                </div>
+                <div class="drawer-head-actions">
+                    <button class="primary" type="button" id="drawerEnter"><i class="fas fa-eye" aria-hidden="true"></i> Entrar como cliente</button>
+                    <button class="icon" type="button" id="drawerClose" aria-label="Cerrar ficha" title="Cerrar (Esc)"><i class="fas fa-xmark" aria-hidden="true"></i></button>
+                </div>
+            </div>
+            <div class="preview-tabs drawer-tabs" role="tablist" id="drawerTabs">
+                <button type="button" role="tab" data-tab="general" aria-selected="true">General</button>
+                <button type="button" role="tab" data-tab="usuarios" aria-selected="false">Usuarios</button>
+                <button type="button" role="tab" data-tab="facturas" aria-selected="false">Facturas</button>
+                <button type="button" role="tab" data-tab="notas" aria-selected="false">Notas</button>
+                <button type="button" role="tab" data-tab="actividad" aria-selected="false">Actividad</button>
+            </div>
+            <div class="drawer-body" id="drawerBody"><p class="empty-note">Cargando...</p></div>
+        </aside>
+    </div>
+
+    <!-- Licencia -->
+    <div id="licenseModal" class="modal hidden">
+        <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="licenseTitle">
+            <h2 id="licenseTitle">Licencia</h2>
+            <form id="licenseForm">
+                <div class="form-row">
+                    <div class="form-group"><label for="licensePlan">Plan</label><input id="licensePlan" maxlength="50" required></div>
+                    <div class="form-group"><label for="licenseDays">Vigencia (días desde hoy)</label><input id="licenseDays" type="number" min="1" max="3650" required></div>
+                </div>
+                <div class="form-group"><label for="licenseUsers">Usuarios permitidos</label><input id="licenseUsers" type="number" min="1" max="1000" required></div>
+                <label class="check-row"><input type="checkbox" id="licenseNewKey"> Generar una clave de licencia nueva</label>
+                <p class="modal-hint">Al guardar, la empresa queda <strong>activa</strong> hasta la fecha que resulte de la vigencia.</p>
+                <div class="modal-actions"><button class="secondary" type="button" data-close>Cancelar</button><button class="primary" type="submit">Activar licencia</button></div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Usuario de la empresa -->
+    <div id="userModal" class="modal hidden">
+        <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="userTitle">
+            <h2 id="userTitle">Nuevo usuario</h2>
+            <form id="userForm">
+                <div class="form-row">
+                    <div class="form-group"><label for="userName">Nombre</label><input id="userName" required maxlength="100" autocomplete="off"></div>
+                    <div class="form-group"><label for="userLastName">Apellido</label><input id="userLastName" maxlength="100" autocomplete="off"></div>
+                </div>
+                <div class="form-group"><label for="userEmail">Correo (usuario para entrar)</label><input id="userEmail" type="email" required maxlength="150" autocomplete="off"></div>
+                <div class="form-group">
+                    <label for="userRole">Rol</label>
+                    <select id="userRole"><option value="usuario">Usuario: solo los módulos que marques</option><option value="admin">Administrador: todo lo habilitado para la empresa</option></select>
+                </div>
+                <div class="form-group" id="userModulesGroup">
+                    <span class="label">Módulos</span>
+                    <div id="userModules" class="module-levels"></div>
+                </div>
+                <label class="check-row" id="userSendRow"><input type="checkbox" id="userSend" checked> Enviar usuario y contraseña temporal por correo</label>
+                <div class="modal-actions"><button class="secondary" type="button" data-close>Cancelar</button><button class="primary" type="submit" id="userSubmit">Crear usuario</button></div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Credenciales recién generadas -->
+    <div id="credentialsModal" class="modal hidden">
+        <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="credentialsTitle">
+            <h2 id="credentialsTitle">Datos de acceso</h2>
+            <p class="modal-hint" id="credentialsHint"></p>
+            <dl class="credentials">
+                <dt>Usuario</dt><dd id="credentialsEmail" class="key"></dd>
+                <dt>Contraseña temporal</dt><dd id="credentialsPassword" class="key"></dd>
+            </dl>
+            <p class="modal-hint">Esta contraseña no se vuelve a mostrar. Al entrar, el usuario debe crear la suya.</p>
+            <div class="modal-actions"><button class="secondary" type="button" id="credentialsCopy"><i class="fas fa-copy" aria-hidden="true"></i> Copiar</button><button class="primary" type="button" data-close>Listo</button></div>
+        </div>
+    </div>
+
+    <!-- Factura -->
+    <div id="invoiceModal" class="modal hidden">
+        <div class="modal-content wide-form" role="dialog" aria-modal="true" aria-labelledby="invoiceTitle">
+            <h2 id="invoiceTitle">Nueva factura</h2>
+            <form id="invoiceForm">
+                <div class="form-group"><label for="invoiceCompany">Empresa</label><select id="invoiceCompany" required></select></div>
+                <div class="form-group">
+                    <span class="label">Conceptos (precios con IVA)</span>
+                    <div id="invoiceItems" class="invoice-items"></div>
+                    <button class="link" type="button" id="invoiceAddItem"><i class="fas fa-plus" aria-hidden="true"></i> Agregar concepto</button>
+                </div>
+                <div class="form-row">
+                    <div class="form-group"><label for="invoiceDue">Fecha límite de pago</label><input id="invoiceDue" type="date" required></div>
+                    <div class="form-group"><label for="invoicePeriod">Mensualidad de (opcional)</label><input id="invoicePeriod" type="month"><small class="field-hint">Evita cobrar dos veces el mismo mes.</small></div>
+                </div>
+                <p class="invoice-total">Total: <strong id="invoiceTotal">Q0.00</strong></p>
+                <label class="check-row"><input type="checkbox" id="invoiceSend" checked> Enviar por correo al guardar</label>
+                <div class="form-group" id="invoiceToGroup"><label for="invoiceTo">Enviar a</label><input id="invoiceTo" type="email" maxlength="150"><small class="field-hint">Por defecto, el correo de la empresa.</small></div>
+                <div class="modal-actions"><button class="secondary" type="button" data-close>Cancelar</button><button class="primary" type="submit" id="invoiceSubmit">Crear factura</button></div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Mensualidades del mes -->
+    <div id="monthlyModal" class="modal hidden">
+        <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="monthlyTitle">
+            <h2 id="monthlyTitle">Generar mensualidades</h2>
+            <p class="modal-hint" id="monthlyHint">Crea una factura por la cuota mensual de cada empresa activa que aún no tenga la de ese mes.</p>
+            <form id="monthlyForm">
+                <div class="form-row">
+                    <div class="form-group"><label for="monthlyPeriod">Mes</label><input id="monthlyPeriod" type="month" required></div>
+                    <div class="form-group"><label for="monthlyDays">Días para pagar</label><input id="monthlyDays" type="number" min="0" max="90" value="10" required></div>
+                </div>
+                <label class="check-row"><input type="checkbox" id="monthlySend" checked> Enviarlas por correo</label>
+                <div class="modal-actions"><button class="secondary" type="button" data-close>Cancelar</button><button class="primary" type="submit" id="monthlySubmit">Generar facturas</button></div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Pago -->
+    <div id="paymentModal" class="modal hidden">
+        <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="paymentTitle">
+            <h2 id="paymentTitle">Registrar pago</h2>
+            <form id="paymentForm">
+                <div class="form-row">
+                    <div class="form-group"><label for="paymentMethod">Forma de pago</label>
+                        <select id="paymentMethod"><option value="transferencia">Transferencia</option><option value="deposito">Depósito</option><option value="efectivo">Efectivo</option><option value="tarjeta">Tarjeta</option><option value="cheque">Cheque</option><option value="otro">Otro</option></select>
+                    </div>
+                    <div class="form-group"><label for="paymentDate">Fecha del pago</label><input id="paymentDate" type="date" required></div>
+                </div>
+                <div class="form-group"><label for="paymentRef">Referencia o número de boleta (opcional)</label><input id="paymentRef" maxlength="100"></div>
+                <div class="modal-actions"><button class="secondary" type="button" data-close>Cancelar</button><button class="primary" type="submit">Registrar pago</button></div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Entrar como cliente -->
+    <div id="enterModal" class="modal hidden">
+        <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="enterTitle">
+            <h2 id="enterTitle">Entrar como cliente</h2>
+            <p class="modal-hint">Abres el ERP de la empresa tal como lo ve el usuario que elijas. La sesión dura 2 horas y queda registrada en la actividad de la empresa. Usa «Volver al panel de soporte» para regresar.</p>
+            <form id="enterForm">
+                <div class="form-group"><label for="enterUser">Ver como</label><select id="enterUser"></select></div>
+                <fieldset class="radio-group">
+                    <legend>Modo</legend>
+                    <label><input type="radio" name="enterMode" value="ver" checked> <span><strong>Solo lectura</strong><br><small>El servidor rechaza cualquier cambio.</small></span></label>
+                    <label><input type="radio" name="enterMode" value="editar"> <span><strong>Con cambios</strong><br><small>Para corregir datos o configurar a pedido del cliente.</small></span></label>
+                </fieldset>
+                <div class="modal-actions"><button class="secondary" type="button" data-close>Cancelar</button><button class="primary" type="submit" id="enterSubmit">Entrar</button></div>
+            </form>
+        </div>
+    </div>
 
     <div id="companyModal" class="modal hidden">
         <div class="modal-content">
@@ -225,6 +511,7 @@
     </div>
     <script src="js/auth-utils.js"></script>
     <script src="js/support.js"></script>
+    <script src="js/support-crm.js"></script>
     <script src="js/website-analytics.js"></script>
 </body>
 </html>

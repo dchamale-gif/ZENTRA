@@ -574,6 +574,34 @@ tr.is-inactive td { color: var(--text-gray); }
     overflow-wrap: anywhere;
 }
 
+/* Sesión abierta por soporte dentro de la empresa */
+.support-banner {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px 16px;
+    padding: 8px 24px;
+    background: #0b1b33;
+    color: #e2e8f0;
+    font-size: 13px;
+}
+.support-banner[hidden] { display: none; }
+.support-banner strong { color: #93c5fd; }
+.support-banner button {
+    min-height: 32px;
+    padding: 0 12px;
+    border: 1px solid rgba(255, 255, 255, .2);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, .08);
+    color: #fff;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+}
+.support-banner button:hover { background: rgba(255, 255, 255, .16); }
+@media (max-width: 700px) { .support-banner { padding: 8px 16px; } }
+
 /* Primeros pasos en el panel */
 .onboarding-card {
     margin-bottom: 20px;

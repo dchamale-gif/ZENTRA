@@ -43,21 +43,32 @@ const mapOrganization = (row) => ({
   subscriptionStartedAt: row.subscription_started_at,
   subscriptionEndsAt: row.subscription_ends_at,
   daysRemaining: Number(row.days_remaining || 0),
+  telefono: row.telefono ?? null,
+  cuotaMensual: row.cuota_mensual === undefined || row.cuota_mensual === null ? null : Number(row.cuota_mensual),
+  saldoPendiente: Number(row.saldo?.pendiente || 0),
+  saldoVencido: Number(row.saldo?.vencido || 0),
+  ultimoIngreso: row.ultimo_ingreso || null,
   createdAt: row.created_at
 });
 
+// Todas las empresas, con su cuota y lo que deben; el panel filtra por estado y vencimiento.
 const listOrganizations = async (req, res) => {
   try {
-    const expiringIn = Math.min(Math.max(Number(req.query.expiringIn) || 30, 1), 3650);
-    const result = await pool.query(
-      `SELECT id, nombre, sector_comercial, email, nit, subscription_status,
+    const result = await authPool.query(
+      `SELECT id, nombre, sector_comercial, email, nit, telefono, subscription_status,
               license_plan, license_key, license_issued_at, license_max_users, modulos_habilitados, fel_habilitada, trial_ends_at,
-              subscription_started_at, subscription_ends_at, created_at,
+              subscription_started_at, subscription_ends_at, created_at, cuota_mensual,
               ${ACTIVE_USERS_SQL},
               (SELECT json_build_object('email', u.email, 'verificado', u.email_verificado_en IS NOT NULL,
                                         'pendienteCambio', u.debe_cambiar_password)
                FROM users u WHERE u.organization_id = organizations.id
                ORDER BY u.created_at, u.id LIMIT 1) AS admin_estado,
+              (SELECT json_build_object(
+                        'pendiente', COALESCE(SUM(f.total), 0),
+                        'vencido', COALESCE(SUM(f.total) FILTER (WHERE f.fecha_vencimiento < (NOW() AT TIME ZONE 'America/Guatemala')::DATE), 0))
+               FROM facturas_plataforma f
+               WHERE f.organization_id = organizations.id AND f.estado = 'pendiente') AS saldo,
+              (SELECT MAX(u.ultimo_login) FROM users u WHERE u.organization_id = organizations.id) AS ultimo_ingreso,
               GREATEST(
                 0,
                 CEIL(EXTRACT(EPOCH FROM (
@@ -65,11 +76,7 @@ const listOrganizations = async (req, res) => {
                 )) / 86400)
               ) AS days_remaining
        FROM organizations
-       WHERE subscription_status IN ('trial', 'active')
-          OR COALESCE(subscription_ends_at, trial_ends_at)
-             <= NOW() + ($1 * INTERVAL '1 day')
-       ORDER BY COALESCE(subscription_ends_at, trial_ends_at) ASC, created_at DESC`,
-      [expiringIn]
+       ORDER BY COALESCE(subscription_ends_at, trial_ends_at) ASC NULLS LAST, created_at DESC`
     );
 
     res.json({

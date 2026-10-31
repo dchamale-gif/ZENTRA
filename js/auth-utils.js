@@ -74,6 +74,27 @@ class AuthManager {
     }
 
     /**
+     * Cerrar la sesión de soporte dentro de una empresa y recuperar la del panel de soporte.
+     */
+    async salirDeSoporte() {
+        try {
+            const response = await fetch(`${this.apiBaseUrl}/api/auth/salir-soporte`, {
+                method: 'POST',
+                credentials: 'same-origin'
+            });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || 'No se pudo volver al panel');
+            this.saveUser(data.user);
+            this.saveSessionExpiry(data.sessionExpiresAt);
+            return { success: true };
+        } catch (error) {
+            this.clearUser();
+            this.clearSessionExpiry();
+            return { success: false, error: friendlyError(error) };
+        }
+    }
+
+    /**
      * Registrar nuevo usuario
      */
     async register(userData) {

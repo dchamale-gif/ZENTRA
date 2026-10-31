@@ -29,6 +29,7 @@ document.addEventListener('DOMContentLoaded', function() {
         showForcedPasswordChange();
         return;
     }
+    initializeSupportBanner();
     initializeApp();
     initializeUserProfile();
     initializeTrialBanner();
@@ -110,6 +111,22 @@ function showForcedPasswordChange() {
         }
     });
     modal.querySelector('#forcedCurrent').focus();
+}
+
+// Soporte viendo la empresa como uno de sus usuarios: aviso fijo y regreso al panel.
+function initializeSupportBanner() {
+    const user = authManager.getUser();
+    const banner = document.getElementById('supportBanner');
+    if (!banner || !user?.soporte) return;
+    const modo = user.soporte.modo === 'editar' ? 'con permiso para hacer cambios' : 'solo lectura';
+    document.getElementById('supportBannerText').textContent =
+        `Viendo ${user.organization?.name || 'la empresa'} como ${user.email} (${modo}).`;
+    banner.hidden = false;
+    document.getElementById('supportBannerExit').addEventListener('click', async (event) => {
+        event.currentTarget.disabled = true;
+        const result = await authManager.salirDeSoporte();
+        window.location.href = result.success ? '/support.html' : '/login.html';
+    });
 }
 
 function initializeTrialBanner() {

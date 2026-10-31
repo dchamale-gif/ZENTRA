@@ -534,4 +534,10 @@ const generarDocumentos = async (datos) => {
   ];
 };
 
-module.exports = { generarDocumentos, enLetras, dineroEnLetras };
+module.exports = {
+  generarDocumentos,
+  enLetras,
+  dineroEnLetras,
+  // Maquetación compartida con las facturas de plataforma (pdfFactura.js).
+  maquetacion: { PROVEEDOR, COLOR, R, B, MARGEN, ANCHO, encabezado, seccion, parrafo, tabla, aviso, renderizar, dinero, fechaCorta }
+};

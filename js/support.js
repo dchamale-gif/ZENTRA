@@ -1,18 +1,27 @@
 const platformApi = '/api/platform';
-const state = { organizations: [], modules: [], editingId: null, previewUrls: [] };
+const state = { organizations: [], modules: [], editingId: null, previewUrls: [], companyFilter: 'todas', licenseId: null };
 const statusLabels = { trial: 'Prueba', active: 'Activa', suspended: 'Suspendida', cancelled: 'Cancelada' };
 
 document.addEventListener('DOMContentLoaded', () => {
     const user = authManager.getUser();
+    // Soporte dentro de una empresa: su sesión actual es la del cliente.
+    if (user?.soporte && authManager.isAuthenticated()) {
+        window.location.href = '/index.html';
+        return;
+    }
     if (!authManager.isAuthenticated() || authManager.isTokenExpired() || !user?.platformAdmin) {
         window.location.href = '/login.html';
         return;
     }
 
-    document.getElementById('refreshButton').addEventListener('click', loadOrganizations);
-    document.getElementById('expiringDays').addEventListener('change', loadOrganizations);
+    document.getElementById('refreshButton').addEventListener('click', refreshData);
+    document.getElementById('companySearch').addEventListener('input', renderOrganizations);
+    document.querySelectorAll('#companyFilters button').forEach(button => {
+        button.addEventListener('click', () => setCompanyFilter(button.dataset.filtro));
+    });
+    document.getElementById('licenseForm').addEventListener('submit', saveLicense);
     document.getElementById('addCompanyButton').addEventListener('click', () => {
-        document.getElementById('companyModal').classList.remove('hidden');
+        openModal('companyModal');
     });
     document.getElementById('companyContract').addEventListener('change', toggleContractFields);
     document.getElementById('previewBackButton').addEventListener('click', () => {
@@ -35,7 +44,6 @@ document.addEventListener('DOMContentLoaded', () => {
         await authManager.logout();
         window.location.href = '/login.html';
     });
-    loadOrganizations();
 });
 
 const showMessage = (message, type = 'success') => {
@@ -50,57 +58,86 @@ const apiRequest = async (url, options = {}) => {
         headers: { 'Content-Type': 'application/json', ...(options.headers || {}) }
     });
     if (!response) return null;
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || 'Error en el panel');
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || 'El servidor no respondió como se esperaba; intenta de nuevo');
     return data;
 };
+
+const money = (value) => `Q${Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 const formatDate = (value) => value ? new Date(value).toLocaleDateString('es-GT') : 'Sin fecha';
 
 async function loadOrganizations() {
     try {
         if (!state.modules.length) state.modules = (await apiRequest('/modules'))?.modules || [];
-        const days = document.getElementById('expiringDays').value;
-        const data = await apiRequest(`/organizations?expiringIn=${days}`);
+        const data = await apiRequest('/organizations');
         if (!data) return;
-        const body = document.getElementById('organizationsBody');
-        if (!data.organizations.length) {
-            body.innerHTML = '<tr><td colspan="8">No hay empresas registradas.</td></tr>';
-            return;
-        }
-        body.innerHTML = data.organizations.map((organization) => `
-            <tr>
-                <td><strong>${escapeHtml(organization.name)}</strong><br><small>${escapeHtml(organization.sector || 'Sin sector')}</small></td>
-                <td>${escapeHtml(organization.email || 'Sin correo')}<br><small>${escapeHtml(organization.nit || 'Sin NIT')}</small><br>${mailState(organization)}</td>
-                <td><span class="status ${organization.status}">${escapeHtml(statusLabels[organization.status] || organization.status)}</span><br><small>${organization.daysRemaining} días</small></td>
-                <td class="key">${escapeHtml(organization.licenseKey || 'Sin licencia')}</td>
-                <td class="${organization.activeUsers >= organization.maxUsers ? 'users-full' : ''}">${organization.activeUsers} / ${organization.maxUsers}<br><small>activos / permitidos</small></td>
-                <td>${modulesSummary(organization)}</td>
-                <td>${formatDate(organization.status === 'trial' ? organization.trialEndsAt : organization.subscriptionEndsAt)}</td>
-                <td class="actions">
-                    <button class="primary" type="button" data-action="activate" data-id="${organization.id}">Habilitar</button>
-                    <button class="secondary" type="button" data-action="generate" data-id="${organization.id}">Generar clave</button>
-                    <button class="secondary" type="button" data-action="users" data-id="${organization.id}" data-max-users="${organization.maxUsers}">Usuarios</button>
-                    <button class="secondary" type="button" data-action="modules" data-id="${organization.id}">Módulos</button>
-                    ${organization.admin && organization.admin.pendienteCambio && !dadaDeBaja(organization) ? `<button class="secondary" type="button" data-action="correo" data-id="${organization.id}">Reenviar correo</button>` : ''}
-                    ${organization.status === 'suspended' || organization.status === 'cancelled'
-                        ? (dadaDeBaja(organization) ? '' : `<button class="danger" type="button" data-action="baja" data-id="${organization.id}">Dar de baja</button>`)
-                        : `<button class="danger" type="button" data-action="suspend" data-id="${organization.id}">Suspender</button>`}
-                </td>
-            </tr>
-        `).join('');
         state.organizations = data.organizations;
-        body.querySelectorAll('button[data-action]').forEach(button => {
-            button.addEventListener('click', () => {
-                if (button.dataset.action === 'modules') return openModules(button.dataset.id);
-                if (button.dataset.action === 'correo') return resendEmail(button.dataset.id, button);
-                if (button.dataset.action === 'baja') return deactivateOrganization(button.dataset.id, button);
-                return updateLicense(button.dataset.id, button.dataset.action, button);
-            });
-        });
+        renderOrganizations();
     } catch (error) {
         showMessage(error.message, 'error');
     }
+}
+
+const expiresSoon = (organization) => ['trial', 'active'].includes(organization.status) && organization.daysRemaining <= 15;
+
+const companyFilters = {
+    todas: () => true,
+    active: (organization) => organization.status === 'active',
+    trial: (organization) => organization.status === 'trial',
+    vence: expiresSoon,
+    saldo: (organization) => organization.saldoPendiente > 0,
+    suspended: (organization) => organization.status === 'suspended',
+    cancelled: (organization) => organization.status === 'cancelled'
+};
+
+function setCompanyFilter(filter) {
+    state.companyFilter = companyFilters[filter] ? filter : 'todas';
+    document.querySelectorAll('#companyFilters button').forEach(button => {
+        button.setAttribute('aria-pressed', String(button.dataset.filtro === state.companyFilter));
+    });
+    renderOrganizations();
+}
+
+function renderOrganizations() {
+    const body = document.getElementById('organizationsBody');
+    const query = document.getElementById('companySearch').value.trim().toLowerCase();
+    document.querySelectorAll('#companyFilters button').forEach(button => {
+        const total = state.organizations.filter(companyFilters[button.dataset.filtro]).length;
+        button.innerHTML = `${escapeHtml(button.textContent.replace(/\s*\d+$/, ''))}<span class="count">${total}</span>`;
+    });
+    const rows = state.organizations
+        .filter(companyFilters[state.companyFilter])
+        .filter(organization => !query || [organization.name, organization.email, organization.nit, organization.admin?.email]
+            .some(value => String(value || '').toLowerCase().includes(query)));
+    if (!state.organizations.length) {
+        body.innerHTML = '<tr><td colspan="8">Aún no hay empresas. Usa «Agregar empresa» para crear la primera.</td></tr>';
+        return;
+    }
+    if (!rows.length) {
+        body.innerHTML = '<tr><td colspan="8">Ninguna empresa coincide con la búsqueda o el filtro.</td></tr>';
+        return;
+    }
+    body.innerHTML = rows.map((organization) => `
+        <tr>
+            <td><button class="row-link" type="button" data-action="ficha" data-id="${organization.id}">${escapeHtml(organization.name)}</button><br><small>${escapeHtml(organization.email || 'Sin correo')}</small><br>${mailState(organization)}</td>
+            <td><span class="status ${organization.status}">${escapeHtml(statusLabels[organization.status] || organization.status)}</span><br><small>${organization.daysRemaining} días</small></td>
+            <td><span class="key">${escapeHtml(organization.licenseKey || 'Sin licencia')}</span><br><small>${escapeHtml(organization.plan || '')} · ${modulesSummary(organization)}</small></td>
+            <td class="${organization.activeUsers >= organization.maxUsers ? 'users-full' : ''}">${organization.activeUsers} / ${organization.maxUsers}</td>
+            <td class="num">${organization.cuotaMensual ? money(organization.cuotaMensual) : '<small>Sin cuota</small>'}</td>
+            <td class="num ${organization.saldoVencido > 0 ? 'owes' : ''}">${organization.saldoPendiente ? money(organization.saldoPendiente) : '—'}${organization.saldoVencido > 0 ? '<br><small>vencido</small>' : ''}</td>
+            <td>${formatDate(organization.status === 'trial' ? organization.trialEndsAt : organization.subscriptionEndsAt)}</td>
+            <td class="actions">
+                <button class="secondary" type="button" data-action="ficha" data-id="${organization.id}">Ficha</button>
+                ${dadaDeBaja(organization) ? '' : `<button class="secondary" type="button" data-action="entrar" data-id="${organization.id}" title="Ver el ERP como lo ve el cliente"><i class="fas fa-eye" aria-hidden="true"></i> Entrar</button>`}
+            </td>
+        </tr>
+    `).join('');
+    body.querySelectorAll('button[data-action]').forEach(button => {
+        button.addEventListener('click', () => button.dataset.action === 'entrar'
+            ? openEnter(button.dataset.id)
+            : openDrawer(button.dataset.id));
+    });
 }
 
 // Al dar de baja, los correos de los usuarios se renombran a baja-<id>-correo.
@@ -126,7 +163,7 @@ async function resendEmail(id, button) {
     try {
         const data = await apiRequest(`/organizations/${id}/correo`, { method: 'POST', body: '{}' });
         showMessage(data.message);
-        await loadOrganizations();
+        await refreshData();
     } catch (error) {
         showMessage(error.message, 'error');
         button.disabled = false;
@@ -147,92 +184,64 @@ async function deactivateOrganization(id, button) {
     try {
         const data = await apiRequest(`/organizations/${id}/baja`, { method: 'POST', body: JSON.stringify({ confirmacion: answer }) });
         showMessage(data.message);
-        await loadOrganizations();
+        await refreshData();
     } catch (error) {
         showMessage(error.message, 'error');
         button.disabled = false;
     }
 }
 
-const askMaxUsers = (current = 3) => {
-    const answer = window.prompt('Usuarios permitidos por la licencia:', String(current));
-    if (answer === null) return null;
-    const maxUsers = Number(answer);
-    if (!Number.isInteger(maxUsers) || maxUsers < 1 || maxUsers > 1000) {
-        showMessage('Los usuarios permitidos deben ser un número entre 1 y 1000.', 'error');
-        return null;
-    }
-    return maxUsers;
-};
+// Activa la licencia (plan, vigencia y usuarios), con o sin clave nueva.
+function openLicense(id, { newKey = false } = {}) {
+    const organization = state.organizations.find(entry => String(entry.id) === String(id));
+    if (!organization) return;
+    state.licenseId = id;
+    document.getElementById('licenseTitle').textContent = `Licencia de ${organization.name}`;
+    document.getElementById('licensePlan').value = organization.plan && !['Demo', 'Trial', 'Suspendida'].includes(organization.plan) ? organization.plan : 'Pro';
+    document.getElementById('licenseDays').value = 365;
+    document.getElementById('licenseUsers').value = organization.maxUsers || 3;
+    document.getElementById('licenseNewKey').checked = newKey || !organization.licenseKey;
+    openModal('licenseModal');
+}
 
-async function updateLicense(id, action, button) {
-    const currentMaxUsers = Number(button?.dataset.maxUsers) || 3;
-    if (action === 'users') {
-        const maxUsers = askMaxUsers(currentMaxUsers);
-        if (!maxUsers) return;
-        try {
-            const data = await apiRequest(`/organizations/${id}/users-limit`, {
-                method: 'POST',
-                body: JSON.stringify({ maxUsers })
-            });
-            showMessage(data.message);
-            await loadOrganizations();
-        } catch (error) {
-            showMessage(error.message, 'error');
-        }
-        return;
+async function saveLicense(event) {
+    event.preventDefault();
+    try {
+        const data = await apiRequest(`/organizations/${state.licenseId}/license`, {
+            method: 'POST',
+            body: JSON.stringify({
+                status: 'active',
+                plan: document.getElementById('licensePlan').value.trim(),
+                durationDays: Number(document.getElementById('licenseDays').value),
+                maxUsers: Number(document.getElementById('licenseUsers').value),
+                generateNewKey: document.getElementById('licenseNewKey').checked
+            })
+        });
+        closeModal('licenseModal');
+        showMessage(data.message);
+        await refreshData();
+    } catch (error) {
+        alert(error.message);
     }
+}
 
-    if (action === 'generate') {
-        const confirmGen = window.confirm('¿Deseas generar una nueva clave de licencia XXXX-XXXX-XXXX para esta empresa?');
-        if (!confirmGen) return;
-        const plan = window.prompt('Plan de la licencia:', 'Pro') || 'Pro';
-        const duration = Number(window.prompt('Duración en días:', '365') || 365);
-        const maxUsers = askMaxUsers(currentMaxUsers);
-        if (!maxUsers) return;
-        try {
-            const data = await apiRequest(`/organizations/${id}/license`, {
-                method: 'POST',
-                body: JSON.stringify({
-                    status: 'active',
-                    plan,
-                    durationDays: duration,
-                    generateNewKey: true,
-                    maxUsers
-                })
-            });
-            showMessage(data.message);
-            await loadOrganizations();
-        } catch (error) {
-            showMessage(error.message, 'error');
-        }
-        return;
-    }
-
-    const plan = action === 'activate' ? (window.prompt('Plan de la licencia:', 'Pro') || 'Pro') : 'Suspendida';
-    if (action === 'activate' && !plan.trim()) return;
-    const duration = action === 'activate'
-        ? Number(window.prompt('Duración en días:', '365') || 365)
-        : 1;
-    const maxUsers = action === 'activate' ? askMaxUsers(currentMaxUsers) : undefined;
-    if (action === 'activate' && !maxUsers) return;
+async function suspendOrganization(id, button) {
+    const organization = state.organizations.find(entry => String(entry.id) === String(id));
+    if (!organization || !confirm(`¿Suspender ${organization.name}? Sus usuarios dejarán de poder entrar hasta que actives la licencia otra vez. Los datos se conservan.`)) return;
+    button.disabled = true;
     try {
         const data = await apiRequest(`/organizations/${id}/license`, {
             method: 'POST',
-            body: JSON.stringify({
-                status: action === 'activate' ? 'active' : 'suspended',
-                plan,
-                durationDays: duration,
-                generateNewKey: false,
-                maxUsers
-            })
+            body: JSON.stringify({ status: 'suspended', plan: 'Suspendida', durationDays: 1, generateNewKey: false })
         });
         showMessage(data.message);
-        await loadOrganizations();
+        await refreshData();
     } catch (error) {
         showMessage(error.message, 'error');
+        button.disabled = false;
     }
 }
+
 // Primer día del mes siguiente, en formato del campo de fecha.
 const firstOfNextMonth = () => {
     const today = new Date();
@@ -374,7 +383,7 @@ async function createCompany() {
         toggleContractFields();
         const fallo = data.correo?.enviado === false || data.documentos?.enviado === false;
         showMessage(`${data.message} Licencia: ${data.organization.licenseKey}`, fallo ? 'error' : 'success');
-        await loadOrganizations();
+        await refreshData();
     } catch (error) {
         showMessage(error.message, 'error');
         sendButton.disabled = false;
@@ -385,8 +394,8 @@ async function createCompany() {
 
 const modulesSummary = (organization) => {
     const total = state.modules.length || 10;
-    const modules = organization.modules ? `${organization.modules.length} de ${total}` : 'Todos';
-    return organization.fel ? `${modules}<br><small>+ FEL</small>` : modules;
+    const modules = organization.modules ? `${organization.modules.length} de ${total}` : 'todos los';
+    return organization.fel ? `${modules} módulos + FEL` : `${modules} módulos`;
 };
 
 async function openModules(id) {
@@ -424,7 +433,7 @@ async function saveModules(event) {
         });
         closeModules();
         showMessage(data.message);
-        await loadOrganizations();
+        await refreshData();
     } catch (error) {
         showMessage(error.message, 'error');
     }
