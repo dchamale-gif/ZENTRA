@@ -5,12 +5,12 @@
 // ============================================
 
 const IntegracionModule = {
-    CAMPOS: ['codigo', 'nombre', 'precio', 'costo', 'existencia', 'categoria', 'familia', 'descripcion', 'codigo_barras', 'unidad', 'foto'],
+    CAMPOS: ['codigo', 'nombre', 'precio', 'costo', 'existencia', 'categoria', 'familia', 'descripcion', 'codigo_barras', 'unidad', 'activo', 'foto'],
     state: { data: null, initialized: false, busy: false, autoSyncing: null, prueba: null },
     ETIQUETAS: {
         codigo: 'Código o SKU', nombre: 'Nombre', precio: 'Precio de venta', costo: 'Precio de compra (costo)',
         existencia: 'Existencia', categoria: 'Sección o categoría', familia: 'Familia', descripcion: 'Descripción',
-        codigo_barras: 'Código de barras', unidad: 'Unidad de medida', foto: 'Foto (base64)'
+        codigo_barras: 'Código de barras', unidad: 'Unidad de medida', activo: 'Activo (sí/no)', foto: 'Foto'
     },
     // Nombres de columna habituales para proponer el mapeo; el primero que coincida gana.
     SUGERENCIAS: {
@@ -20,7 +20,8 @@ const IntegracionModule = {
         precio: [/^(precio|price|precio_venta|sale_price|regular_price|pvp|precio_publico)$/i, /^(?!.*(cost|compra)).*(precio|price)/i],
         codigo_barras: [/^(codigo_barras|barcode|ean|upc|gtin|cod_barras)$/i, /barra|barcode|ean|gtin/i],
         unidad: [/^(unidad|unit|uom|unidad_medida|medida)$/i],
-        categoria: [/categor|seccion|section/i],
+        activo: [/^(is_active|activo|active|enabled|habilitado|visible|publicado|published)$/i],
+        categoria: [/^(categoria|category|seccion|section|category_name)$/i, /categor|seccion|section/i],
         familia: [/familia|family|subcateg/i],
         descripcion: [/descrip|detalle|detail/i],
         existencia: [/^(stock|existencia|existencias|inventario|cantidad|qty|quantity|stock_quantity)$/i, /stock|existencia/i],
@@ -97,6 +98,8 @@ const IntegracionModule = {
         this.explicarInventario();
         this.field('intPrecios').value = config.preciosDesde || 'erp';
         this.field('intUrlFotos').value = config.urlFotos || '';
+        this.state.categoriaTabla = config.categoriaTabla || null;
+        this.mostrarCategoriaRel();
         this.field('intAuto').value = String(config.autoMinutos ?? 5);
         this.field('intActiva').checked = info.configurada ? info.activa : true;
 
@@ -192,6 +195,7 @@ const IntegracionModule = {
             inventarioDesdeWeb: this.field('intInventario').value,
             preciosDesde: this.field('intPrecios').value,
             urlFotos: this.field('intUrlFotos').value.trim(),
+            categoriaTabla: this.field('intCol-categoria').value.trim() ? this.state.categoriaTabla : null,
             autoMinutos: Number(this.field('intAuto').value),
             activa: this.field('intActiva').checked
         };
@@ -247,13 +251,15 @@ const IntegracionModule = {
                 let data = await this.request('/api/integraciones/web/probar', { method: 'POST', body: JSON.stringify(config) });
                 this.fillOptions('intTablas', data.tablas);
                 this.fillOptions('intColumnas', data.columnas);
-                // Tabla nueva: se proponen las columnas por su nombre, sin tocar lo ya escrito, y
-                // si con eso ya hay código y nombre se vuelve a leer para mostrar los productos.
-                if (config.tabla && data.columnas.length && this.sugerirColumnas(data.columnas) && !data.muestra.length) {
-                    const conSugerencias = this.readForm();
-                    if (conSugerencias.columnas.codigo && conSugerencias.columnas.nombre) {
-                        data = await this.request('/api/integraciones/web/probar', { method: 'POST', body: JSON.stringify(conSugerencias) });
-                    }
+                // Tabla nueva: se proponen las columnas por su nombre (sin tocar lo ya escrito) y la
+                // tabla de categorías; si con eso cambia lo que se leería, se vuelve a pedir la muestra.
+                const propuso = config.tabla && data.columnas.length && this.sugerirColumnas(data.columnas);
+                const relacionAntes = JSON.stringify(config.categoriaTabla || null);
+                this.detectarCategoriaRel(data.esquema);
+                const actual = this.readForm();
+                if (config.tabla && (propuso || JSON.stringify(actual.categoriaTabla || null) !== relacionAntes) &&
+                    actual.columnas.codigo && actual.columnas.nombre) {
+                    data = await this.request('/api/integraciones/web/probar', { method: 'POST', body: JSON.stringify(actual) });
                 }
                 this.state.prueba = { ...data, tabla: config.tabla };
                 box.classList.add('is-ok');
@@ -270,9 +276,41 @@ const IntegracionModule = {
     elegirTabla(nombre) {
         if (this.field('intTabla').value.trim() !== nombre) {
             this.CAMPOS.forEach((campo) => { this.field(`intCol-${campo}`).value = ''; });
+            this.state.categoriaTabla = null;
         }
         this.field('intTabla').value = nombre;
         this.probar();
+    },
+
+    // Sección guardada como número (category_id): se busca la tabla de categorías con su nombre
+    // y, si tiene, su categoría padre (padre → sección, categoría → familia).
+    detectarCategoriaRel(esquema) {
+        const columna = this.field('intCol-categoria').value.trim();
+        if (!columna || !/_?id$/i.test(columna) || this.state.categoriaTabla === false) return this.mostrarCategoriaRel();
+        if (this.state.categoriaTabla && esquema.some((t) => t.nombre === this.state.categoriaTabla.tabla)) return this.mostrarCategoriaRel();
+        const buscar = (columnas, nombres) => columnas.find((c) => nombres.includes(c.nombre.toLowerCase()))?.nombre || null;
+        const tabla = esquema.find((t) => /categor/i.test(t.nombre) && !/image|imagen/i.test(t.nombre) &&
+            buscar(t.columnas, ['id']) && buscar(t.columnas, ['name', 'nombre', 'title', 'titulo']));
+        this.state.categoriaTabla = tabla ? {
+            tabla: tabla.nombre,
+            id: buscar(tabla.columnas, ['id']),
+            nombre: buscar(tabla.columnas, ['name', 'nombre', 'title', 'titulo']),
+            padre: buscar(tabla.columnas, ['parent_id', 'padre_id', 'id_padre', 'parent'])
+        } : null;
+        this.mostrarCategoriaRel();
+    },
+
+    mostrarCategoriaRel() {
+        const nota = this.field('intCategoriaRel');
+        const rel = this.state.categoriaTabla;
+        nota.hidden = !rel || !this.field('intCol-categoria').value.trim();
+        if (nota.hidden) return;
+        nota.innerHTML = `El nombre se lee de «${this.escape(rel.tabla)}»${rel.padre ? ': la categoría padre es la sección y la categoría, la familia' : ''}. <button type="button" class="btn-link" id="intCategoriaRelQuitar">No usar</button>`;
+        this.field('intCategoriaRelQuitar').addEventListener('click', () => {
+            // false = el usuario la quitó: no se vuelve a proponer en esta pantalla.
+            this.state.categoriaTabla = false;
+            nota.hidden = true;
+        });
     },
 
     // Devuelve true si propuso alguna columna.

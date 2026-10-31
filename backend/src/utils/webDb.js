@@ -180,9 +180,10 @@ const previewTable = async (conn, tabla, limite = 5) => {
 };
 
 // Huella del valor de la foto calculada en la base remota: evita traer la imagen si no cambió.
+// Una foto vacía ('') cuenta como sin foto: la huella queda NULL.
 const md5Expression = (motor, quotedColumn) => (motor === 'mysql'
-  ? `MD5(${quotedColumn})`
-  : `md5(${quotedColumn}::text)`);
+  ? `MD5(NULLIF(${quotedColumn}, ''))`
+  : `md5(NULLIF(${quotedColumn}::text, ''))`);
 
 module.exports = {
   connect, describeConnectionError, listTables, listColumns, describeSchema, previewTable, parseIdentifier, quoteWith, md5Expression,

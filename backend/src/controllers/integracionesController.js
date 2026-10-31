@@ -13,7 +13,7 @@ const {
 // la empresa y los carga en Artículos. Con el modo 'dosVias', además, la existencia se
 // concilia en las dos direcciones (las compras y ventas del ERP llegan a la web).
 const TIPO = 'web_db';
-const CAMPOS = ['codigo', 'nombre', 'precio', 'costo', 'existencia', 'categoria', 'familia', 'descripcion', 'codigo_barras', 'unidad', 'foto'];
+const CAMPOS = ['codigo', 'nombre', 'precio', 'costo', 'existencia', 'categoria', 'familia', 'descripcion', 'codigo_barras', 'unidad', 'activo', 'foto'];
 // Existencia y precio de compra también los mueven las compras y ventas del ERP:
 // 'inicial' los copia solo al crear el artículo, 'siempre' en cada sincronización, 'nunca' no los toca,
 // 'dosVias' copia el costo al crear y concilia la existencia en los dos sentidos.
@@ -31,7 +31,7 @@ const resumirFotosFallidas = (fallidas) => {
   const porMotivo = new Map();
   fallidas.forEach(({ codigo, motivo }) => porMotivo.set(motivo, [...(porMotivo.get(motivo) || []), codigo]));
   return [...porMotivo].map(([motivo, codigos]) =>
-    `${codigos.length} foto${codigos.length === 1 ? '' : 's'} sin cargar (${motivo}): ${codigos.slice(0, 3).join(', ')}${codigos.length > 3 ? '…' : ''}. Los productos sí se importaron.`);
+    `${codigos.length} foto${codigos.length === 1 ? '' : 's'} sin cargar (${motivo}): ${codigos.slice(0, 3).join(', ')}${codigos.length > 3 ? '…' : ''}. Los productos sí se importaron`);
 };
 const MAX_AUTO_MINUTOS = 1440;
 
@@ -74,6 +74,21 @@ const normalizeConfig = (body) => {
     throw httpError(400, 'El puerto debe ser un número entre 1 y 65535');
   }
   if (config.tabla) parseIdentifier(config.tabla, 'La tabla');
+  // Sección guardada como número (category_id): el nombre se lee de otra tabla, y si esa tabla
+  // tiene categoría padre, el padre es la sección y la categoría la familia.
+  const relacion = body.categoriaTabla;
+  if (relacion && relacion.tabla && relacion.id && relacion.nombre) {
+    config.categoriaTabla = {
+      tabla: text(relacion.tabla, 130),
+      id: text(relacion.id, 63),
+      nombre: text(relacion.nombre, 63),
+      padre: relacion.padre ? text(relacion.padre, 63) : null
+    };
+    parseIdentifier(config.categoriaTabla.tabla, 'La tabla de categorías');
+    ['id', 'nombre', 'padre'].forEach((clave) => {
+      if (config.categoriaTabla[clave]) parseIdentifier(config.categoriaTabla[clave], 'La columna de categorías');
+    });
+  }
   if (config.urlFotos && !/^https?:\/\/[^\s/]+/i.test(config.urlFotos)) {
     throw httpError(400, 'La dirección de la web debe empezar con https:// (por ejemplo https://tropinsideacuarios.com)');
   }
@@ -227,13 +242,32 @@ const probar = async (req, res) => {
 // SELECT con todas las columnas mapeadas; de la foto solo su huella (MD5), no la imagen.
 const selectSinFoto = (motor, config) => {
   const quote = quoteWith(motor);
-  const select = CAMPOS
-    .filter((campo) => campo !== 'foto' && config.columnas[campo])
-    .map((campo) => `${quote(parseIdentifier(config.columnas[campo], campo))} AS ${quote([campo])}`);
-  if (config.columnas.foto) {
-    select.push(`${md5Expression(motor, quote(parseIdentifier(config.columnas.foto, 'foto')))} AS ${quote(['foto_md5'])}`);
+  const table = quote(parseIdentifier(config.tabla, 'La tabla'));
+  const columna = (campo) => `${table}.${quote(parseIdentifier(config.columnas[campo], campo))}`;
+  const expresiones = {};
+  const relacion = config.categoriaTabla;
+  if (relacion && config.columnas.categoria) {
+    const cat = quote(parseIdentifier(relacion.tabla, 'La tabla de categorías'));
+    const id = quote([relacion.id]);
+    const nombre = quote([relacion.nombre]);
+    const fk = columna('categoria');
+    if (relacion.padre) {
+      const padre = quote([relacion.padre]);
+      expresiones.categoria = `(SELECT COALESCE(p.${nombre}, c.${nombre}) FROM ${cat} c LEFT JOIN ${cat} p ON p.${id} = c.${padre} WHERE c.${id} = ${fk})`;
+      if (!config.columnas.familia) {
+        expresiones.familia = `(SELECT CASE WHEN c.${padre} IS NOT NULL THEN c.${nombre} END FROM ${cat} c WHERE c.${id} = ${fk})`;
+      }
+    } else {
+      expresiones.categoria = `(SELECT c.${nombre} FROM ${cat} c WHERE c.${id} = ${fk})`;
+    }
   }
-  return `SELECT ${select.join(', ')} FROM ${quote(parseIdentifier(config.tabla, 'La tabla'))}`;
+  const select = CAMPOS
+    .filter((campo) => campo !== 'foto' && (config.columnas[campo] || expresiones[campo]))
+    .map((campo) => `${expresiones[campo] || columna(campo)} AS ${quote([campo])}`);
+  if (config.columnas.foto) {
+    select.push(`${md5Expression(motor, columna('foto'))} AS ${quote(['foto_md5'])}`);
+  }
+  return `SELECT ${select.join(', ')} FROM ${table}`;
 };
 
 const mapRow = (row) => ({
@@ -246,7 +280,8 @@ const mapRow = (row) => ({
   existencia: row.existencia ?? null,
   costo: row.costo ?? null,
   codigo_barras: row.codigo_barras == null ? null : String(row.codigo_barras).trim(),
-  unidad: row.unidad ?? null
+  unidad: row.unidad ?? null,
+  activo: row.activo ?? null
 });
 
 const sincronizarWeb = async (row) => {
@@ -320,6 +355,8 @@ const sincronizarWeb = async (row) => {
         descripcion: data.descripcion,
         codigo_barras: data.codigo_barras,
         unidad_medida: data.unidad,
+        // Inactivo en la web = inactivo en el ERP (no aparece en el punto de venta).
+        activo: data.activo,
         cantidad_disponible: modo === 'nunca' ? undefined : data.existencia,
         precio_costo: modo === 'nunca' ? undefined : data.costo,
         // Con 'inicial', compras y ventas del ERP mandan una vez creado el artículo; con
