@@ -3,6 +3,7 @@ const { getTenantId, runWithTenant } = require('../db/tenantContext');
 const { encrypt, decrypt } = require('../utils/secretBox');
 const { runImport, rowError, MAX_IMPORT_ROWS } = require('../utils/bulkImport');
 const { upsertArticulo, articuloIdIsManual } = require('./importController');
+const { prepararFoto } = require('../utils/fotoRemota');
 const {
   connect, describeConnectionError, listColumns, describeSchema, previewTable, parseIdentifier, quoteWith, md5Expression, allowedHosts, httpError
 } = require('../utils/webDb');
@@ -22,6 +23,15 @@ const modoInventario = (config) => (MODOS_INVENTARIO.has(config.inventarioDesdeW
   ? config.inventarioDesdeWeb
   : config.copiarExistencia === true ? 'siempre' : 'nunca');
 const FOTO_BATCH = 100;
+const FOTO_DESCARGAS_SIMULTANEAS = 8;
+
+// Las fotos que fallan casi siempre fallan por lo mismo: se agrupan por motivo.
+const resumirFotosFallidas = (fallidas) => {
+  const porMotivo = new Map();
+  fallidas.forEach(({ codigo, motivo }) => porMotivo.set(motivo, [...(porMotivo.get(motivo) || []), codigo]));
+  return [...porMotivo].map(([motivo, codigos]) =>
+    `${codigos.length} foto${codigos.length === 1 ? '' : 's'} sin cargar (${motivo}): ${codigos.slice(0, 3).join(', ')}${codigos.length > 3 ? '…' : ''}. Los productos sí se importaron.`);
+};
 const MAX_AUTO_MINUTOS = 1440;
 
 // Una sincronización por empresa a la vez; las solicitudes que llegan mientras tanto esperan la misma.
@@ -51,6 +61,8 @@ const normalizeConfig = (body) => {
     inventarioDesdeWeb: MODOS_INVENTARIO.has(body.inventarioDesdeWeb) ? body.inventarioDesdeWeb : 'inicial',
     // 'erp': el precio de venta lo calcula y publica el ERP (pantalla Precios); 'web': lo trae la web.
     preciosDesde: body.preciosDesde === 'web' ? 'web' : 'erp',
+    // Dirección de la web para las fotos guardadas como ruta («/uploads/pez.jpg»).
+    urlFotos: text(body.urlFotos, 255).replace(/\/+$/, ''),
     autoMinutos: Math.min(Math.max(Math.round(Number(body.autoMinutos) || 0), 0), MAX_AUTO_MINUTOS)
   };
   if (!['postgres', 'mysql'].includes(config.motor)) throw httpError(400, 'Elige el motor de la base: PostgreSQL o MySQL');
@@ -61,6 +73,9 @@ const normalizeConfig = (body) => {
     throw httpError(400, 'El puerto debe ser un número entre 1 y 65535');
   }
   if (config.tabla) parseIdentifier(config.tabla, 'La tabla');
+  if (config.urlFotos && !/^https?:\/\/[^\s/]+/i.test(config.urlFotos)) {
+    throw httpError(400, 'La dirección de la web debe empezar con https:// (por ejemplo https://tropinsideacuarios.com)');
+  }
   for (const campo of CAMPOS) {
     const column = text(body.columnas?.[campo], 63);
     if (column) {
@@ -263,6 +278,21 @@ const sincronizarWeb = async (row) => {
       });
     }
 
+    // Cada foto se prepara aparte (base64 o descarga si es URL/ruta). Una foto que no sirve
+    // no detiene al artículo: se importa sin tocar su foto y se avisa.
+    const fotosFallidas = [];
+    const pendientes = [...fotos.entries()].filter(([, foto]) => foto.valor !== null);
+    for (let i = 0; i < pendientes.length; i += FOTO_DESCARGAS_SIMULTANEAS) {
+      await Promise.all(pendientes.slice(i, i + FOTO_DESCARGAS_SIMULTANEAS).map(async ([codigo, foto]) => {
+        try {
+          foto.valor = await prepararFoto(foto.valor, config.urlFotos);
+        } catch (error) {
+          fotos.delete(codigo);
+          fotosFallidas.push({ codigo, motivo: error.expose ? error.message : 'no se pudo leer' });
+        }
+      }));
+    }
+
     const importRows = rows
       .map((r) => ({ r, data: mapRow(r) }))
       .filter(({ data }) => data.codigo)
@@ -325,12 +355,14 @@ const sincronizarWeb = async (row) => {
       sinCambios: summary.unchanged,
       fallidos: summary.failed + sinCodigo,
       fotosDescargadas: [...fotos.values()].filter((foto) => foto.valor).length,
+      fotosFallidas: fotosFallidas.length,
       errores: [
         ...(sinCodigo ? [sinCodigo === 1
           ? '1 producto sin código en la web no se importó'
           : `${sinCodigo} productos sin código en la web no se importaron`] : []),
         ...summary.errors.slice(0, 20).map((error) => error.message),
         ...(conciliacion?.errores || []).slice(0, 10),
+        ...resumirFotosFallidas(fotosFallidas),
         ...(preciosDistintos ? [`${preciosDistintos} artículo${preciosDistintos === 1 ? ' tiene' : 's tienen'} en la web un precio distinto al publicado en el ERP; en Precios elige «Todos», selecciónalos y pulsa «Publicar seleccionados»`] : [])
       ],
       segundos: Math.round((Date.now() - started) / 100) / 10

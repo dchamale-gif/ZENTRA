@@ -96,6 +96,7 @@ const IntegracionModule = {
             || (config.motor ? (config.copiarExistencia ? 'siempre' : 'nunca') : 'inicial');
         this.explicarInventario();
         this.field('intPrecios').value = config.preciosDesde || 'erp';
+        this.field('intUrlFotos').value = config.urlFotos || '';
         this.field('intAuto').value = String(config.autoMinutos ?? 5);
         this.field('intActiva').checked = info.configurada ? info.activa : true;
 
@@ -164,6 +165,7 @@ const IntegracionModule = {
             r.actualizados ? `${r.actualizados} actualizados` : '',
             r.sinCambios ? `${r.sinCambios} sin cambios` : '',
             r.fotosDescargadas ? `${r.fotosDescargadas} fotos nuevas` : '',
+            r.fotosFallidas ? `${r.fotosFallidas} fotos sin cargar` : '',
             r.enviadosWeb ? `existencia enviada a la web en ${r.enviadosWeb}` : '',
             r.recibidosWeb ? `existencia recibida de la web en ${r.recibidosWeb}` : '',
             r.fallidos ? `${r.fallidos} con error` : ''
@@ -189,6 +191,7 @@ const IntegracionModule = {
             columnas,
             inventarioDesdeWeb: this.field('intInventario').value,
             preciosDesde: this.field('intPrecios').value,
+            urlFotos: this.field('intUrlFotos').value.trim(),
             autoMinutos: Number(this.field('intAuto').value),
             activa: this.field('intActiva').checked
         };

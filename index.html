@@ -745,6 +745,11 @@
                                     </div>
                                     <datalist id="intColumnas"></datalist>
                                     <div class="form-group">
+                                        <label for="intUrlFotos">Dirección de la web (para las fotos)</label>
+                                        <input type="url" id="intUrlFotos" class="form-input" placeholder="https://tropinsideacuarios.com" autocomplete="off" spellcheck="false" aria-describedby="intUrlFotosHint">
+                                        <small id="intUrlFotosHint" class="integracion-help">Si la columna de la foto trae la ruta de la imagen (por ejemplo «/uploads/pez.jpg») en lugar de la imagen, el ERP la descarga de esta dirección. Si trae la URL completa o la imagen en base64, déjalo vacío.</small>
+                                    </div>
+                                    <div class="form-group">
                                         <label for="intPrecios">Precio de venta</label>
                                         <select id="intPrecios" class="form-input" aria-describedby="intPreciosHint">
                                             <option value="erp">Lo calcula y publica el ERP (pantalla Precios)</option>
