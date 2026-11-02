@@ -9,6 +9,8 @@ const PosModule = {
     POLL_MS: 4000,
     CATALOG_REFRESH_MS: 60000,
     STORAGE_KEY: 'pos.cuentaSeleccionada',
+    PAPER_KEY: 'pos.papelTicket',
+    METODOS: { efectivo: 'Efectivo', tarjeta: 'Tarjeta', transferencia: 'Transferencia' },
 
     state: {
         articulos: [],
@@ -22,7 +24,8 @@ const PosModule = {
         catalogLoadedAt: 0,
         polling: null,
         syncError: false,
-        initialized: false
+        initialized: false,
+        lastReceipt: null
     },
 
     init() {
@@ -73,6 +76,11 @@ const PosModule = {
             this.charge();
         });
         document.getElementById('posChargeForm')?.addEventListener('input', () => this.renderChange());
+        document.getElementById('posPrintPaper')?.addEventListener('change', (event) => this.storePaper(event.target.value));
+        document.getElementById('posPrintBtn')?.addEventListener('click', () => this.printCuenta());
+        document.getElementById('posReprintBtn')?.addEventListener('click', () => {
+            if (this.state.lastReceipt) this.printReceipt(this.state.lastReceipt);
+        });
         document.getElementById('posRenameBtn')?.addEventListener('click', () => this.renameCuenta());
         document.getElementById('posCancelBtn')?.addEventListener('click', () => this.anularCuenta());
         document.getElementById('posTicketJump')?.addEventListener('click', () => {
@@ -387,6 +395,8 @@ const PosModule = {
             const button = document.getElementById(id);
             if (button) button.hidden = !summary || !this.canSell();
         });
+        const printBtn = document.getElementById('posPrintBtn');
+        if (printBtn) printBtn.hidden = !cuenta?.items?.length;
 
         if (lines) {
             if (!summary) {
@@ -601,6 +611,7 @@ const PosModule = {
         if (fel && FelModule.state.estado.comprobantePorDefecto === 'factura') {
             document.querySelector('input[name="posComprobante"][value="factura"]').checked = true;
         }
+        document.getElementById('posPrintPaper').value = this.readPaper();
         this.renderChange();
         this.openModal('posChargeModal');
         document.getElementById('posChargeReceived').focus();
@@ -661,6 +672,20 @@ const PosModule = {
                 body: JSON.stringify({ metodo_pago: method, fecha: this.today(), comprobante, receptor })
             });
             this.closeModal('posChargeModal');
+            this.state.lastReceipt = {
+                tipo: 'venta',
+                cuentaNombre: cuenta.nombre,
+                lineas: this.receiptLines(cuenta),
+                total: Number(data.venta?.total ?? cuenta.total),
+                metodo: method,
+                recibido: method === 'efectivo' && received ? received : null,
+                venta: data.venta,
+                factura: data.factura?.estado === 'certificado' ? data.factura : null,
+                fecha: new Date()
+            };
+            this.renderReprint();
+            const papel = document.getElementById('posPrintPaper').value;
+            if (papel !== 'no') this.printReceipt(this.state.lastReceipt, papel);
             const change = method === 'efectivo' && received > Number(cuenta.total)
                 ? ` Cambio: ${formatQ(received - Number(cuenta.total))}.` : '';
             if (data.factura?.estado === 'certificado') {
@@ -681,6 +706,134 @@ const PosModule = {
         } finally {
             button.disabled = false;
         }
+    },
+
+    // ---------- Ticket impreso ----------
+
+    readPaper() {
+        try { return localStorage.getItem(this.PAPER_KEY) || '80'; } catch { return '80'; }
+    },
+
+    storePaper(value) {
+        try { localStorage.setItem(this.PAPER_KEY, value); } catch { /* opcional */ }
+    },
+
+    // Igual que la venta: las líneas de distintos usuarios se juntan por producto y precio.
+    receiptLines(cuenta) {
+        const lineas = new Map();
+        (cuenta.items || []).forEach(item => {
+            const key = `${item.articulo_id}|${item.precio_unitario}`;
+            const linea = lineas.get(key) || { nombre: item.nombre, precio: Number(item.precio_unitario), cantidad: 0 };
+            linea.cantidad += Number(item.cantidad);
+            lineas.set(key, linea);
+        });
+        return [...lineas.values()];
+    },
+
+    // Cuenta abierta: se imprime para que el cliente la revise antes de pagar.
+    printCuenta() {
+        const cuenta = this.state.cuenta;
+        if (!cuenta?.items?.length) return;
+        this.printReceipt({
+            tipo: 'cuenta',
+            cuentaNombre: cuenta.nombre,
+            lineas: this.receiptLines(cuenta),
+            total: Number(cuenta.total),
+            fecha: new Date()
+        });
+    },
+
+    renderReprint() {
+        const button = document.getElementById('posReprintBtn');
+        const receipt = this.state.lastReceipt;
+        if (!button) return;
+        button.hidden = !receipt;
+        if (receipt) {
+            document.getElementById('posReprintText').textContent =
+                `Reimprimir ticket de venta ${receipt.venta?.numero_venta || ''}`.trim();
+        }
+    },
+
+    receiptHtml(receipt, papel) {
+        const e = (value) => this.escape(value);
+        const user = authManager.getUser() || {};
+        const emisor = receipt.factura ? FelModule.state.estado?.emisor : null;
+        const negocio = emisor?.nombreComercial || user.organization?.name || '';
+        const cajero = [user.nombre, user.apellido].filter(Boolean).join(' ');
+        const fecha = receipt.fecha.toLocaleString('es-GT', { dateStyle: 'short', timeStyle: 'short' });
+        const fila = (label, value, cls = '') => `<div class="row ${cls}"><span>${label}</span><span>${value}</span></div>`;
+        const titulo = receipt.tipo === 'cuenta' ? 'Cuenta (no es comprobante de pago)'
+            : receipt.factura ? 'Factura electrónica' : 'Ticket de venta';
+        const factura = receipt.factura;
+        const cambio = receipt.recibido ? receipt.recibido - receipt.total : 0;
+        const ancho = { 58: '48mm', carta: '80mm' }[papel] || '72mm';
+        const pagina = { 58: '58mm auto', carta: 'letter' }[papel] || '80mm auto';
+
+        return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${e(titulo)}</title><style>
+            @page { size: ${pagina}; margin: ${papel === 'carta' ? '15mm' : '0'}; }
+            * { box-sizing: border-box; }
+            body { width: ${ancho}; margin: 0 auto; padding: 4mm 0; color: #000;
+                font: ${papel === '58' ? '11px' : '12px'}/1.35 "Courier New", Courier, monospace; }
+            h1 { margin: 0; font-size: 1.25em; text-align: center; }
+            p { margin: 0; text-align: center; }
+            .title { margin: 6px 0 2px; font-weight: bold; text-transform: uppercase; }
+            hr { border: 0; border-top: 1px dashed #000; margin: 6px 0; }
+            .row { display: flex; justify-content: space-between; gap: 8px; }
+            .row span:last-child { text-align: right; white-space: nowrap; }
+            .item { margin-bottom: 3px; }
+            .item-name { overflow-wrap: anywhere; }
+            .total { font-size: 1.3em; font-weight: bold; }
+            .small { font-size: 0.9em; overflow-wrap: anywhere; }
+        </style></head><body>
+            ${negocio ? `<h1>${e(negocio)}</h1>` : ''}
+            ${emisor?.nombre && emisor.nombre !== negocio ? `<p>${e(emisor.nombre)}</p>` : ''}
+            ${emisor?.nit ? `<p>NIT: ${e(emisor.nit)}</p>` : ''}
+            ${emisor?.direccion ? `<p class="small">${e(emisor.direccion)}</p>` : ''}
+            <p class="title">${e(titulo)}</p>
+            ${factura ? `<p>Serie ${e(factura.serie)} · No. ${e(factura.numero)}</p>` : ''}
+            <hr>
+            ${receipt.venta ? fila('Venta', e(receipt.venta.numero_venta)) : ''}
+            ${fila('Fecha', e(fecha))}
+            ${fila('Cuenta', e(receipt.cuentaNombre))}
+            ${cajero ? fila('Atendió', e(cajero)) : ''}
+            ${factura ? fila('NIT cliente', e(factura.receptor_id || 'CF')) + fila('Cliente', e(factura.receptor_nombre || 'Consumidor Final')) : ''}
+            <hr>
+            ${receipt.lineas.map(linea => `<div class="item">
+                <div class="item-name">${e(linea.nombre)}</div>
+                ${fila(`${linea.cantidad} × ${formatQ(linea.precio)}`, formatQ(linea.cantidad * linea.precio))}
+            </div>`).join('')}
+            <hr>
+            ${fila('TOTAL', formatQ(receipt.total), 'total')}
+            ${receipt.metodo ? fila('Pago', e(this.METODOS[receipt.metodo] || receipt.metodo)) : ''}
+            ${receipt.recibido ? fila('Recibido', formatQ(receipt.recibido)) + fila('Cambio', formatQ(cambio)) : ''}
+            ${factura ? `<hr>
+                <p class="small">Autorización:<br>${e(factura.uuid)}</p>
+                ${factura.fecha_certificacion ? `<p class="small">Certificada: ${e(new Date(factura.fecha_certificacion).toLocaleString('es-GT'))}</p>` : ''}` : ''}
+            <hr>
+            <p>${receipt.tipo === 'cuenta' ? 'Total a pagar' : '¡Gracias por su compra!'}</p>
+        </body></html>`;
+    },
+
+    // Un iframe oculto con solo el ticket: se imprime sin el resto de la pantalla.
+    printReceipt(receipt, papel = this.readPaper()) {
+        if (papel === 'no') papel = '80';
+        document.getElementById('posPrintFrame')?.remove();
+        const frame = document.createElement('iframe');
+        frame.id = 'posPrintFrame';
+        frame.title = 'Ticket';
+        frame.tabIndex = -1;
+        frame.setAttribute('aria-hidden', 'true');
+        frame.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;opacity:0;pointer-events:none';
+        frame.addEventListener('load', () => {
+            try {
+                frame.contentWindow.focus();
+                frame.contentWindow.print();
+            } catch {
+                this.notify('No se pudo abrir la impresión del ticket.', 'error');
+            }
+        }, { once: true });
+        frame.srcdoc = this.receiptHtml(receipt, papel);
+        document.body.appendChild(frame);
     },
 
     // ---------- Utilidades ----------

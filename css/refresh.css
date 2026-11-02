@@ -1064,13 +1064,16 @@ tr.is-inactive td { color: var(--text-gray); }
 .pos-product-out { opacity: 0.55; }
 
 .pos-product-photo { padding-top: 0; overflow: hidden; }
+/* Foto pequeña y completa (sin recortar): se reconoce el producto y caben más en pantalla. */
 .pos-product-img {
     display: block;
+    box-sizing: border-box;
     width: calc(100% + 24px);
+    height: 96px;
     margin: 0 -12px;
-    aspect-ratio: 4 / 3;
-    object-fit: cover;
-    background: var(--bg-light);
+    padding: 6px;
+    object-fit: contain;
+    background: #fff;
     border-bottom: 1px solid var(--border-color);
 }
 .pos-product-img-empty {
@@ -1260,6 +1263,24 @@ tr.is-inactive td { color: var(--text-gray); }
 .pos-total-row strong { font-size: 24px; color: var(--text-dark); }
 .pos-charge-btn { width: 100%; min-height: 48px; justify-content: center; font-size: 16px; }
 .pos-sync { color: var(--text-gray); font-size: 12px; text-align: center; }
+.pos-reprint {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 36px;
+    border: 0;
+    border-radius: var(--radius);
+    background: transparent;
+    color: var(--primary-color);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+}
+.pos-reprint[hidden] { display: none; }
+.pos-reprint:hover { background: var(--primary-soft); }
+.pos-reprint:focus-visible { outline: none; box-shadow: var(--ring); }
 .pos-sync.pos-sync-error { color: var(--warning-color); }
 
 .pos-empty {
@@ -1330,6 +1351,7 @@ tr.is-inactive td { color: var(--text-gray); }
 @media (max-width: 768px) {
     .pos-layout { grid-template-columns: minmax(0, 1fr); }
     .pos-products { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); }
+    .pos-product-img { height: 80px; }
     .pos-ticket { position: static; max-height: none; }
     .pos-lines { overflow: visible; }
 

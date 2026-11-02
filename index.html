@@ -1022,6 +1022,9 @@
                                     <small id="posTicketMeta"></small>
                                 </div>
                                 <div class="pos-ticket-actions">
+                                    <button type="button" class="btn-icon" id="posPrintBtn" title="Imprimir cuenta" aria-label="Imprimir cuenta" hidden>
+                                        <i class="fas fa-print" aria-hidden="true"></i>
+                                    </button>
                                     <button type="button" class="btn-icon" id="posRenameBtn" title="Renombrar cuenta" aria-label="Renombrar cuenta" hidden>
                                         <i class="fas fa-pen" aria-hidden="true"></i>
                                     </button>
@@ -1039,6 +1042,9 @@
                                 </div>
                                 <button type="button" class="btn btn-primary pos-charge-btn pos-sell-only" id="posChargeBtn" disabled>
                                     <i class="fas fa-cash-register" aria-hidden="true"></i> Cobrar
+                                </button>
+                                <button type="button" class="pos-reprint" id="posReprintBtn" hidden>
+                                    <i class="fas fa-print" aria-hidden="true"></i> <span id="posReprintText">Reimprimir último ticket</span>
                                 </button>
                                 <small class="pos-sync" id="posSyncStatus" role="status">Sincronizado</small>
                             </div>
@@ -1623,6 +1629,16 @@
                         <label for="posChargeReceived">Efectivo recibido (opcional)</label>
                         <input id="posChargeReceived" class="form-input" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0.00">
                         <small id="posChargeChange" aria-live="polite"></small>
+                    </div>
+                    <div class="form-group">
+                        <label for="posPrintPaper">Imprimir ticket al cobrar</label>
+                        <select id="posPrintPaper" class="form-input" aria-describedby="posPrintPaperHint">
+                            <option value="80">Sí, papel de 80 mm</option>
+                            <option value="58">Sí, papel de 58 mm</option>
+                            <option value="carta">Sí, hoja carta</option>
+                            <option value="no">No imprimir</option>
+                        </select>
+                        <small id="posPrintPaperHint">Se recuerda en este equipo.</small>
                     </div>
                     <p id="posChargeError" class="form-error" role="alert" hidden></p>
                     <small>La venta queda registrada en Ventas, descuenta existencias y, si es en efectivo, entra a Caja.</small>

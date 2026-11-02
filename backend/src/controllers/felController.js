@@ -55,7 +55,15 @@ const estadoPublico = (row) => ({
   comprobantePorDefecto: row?.config?.comprobantePorDefecto === 'factura' ? 'factura' : 'ticket',
   afiliacionIVA: row?.config?.emisor?.afiliacionIVA || null,
   certificador: row?.config?.certificador || null,
-  ambiente: row?.config?.ambiente || null
+  ambiente: row?.config?.ambiente || null,
+  // Datos que se imprimen en el ticket de una factura.
+  emisor: row?.config?.emisor ? {
+    nit: row.config.emisor.nit,
+    nombre: row.config.emisor.nombre,
+    nombreComercial: row.config.emisor.nombreComercial,
+    direccion: [row.config.emisor.direccion?.direccion, row.config.emisor.direccion?.municipio, row.config.emisor.direccion?.departamento]
+      .filter(Boolean).join(', ')
+  } : null
 });
 
 const normalizeConfig = (body) => {
