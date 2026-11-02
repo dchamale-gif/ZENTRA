@@ -56,7 +56,7 @@ class ReportsController {
                     COALESCE(SUM(total), 0) as total_egresos,
                     COUNT(*) as numero_compras
                 FROM compras
-                ${whereCondition}
+                ${whereCondition ? `${whereCondition} AND` : 'WHERE'} estado <> 'cancelada'
             `;
 
             const pagosQuery = `
@@ -157,7 +157,7 @@ class ReportsController {
                         COALESCE(SUM(total), 0) as egresos,
                         COUNT(*) as numero_compras
                     FROM compras
-                    WHERE fecha >= CURRENT_DATE - ($1 * INTERVAL '1 month')
+                    WHERE estado <> 'cancelada' AND fecha >= CURRENT_DATE - ($1 * INTERVAL '1 month')
                     GROUP BY DATE_TRUNC('month', fecha)
                 ),
                 monthly_payments AS (
@@ -355,7 +355,7 @@ class ReportsController {
                         fecha,
                         COALESCE(SUM(total), 0) as egresos
                     FROM compras
-                    WHERE fecha >= CURRENT_DATE - INTERVAL '30 days'
+                    WHERE estado <> 'cancelada' AND fecha >= CURRENT_DATE - INTERVAL '30 days'
                     GROUP BY fecha
                 )
                 SELECT 
@@ -428,7 +428,7 @@ class ReportsController {
                         COALESCE(SUM(total), 0) as egresos,
                         COUNT(*) as numero_compras
                     FROM compras
-                    WHERE fecha >= CURRENT_DATE - ($1 * INTERVAL '1 month')
+                    WHERE estado <> 'cancelada' AND fecha >= CURRENT_DATE - ($1 * INTERVAL '1 month')
                     GROUP BY DATE_TRUNC('month', fecha)
                 )
                 SELECT 
@@ -502,7 +502,7 @@ class ReportsController {
                         0 as ingresos_diarios,
                         COALESCE(SUM(total), 0) as egresos_diarios
                     FROM compras
-                    WHERE fecha >= CURRENT_DATE - ($1 * INTERVAL '1 month')
+                    WHERE estado <> 'cancelada' AND fecha >= CURRENT_DATE - ($1 * INTERVAL '1 month')
                     GROUP BY fecha
                 )
                 SELECT 

@@ -944,10 +944,21 @@
 
                 <div id="page-compras" class="page">
                     <div class="page-header">
-                        <h1>Gestión de Compras</h1>
+                        <div>
+                            <h1>Compras</h1>
+                            <p class="page-subtitle">Por pedir → Pedida al proveedor → Recibida. Al recibirla, lo que llegó se suma al inventario.</p>
+                        </div>
                         <button class="btn btn-primary" id="addPurchaseBtn">
-                            <i class="fas fa-plus"></i> Nueva Compra
+                            <i class="fas fa-plus"></i> Nueva compra
                         </button>
+                    </div>
+                    <div class="compras-toolbar">
+                        <div class="pos-filters" id="comprasEstados" role="group" aria-label="Filtrar por estado"></div>
+                        <label class="search-field compras-search">
+                            <i class="fas fa-magnifying-glass" aria-hidden="true"></i>
+                            <span class="sr-only">Buscar compras</span>
+                            <input type="search" id="comprasBuscar" class="form-input" placeholder="Buscar por número o proveedor" autocomplete="off">
+                        </label>
                     </div>
                     <div class="table-container">
                         <table id="comprasTable">
@@ -1453,6 +1464,41 @@
 
                 <!-- Página: Alertas -->
     <!-- Modal for purchase management -->
+    <div id="receiveModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="receiveTitle">
+        <div class="modal-content modal-content-lg">
+            <div class="modal-header">
+                <h2 id="receiveTitle">Recibir compra</h2>
+                <button class="close-btn" type="button" aria-label="Cerrar" onclick="ComprasModule.closeReceiveModal()">&times;</button>
+            </div>
+            <form id="receiveForm" novalidate>
+                <div class="modal-body">
+                    <p id="receiveIntro" class="receive-intro"></p>
+                    <div class="form-group receive-date">
+                        <label for="receiveDate">Día en que llegó</label>
+                        <input id="receiveDate" class="form-input" type="date">
+                    </div>
+                    <div class="table-responsive">
+                        <table class="data-table receive-table">
+                            <thead>
+                                <tr><th>Artículo</th><th class="text-right">Pedido</th><th>Llegó</th><th>Costo unitario</th><th class="text-right">Subtotal</th></tr>
+                            </thead>
+                            <tbody id="receiveItems"></tbody>
+                            <tfoot>
+                                <tr><td colspan="4" class="text-right"><strong>Total recibido</strong></td><td class="text-right"><strong id="receiveTotal">Q0.00</strong></td></tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                    <small>Si llegó menos, escribe lo que llegó; con 0 la línea se quita de la compra. El costo del artículo pasa a ser el de esta compra.</small>
+                    <p id="receiveError" class="form-error" role="alert" hidden></p>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" type="button" onclick="ComprasModule.closeReceiveModal()">Cancelar</button>
+                    <button class="btn btn-primary" type="submit" id="receiveSubmit"><i class="fas fa-boxes-stacked" aria-hidden="true"></i> Recibir y sumar al inventario</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <div id="purchaseModal" class="modal">
         <div class="modal-content modal-content-xl">
             <div class="modal-header">
@@ -1480,15 +1526,14 @@
                             <label>Fecha de entrega</label>
                             <input type="date" id="purchaseDeliveryDate" class="form-input">
                         </div>
-                        <div class="form-group">
-                            <label>Estado</label>
+                        <div class="form-group" id="purchaseStatusGroup">
+                            <label for="purchaseStatus">Estado</label>
                             <select id="purchaseStatus" class="form-input">
-                                <option value="pendiente">Pendiente</option>
-                                <option value="ordenada">Ordenada</option>
-                                <option value="recibida">Recibida</option>
-                                <option value="cancelada">Cancelada</option>
+                                <option value="pendiente">Por pedir</option>
+                                <option value="ordenada">Ya se pidió al proveedor</option>
+                                <option value="recibida">Ya llegó (sumar al inventario)</option>
                             </select>
-                            <small class="date-info">Al marcarla como Recibida, sus artículos se suman al inventario.</small>
+                            <small class="date-info">Después se cambia con los botones de la lista: Pedir, Recibir, Cancelar.</small>
                         </div>
                     </div>
 

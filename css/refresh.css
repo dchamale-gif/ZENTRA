@@ -1383,6 +1383,29 @@ tr.is-inactive td { color: var(--text-gray); }
     .pos-ticket-jump span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }
 
+/* Compras: estados con acciones */
+.compras-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.compras-toolbar .pos-filters { flex: 1 1 auto; min-width: 0; }
+.compras-search { flex: 0 1 300px; }
+.compras-search .form-input { width: 100%; padding-left: 34px; }
+.chip-count { margin-left: 4px; opacity: 0.7; font-variant-numeric: tabular-nums; }
+.badge-neutral { background: var(--bg-light); color: var(--text-body); border: 1px solid var(--border-color); }
+.compra-detalle { display: block; margin-top: 4px; color: var(--text-gray); font-size: 12px; }
+.compra-acciones { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.compra-atrasada { background: #fffbeb; }
+.compra-cancelada td:not(.actions) { color: var(--text-gray); }
+.receive-intro { margin: 0 0 12px; color: var(--text-gray); }
+.receive-date { max-width: 220px; }
+.receive-table .form-input { width: 96px; }
+.receive-none td { color: var(--text-gray); text-decoration: line-through; }
+.receive-none td .form-input { text-decoration: none; }
+@media (min-width: 641px) {
+    #comprasTable td.actions { display: table-cell; }
+}
+@media (max-width: 640px) {
+    .compras-search { flex-basis: 100%; }
+}
+
 /* Depósitos de la caja al banco */
 .depositos-card { margin-bottom: 16px; }
 .depositos-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--border-color); }

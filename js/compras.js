@@ -8,7 +8,18 @@ const ComprasModule = {
         proveedores: [],
         articulos: [],
         items: [],
-        initialized: false
+        initialized: false,
+        filtroEstado: '',
+        busqueda: '',
+        recibiendo: null
+    },
+
+    // Por pedir → Pedida → Recibida (suma al inventario); o Cancelada.
+    ESTADOS: {
+        pendiente: { label: 'Por pedir', plural: 'Por pedir', badge: 'badge-neutral' },
+        ordenada: { label: 'Pedida', plural: 'Pedidas', badge: 'badge-info' },
+        recibida: { label: 'Recibida', plural: 'Recibidas', badge: 'badge-success' },
+        cancelada: { label: 'Cancelada', plural: 'Canceladas', badge: 'badge-danger' }
     },
 
     init() {
@@ -21,6 +32,25 @@ const ComprasModule = {
     setupEventListeners() {
         document.getElementById('addPurchaseBtn')?.addEventListener('click', () => this.openPurchaseModal());
         document.getElementById('savePurchaseBtn')?.addEventListener('click', () => this.savePurchase());
+        document.getElementById('comprasEstados')?.addEventListener('click', (event) => {
+            const chip = event.target.closest('[data-estado]');
+            if (!chip) return;
+            this.state.filtroEstado = chip.dataset.estado;
+            this.render();
+        });
+        document.getElementById('comprasBuscar')?.addEventListener('input', (event) => {
+            this.state.busqueda = event.target.value;
+            this.render();
+        });
+        document.querySelector('#comprasTable tbody')?.addEventListener('click', (event) => {
+            const button = event.target.closest('[data-compra-action]');
+            if (button) this.accion(button.dataset.compraAction, button.dataset.compraId);
+        });
+        document.getElementById('receiveForm')?.addEventListener('submit', (event) => {
+            event.preventDefault();
+            this.recibir();
+        });
+        document.getElementById('receiveItems')?.addEventListener('input', () => this.renderReceiveTotal());
     },
 
     async apiRequest(path, options = {}) {
@@ -76,35 +106,225 @@ const ComprasModule = {
         else this.init();
     },
 
+    // Pedida y con la fecha de entrega ya pasada.
+    isAtrasada(compra) {
+        return compra.estado === 'ordenada' && compra.fecha_entrega && this.dateValue(compra.fecha_entrega) < this.today();
+    },
+
+    renderEstados() {
+        const container = document.getElementById('comprasEstados');
+        if (!container) return;
+        const count = (estado) => this.state.compras.filter(compra => compra.estado === estado).length;
+        const chips = [
+            ['', 'Todas', this.state.compras.length],
+            ...Object.entries(this.ESTADOS).map(([estado, { plural }]) => [estado, plural, count(estado)])
+        ];
+        container.innerHTML = chips.map(([estado, label, total]) => {
+            const active = this.state.filtroEstado === estado;
+            return `<button type="button" class="pos-chip${active ? ' active' : ''}" data-estado="${estado}" aria-pressed="${active}">
+                ${label} <span class="chip-count">${total}</span></button>`;
+        }).join('');
+    },
+
+    filteredCompras() {
+        const term = this.normalizeSearch(this.state.busqueda);
+        return this.state.compras.filter(compra =>
+            (!this.state.filtroEstado || compra.estado === this.state.filtroEstado) &&
+            (!term || this.normalizeSearch(`${compra.numero_compra} ${compra.proveedor_nombre}`).includes(term))
+        );
+    },
+
+    // Botones según el estado: la acción siguiente va primero.
+    actionsFor(compra) {
+        const id = this.escapeHtml(compra.id);
+        const button = (action, label, icon, cls = 'btn-secondary') =>
+            `<button type="button" class="btn ${cls} btn-sm" data-compra-action="${action}" data-compra-id="${id}"><i class="fas ${icon}" aria-hidden="true"></i> ${label}</button>`;
+        const icon = (action, title, iconName, cls = '') =>
+            `<button type="button" class="btn-icon ${cls}" data-compra-action="${action}" data-compra-id="${id}" title="${title}" aria-label="${title}"><i class="fas ${iconName}" aria-hidden="true"></i></button>`;
+        if (!AccessControl.canEdit('compras')) return '';
+        const borrar = icon('eliminar', 'Eliminar compra', 'fa-trash', 'btn-delete');
+        switch (compra.estado) {
+        case 'pendiente':
+            return button('recibir', 'Recibir', 'fa-boxes-stacked', 'btn-primary') + button('pedir', 'Pedir', 'fa-paper-plane') +
+                icon('editar', 'Editar compra', 'fa-edit', 'btn-edit') + icon('cancelar', 'Cancelar compra', 'fa-ban') + borrar;
+        case 'ordenada':
+            return button('recibir', 'Recibir', 'fa-boxes-stacked', 'btn-primary') +
+                icon('editar', 'Editar compra', 'fa-edit', 'btn-edit') + icon('cancelar', 'Cancelar compra', 'fa-ban') + borrar;
+        case 'recibida':
+            return icon('deshacer', 'Deshacer recepción', 'fa-rotate-left') + borrar;
+        case 'cancelada':
+            return button('reabrir', 'Reabrir', 'fa-rotate-left') + borrar;
+        default:
+            return borrar;
+        }
+    },
+
     render() {
         const tbody = document.querySelector('#comprasTable tbody');
         if (!tbody) return;
+        this.renderEstados();
 
         if (this.state.compras.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="6" class="text-center">No hay compras registradas</td></tr>';
+            tbody.innerHTML = `<tr><td colspan="6" class="text-center">Aún no hay compras.
+                ${AccessControl.canEdit('compras') ? '<button class="btn btn-primary btn-sm" type="button" onclick="ComprasModule.openPurchaseModal()"><i class="fas fa-plus" aria-hidden="true"></i> Registrar la primera</button>' : ''}</td></tr>`;
+            return;
+        }
+        const compras = this.filteredCompras();
+        if (compras.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center">No hay compras con este filtro.</td></tr>';
             return;
         }
 
-        tbody.innerHTML = this.state.compras.map(compra => `
-            <tr>
+        tbody.innerHTML = compras.map(compra => {
+            const estado = this.ESTADOS[compra.estado] || { label: compra.estado, badge: '' };
+            let detalle = '';
+            if (compra.estado === 'recibida') {
+                detalle = `Llegó el ${this.formatDate(compra.recibida_en || compra.fecha)} · sumada al inventario`;
+            } else if (compra.estado === 'cancelada') {
+                detalle = compra.motivo_cancelacion ? `Motivo: ${this.escapeHtml(compra.motivo_cancelacion)}` : '';
+            } else if (compra.fecha_entrega) {
+                detalle = `Entrega ${this.formatDate(compra.fecha_entrega)}`;
+            }
+            return `
+            <tr class="${this.isAtrasada(compra) ? 'compra-atrasada' : ''}${compra.estado === 'cancelada' ? ' compra-cancelada' : ''}">
                 <td><strong>${this.escapeHtml(compra.numero_compra)}</strong></td>
                 <td>${this.formatDate(compra.fecha)}</td>
                 <td>${this.escapeHtml(compra.proveedor_nombre)}</td>
                 <td>${formatQ(Number(compra.total || 0))}</td>
-                <td>
-                    <span class="badge badge-${this.escapeHtml(compra.estado)}">${this.capitalize(compra.estado)}</span>
-                    ${compra.inventario_aplicado ? '<br><small><i class="fas fa-boxes-stacked"></i> Sumada al inventario</small>' : ''}
-                </td>
-                <td class="actions">
-                    <button class="btn-icon btn-edit" title="Editar compra" onclick="ComprasModule.editPurchase('${compra.id}')">
-                        <i class="fas fa-edit"></i>
-                    </button>
-                    <button class="btn-icon btn-delete" title="Eliminar compra" onclick="ComprasModule.deletePurchase('${compra.id}')">
-                        <i class="fas fa-trash"></i>
-                    </button>
-                </td>
-            </tr>
-        `).join('');
+                <td><div>
+                    <span class="badge ${estado.badge}">${estado.label}</span>
+                    ${this.isAtrasada(compra) ? '<span class="badge badge-warning">Atrasada</span>' : ''}
+                    ${detalle ? `<small class="compra-detalle">${detalle}</small>` : ''}
+                </div></td>
+                <td class="actions"><div class="compra-acciones">${this.actionsFor(compra)}</div></td>
+            </tr>`;
+        }).join('');
+    },
+
+    accion(action, id) {
+        const compra = this.state.compras.find(entry => String(entry.id) === String(id));
+        if (!compra) return;
+        switch (action) {
+        case 'recibir': return this.openReceiveModal(compra);
+        case 'editar': return this.openPurchaseModal(compra);
+        case 'eliminar': return this.deletePurchase(compra.id);
+        case 'pedir': return this.cambiarEstado(compra, 'ordenada');
+        case 'reabrir': return this.cambiarEstado(compra, 'pendiente');
+        case 'cancelar': {
+            const motivo = prompt(`¿Cancelar la compra ${compra.numero_compra} a ${compra.proveedor_nombre}? Escribe el motivo (opcional).`, '');
+            if (motivo === null) return;
+            return this.cambiarEstado(compra, 'cancelada', motivo);
+        }
+        case 'deshacer':
+            if (!confirm(`¿Deshacer la recepción de ${compra.numero_compra}? Sus artículos se descontarán del inventario y la compra vuelve a «Pedida» para corregirla.`)) return;
+            return this.cambiarEstado(compra, 'ordenada');
+        default:
+        }
+    },
+
+    async cambiarEstado(compra, estado, motivo) {
+        try {
+            const result = await this.apiRequest(`/api/compras/${encodeURIComponent(compra.id)}/estado`, {
+                method: 'POST',
+                body: JSON.stringify({ estado, motivo })
+            });
+            this.notify(`${result.message}.`, 'success');
+            await this.loadData();
+        } catch (error) {
+            this.notify(error.message, 'error');
+        }
+    },
+
+    // ---------- Recibir ----------
+
+    openReceiveModal(compra) {
+        this.state.recibiendo = compra;
+        document.getElementById('receiveTitle').textContent = `Recibir ${compra.numero_compra}`;
+        document.getElementById('receiveIntro').textContent =
+            `De ${compra.proveedor_nombre}. Revisa que lo que llegó coincida con lo pedido.`;
+        document.getElementById('receiveDate').value = this.today();
+        document.getElementById('receiveError').hidden = true;
+        document.getElementById('receiveItems').innerHTML = (compra.items || []).map(item => `
+            <tr data-item-id="${this.escapeHtml(item.id)}">
+                <td>${this.escapeHtml(item.concepto_nombre)}${item.concepto_codigo ? `<small class="compra-detalle">${this.escapeHtml(item.concepto_codigo)}</small>` : ''}</td>
+                <td class="text-right">${Number(item.cantidad)}</td>
+                <td><input class="form-input receive-qty" type="text" inputmode="numeric" autocomplete="off" value="${Number(item.cantidad)}" aria-label="Cantidad que llegó de ${this.escapeHtml(item.concepto_nombre)}"></td>
+                <td><input class="form-input receive-price" type="text" inputmode="decimal" autocomplete="off" value="${Number(item.precio_unitario)}" aria-label="Costo unitario de ${this.escapeHtml(item.concepto_nombre)}"></td>
+                <td class="text-right receive-subtotal"></td>
+            </tr>`).join('');
+        this.renderReceiveTotal();
+        document.getElementById('receiveModal').style.display = 'flex';
+        document.querySelector('#receiveItems .receive-qty')?.focus();
+    },
+
+    closeReceiveModal() {
+        document.getElementById('receiveModal').style.display = 'none';
+        this.state.recibiendo = null;
+    },
+
+    readReceiveLines() {
+        return [...document.querySelectorAll('#receiveItems tr')].map(row => ({
+            row,
+            id: row.dataset.itemId,
+            nombre: row.cells[0].firstChild.textContent,
+            cantidad: CodigosArticulosModule.parseDecimal(row.querySelector('.receive-qty').value),
+            precio_unitario: CodigosArticulosModule.parseDecimal(row.querySelector('.receive-price').value)
+        }));
+    },
+
+    renderReceiveTotal() {
+        let total = 0;
+        this.readReceiveLines().forEach(line => {
+            const subtotal = (Number(line.cantidad) || 0) * (Number(line.precio_unitario) || 0);
+            total += subtotal;
+            line.row.querySelector('.receive-subtotal').textContent = formatQ(subtotal);
+            line.row.classList.toggle('receive-none', Number(line.cantidad) === 0);
+        });
+        document.getElementById('receiveTotal').textContent = formatQ(total);
+    },
+
+    async recibir() {
+        const compra = this.state.recibiendo;
+        if (!compra) return;
+        const error = document.getElementById('receiveError');
+        error.hidden = true;
+        const lines = this.readReceiveLines();
+        const invalid = lines.find(line => !Number.isInteger(line.cantidad) || line.cantidad < 0 ||
+            Number.isNaN(line.precio_unitario) || line.precio_unitario < 0);
+        if (invalid) {
+            error.textContent = `«${invalid.nombre}»: escribe una cantidad entera (0 si no llegó) y un costo válido.`;
+            error.hidden = false;
+            return;
+        }
+        if (!lines.some(line => line.cantidad > 0)) {
+            error.textContent = 'No llegó ningún artículo. Si el proveedor no entregará, cierra esto y cancela la compra.';
+            error.hidden = false;
+            return;
+        }
+        const button = document.getElementById('receiveSubmit');
+        button.disabled = true;
+        try {
+            const result = await this.apiRequest(`/api/compras/${encodeURIComponent(compra.id)}/recibir`, {
+                method: 'POST',
+                body: JSON.stringify({
+                    recibida_en: document.getElementById('receiveDate').value,
+                    items: lines.map(({ id, cantidad, precio_unitario }) => ({ id, cantidad, precio_unitario }))
+                })
+            });
+            this.closeReceiveModal();
+            this.notify(`${result.message}.`, 'success');
+            await this.loadData();
+        } catch (requestError) {
+            error.textContent = requestError.message;
+            error.hidden = false;
+        } finally {
+            button.disabled = false;
+        }
+    },
+
+    today() {
+        const now = new Date();
+        return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     },
 
     openPurchaseModal(compra = null) {
@@ -115,7 +335,9 @@ const ComprasModule = {
         this.renderProviderOptions(compra?.proveedor_id || '');
         document.getElementById('purchaseDate').value = compra ? this.dateValue(compra.fecha) : this.dateValue(new Date());
         document.getElementById('purchaseDeliveryDate').value = compra?.fecha_entrega ? this.dateValue(compra.fecha_entrega) : '';
-        document.getElementById('purchaseStatus').value = compra?.estado || 'pendiente';
+        // El estado se elige al crear; después se cambia con los botones de la lista.
+        document.getElementById('purchaseStatus').value = 'pendiente';
+        document.getElementById('purchaseStatusGroup').hidden = Boolean(compra);
         document.getElementById('purchaseObservations').value = compra?.observaciones || '';
         this.state.items = compra?.items?.length
             ? compra.items.map(item => ({
@@ -387,7 +609,7 @@ const ComprasModule = {
             proveedor_id: document.getElementById('purchaseProvider').value,
             fecha: document.getElementById('purchaseDate').value,
             fecha_entrega: document.getElementById('purchaseDeliveryDate').value || null,
-            estado: document.getElementById('purchaseStatus').value,
+            estado: id ? undefined : document.getElementById('purchaseStatus').value,
             observaciones: document.getElementById('purchaseObservations').value.trim() || null,
             items: this.state.items.map(item => ({
                 tipo: item.tipo,
@@ -432,15 +654,10 @@ const ComprasModule = {
         }
     },
 
-    editPurchase(id) {
-        const compra = this.state.compras.find(entry => String(entry.id) === String(id));
-        if (compra) this.openPurchaseModal(compra);
-    },
-
     async deletePurchase(id) {
         const compra = this.state.compras.find(entry => String(entry.id) === String(id));
         const aviso = compra?.inventario_aplicado ? ' Sus artículos se descontarán del inventario.' : '';
-        if (!confirm(`¿Eliminar esta compra?${aviso}`)) return;
+        if (!confirm(`¿Eliminar la compra ${compra?.numero_compra || ''}? No se puede deshacer.${aviso}`)) return;
         try {
             const result = await this.apiRequest(`/api/compras/${id}`, { method: 'DELETE' });
             await this.loadData();
@@ -458,10 +675,6 @@ const ComprasModule = {
     formatDate(value) {
         if (!value) return '-';
         return new Date(value).toLocaleDateString('es-GT', { timeZone: 'UTC' });
-    },
-
-    capitalize(value = '') {
-        return value.charAt(0).toUpperCase() + value.slice(1);
     },
 
     // Se usa también dentro de atributos (value="..."), así que escapa comillas.

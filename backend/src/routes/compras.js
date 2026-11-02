@@ -11,6 +11,8 @@ router.get('/', rolePermissionMiddleware(['compras_view']), comprasController.ge
 router.get('/:id', rolePermissionMiddleware(['compras_view']), comprasController.getCompraById);
 router.post('/', sincronizarTrasMovimiento, rolePermissionMiddleware(['compras_create']), comprasController.createCompra);
 router.put('/:id', sincronizarTrasMovimiento, rolePermissionMiddleware(['compras_edit']), comprasController.updateCompra);
-router.delete('/:id', sincronizarTrasMovimiento, rolePermissionMiddleware(['compras_delete']), comprasController.deleteCompra);
+router.post('/:id/estado', sincronizarTrasMovimiento, rolePermissionMiddleware(['compras_edit']), comprasController.cambiarEstado);
+router.post('/:id/recibir', sincronizarTrasMovimiento, rolePermissionMiddleware(['compras_edit']), comprasController.recibirCompra);
+router.delete('/:id',sincronizarTrasMovimiento, rolePermissionMiddleware(['compras_delete']), comprasController.deleteCompra);
 
 module.exports = router;

@@ -33,7 +33,9 @@ const getNotifications = async (req, res) => {
            AND estado NOT IN ('pagado', 'anulado')`
       ),
       safe(
-        `SELECT COUNT(*)::int AS total FROM compras WHERE estado = 'pendiente'`
+        `SELECT COUNT(*)::int AS total,
+                COUNT(*) FILTER (WHERE estado = 'ordenada' AND fecha_entrega < CURRENT_DATE)::int AS atrasadas
+         FROM compras WHERE estado IN ('pendiente', 'ordenada')`
       ),
       safe(
         `SELECT subscription_status, trial_ends_at FROM organizations
@@ -85,12 +87,14 @@ const getNotifications = async (req, res) => {
     }
 
     if (purchases[0]?.total > 0) {
+      const { total, atrasadas } = purchases[0];
       notifications.push({
         id: 'pending-purchases',
-        type: 'info',
+        type: atrasadas > 0 ? 'warning' : 'info',
         icon: 'fa-cart-shopping',
-        title: 'Compras pendientes',
-        message: `${purchases[0].total} compra(s) pendientes de recibir o pagar`,
+        title: atrasadas > 0 ? 'Compras atrasadas' : 'Compras por recibir',
+        message: `${total} compra${total === 1 ? '' : 's'} por recibir` +
+          (atrasadas > 0 ? `; ${atrasadas} ya ${atrasadas === 1 ? 'pasó' : 'pasaron'} su fecha de entrega` : ''),
         page: 'compras'
       });
     }

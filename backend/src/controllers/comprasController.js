@@ -1,19 +1,30 @@
 const pool = require('../db/connection');
 const { dbInputErrorMessage } = require('../utils/inventory');
 
+// Por pedir (pendiente) → Pedida (ordenada) → Recibida (suma al inventario); o Cancelada.
 const ESTADOS_COMPRA = new Set(['pendiente', 'ordenada', 'recibida', 'cancelada']);
+const ETIQUETAS = { pendiente: 'por pedir', ordenada: 'pedida', recibida: 'recibida', cancelada: 'cancelada' };
+// Cambios de estado permitidos con POST /:id/estado (recibir va por POST /:id/recibir).
+const TRANSICIONES = {
+  pendiente: ['ordenada', 'cancelada'],
+  ordenada: ['pendiente', 'cancelada'],
+  recibida: ['ordenada'], // deshacer la recepción: se descuenta del inventario
+  cancelada: ['pendiente'] // reabrir
+};
 
 const httpError = (status, message) => Object.assign(new Error(message), { status });
 
+// Al crear no se registra una compra ya cancelada.
 const normalizeEstado = (estado = 'pendiente') => {
   const value = String(estado).toLowerCase();
-  if (!ESTADOS_COMPRA.has(value)) throw httpError(400, 'Estado de compra no válido');
+  if (!ESTADOS_COMPRA.has(value) || value === 'cancelada') throw httpError(400, 'Estado de compra no válido');
   return value;
 };
 
 const COMPRA_SELECT = `
   SELECT c.id, c.numero_compra, c.proveedor_id, p.nombre AS proveedor_nombre,
          c.user_id, c.fecha, c.fecha_entrega, c.total, c.estado, c.inventario_aplicado,
+         c.recibida_en, c.motivo_cancelacion,
          c.observaciones, c.created_at, c.updated_at,
          COALESCE(
            json_agg(
@@ -239,11 +250,11 @@ const createCompra = async (req, res) => {
 
     const result = await client.query(
       `INSERT INTO compras
-       (id, numero_compra, proveedor_id, user_id, fecha, fecha_entrega, total, estado, observaciones)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       (id, numero_compra, proveedor_id, user_id, fecha, fecha_entrega, total, estado, observaciones, recibida_en)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        RETURNING *`,
       [compraId, numeroCompra, proveedor_id, req.user.id, fecha, fecha_entrega || null,
-        total, estado, observaciones || null]
+        total, estado, observaciones || null, estado === 'recibida' ? fecha : null]
     );
     await insertItems(client, compraId, items);
     if (estado === 'recibida') await moverInventario(client, compraId, 1);
@@ -261,12 +272,13 @@ const createCompra = async (req, res) => {
   }
 };
 
+// Editar cambia proveedor, fechas y líneas; el estado se cambia con las acciones.
+// Una compra recibida o cancelada no se edita: primero se deshace la recepción o se reabre.
 const updateCompra = async (req, res) => {
   let client;
   try {
     const { proveedor_id, fecha, fecha_entrega, observaciones } = req.body;
     if (!proveedor_id || !fecha) return res.status(400).json({ error: 'Proveedor y fecha son requeridos' });
-    const estado = normalizeEstado(req.body.estado);
 
     const items = normalizeItems(req.body.items);
     const total = Number(items.reduce((sum, item) => sum + item.subtotal, 0).toFixed(2));
@@ -274,31 +286,27 @@ const updateCompra = async (req, res) => {
     await client.query('BEGIN');
     await validateTenantReferences(client, proveedor_id, items);
     const existing = await client.query(
-      'SELECT id, inventario_aplicado FROM compras WHERE id = $1 FOR UPDATE',
+      'SELECT id, estado FROM compras WHERE id = $1 FOR UPDATE',
       [req.params.id]
     );
     if (existing.rows.length === 0) throw httpError(404, 'Compra no encontrada');
-
-    // Se deshace lo que la versión anterior sumó al inventario y se aplica la nueva.
-    if (existing.rows[0].inventario_aplicado) await moverInventario(client, req.params.id, -1);
+    if (existing.rows[0].estado === 'recibida') {
+      throw httpError(409, 'La compra ya se recibió; usa «Deshacer recepción» para corregirla');
+    }
+    if (existing.rows[0].estado === 'cancelada') throw httpError(409, 'La compra está cancelada; reábrela para editarla');
 
     const result = await client.query(
       `UPDATE compras
        SET proveedor_id = $1, fecha = $2, fecha_entrega = $3, total = $4,
-           estado = $5, observaciones = $6, updated_at = NOW()
-       WHERE id = $7
+           observaciones = $5, updated_at = NOW()
+       WHERE id = $6
        RETURNING *`,
-      [proveedor_id, fecha, fecha_entrega || null, total, estado, observaciones || null, req.params.id]
+      [proveedor_id, fecha, fecha_entrega || null, total, observaciones || null, req.params.id]
     );
     await client.query('DELETE FROM compra_items WHERE compra_id = $1', [req.params.id]);
     await insertItems(client, req.params.id, items);
-    if (estado === 'recibida') await moverInventario(client, req.params.id, 1);
     await client.query('COMMIT');
-    res.status(200).json({
-      success: true,
-      message: estado === 'recibida' ? 'Compra actualizada y existencias recalculadas' : 'Compra actualizada',
-      compra: result.rows[0]
-    });
+    res.status(200).json({ success: true, message: 'Compra actualizada', compra: result.rows[0] });
   } catch (error) {
     if (client) await client.query('ROLLBACK');
     sendError(res, error, 'Error actualizando compra');
@@ -335,4 +343,120 @@ const deleteCompra = async (req, res) => {
   }
 };
 
-module.exports = { getCompras, getCompraById, createCompra, updateCompra, deleteCompra };
+/**
+ * POST /api/compras/:id/estado { estado, motivo? }
+ * Marcar como pedida, volver a «por pedir», cancelar, reabrir o deshacer la recepción.
+ */
+const cambiarEstado = async (req, res) => {
+  let client;
+  try {
+    const nuevo = String(req.body.estado || '').toLowerCase();
+    client = await pool.connect();
+    await client.query('BEGIN');
+    const existing = await client.query(
+      'SELECT id, numero_compra, estado, inventario_aplicado FROM compras WHERE id = $1 FOR UPDATE',
+      [req.params.id]
+    );
+    const compra = existing.rows[0];
+    if (!compra) throw httpError(404, 'Compra no encontrada');
+    if (!(TRANSICIONES[compra.estado] || []).includes(nuevo)) {
+      throw httpError(409, `La compra está ${ETIQUETAS[compra.estado] || compra.estado}; no se puede pasar a ${ETIQUETAS[nuevo] || nuevo}`);
+    }
+
+    // Deshacer la recepción: lo que la compra sumó se descuenta (si ya se vendió, no se puede).
+    if (compra.inventario_aplicado) await moverInventario(client, compra.id, -1);
+    const motivo = nuevo === 'cancelada' ? String(req.body.motivo || '').trim().slice(0, 500) || null : null;
+    await client.query(
+      `UPDATE compras SET estado = $1, motivo_cancelacion = $2, recibida_en = NULL, updated_at = NOW()
+       WHERE id = $3`,
+      [nuevo, motivo, compra.id]
+    );
+    await client.query('COMMIT');
+
+    const mensajes = {
+      ordenada: compra.estado === 'recibida'
+        ? `Recepción de ${compra.numero_compra} deshecha: sus artículos se descontaron del inventario`
+        : `${compra.numero_compra} marcada como pedida al proveedor`,
+      pendiente: compra.estado === 'cancelada' ? `${compra.numero_compra} reabierta` : `${compra.numero_compra} vuelve a «por pedir»`,
+      cancelada: `${compra.numero_compra} cancelada`
+    };
+    res.status(200).json({ success: true, message: mensajes[nuevo] });
+  } catch (error) {
+    if (client) await client.query('ROLLBACK');
+    sendError(res, error, 'Error cambiando el estado de la compra');
+  } finally {
+    if (client) client.release();
+  }
+};
+
+/**
+ * POST /api/compras/:id/recibir { recibida_en, items: [{ id, cantidad, precio_unitario }] }
+ * Registra lo que llegó de verdad: cantidad y costo por línea (0 = no llegó y se quita),
+ * suma al inventario y actualiza el costo de los artículos.
+ */
+const recibirCompra = async (req, res) => {
+  let client;
+  try {
+    const recibidaEn = String(req.body.recibida_en || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(recibidaEn)) throw httpError(400, 'Elige el día en que llegó la mercadería');
+    const recibidos = new Map((Array.isArray(req.body.items) ? req.body.items : []).map((item) => [String(item.id), item]));
+
+    client = await pool.connect();
+    await client.query('BEGIN');
+    const existing = await client.query(
+      'SELECT id, numero_compra, estado FROM compras WHERE id = $1 FOR UPDATE',
+      [req.params.id]
+    );
+    const compra = existing.rows[0];
+    if (!compra) throw httpError(404, 'Compra no encontrada');
+    if (!['pendiente', 'ordenada'].includes(compra.estado)) {
+      throw httpError(409, `La compra está ${ETIQUETAS[compra.estado]}; solo se recibe una compra por pedir o pedida`);
+    }
+
+    const lineas = await client.query(
+      `SELECT ci.id, COALESCE(a.nombre_articulo, 'Artículo') AS nombre, ci.cantidad, ci.precio_unitario
+       FROM compra_items ci LEFT JOIN codigos_articulos a ON a.id = ci.articulo_id
+       WHERE ci.compra_id = $1`,
+      [compra.id]
+    );
+    let llegaron = 0;
+    for (const linea of lineas.rows) {
+      const recibido = recibidos.get(String(linea.id));
+      // Sin dato para la línea: llegó tal como se pidió.
+      const cantidad = recibido ? Number(recibido.cantidad) : Number(linea.cantidad);
+      const precio = recibido && recibido.precio_unitario !== undefined ? Number(recibido.precio_unitario) : Number(linea.precio_unitario);
+      if (!Number.isInteger(cantidad) || cantidad < 0) throw httpError(400, `«${linea.nombre}»: la cantidad recibida debe ser un entero de 0 o más`);
+      if (!Number.isFinite(precio) || precio < 0 || precio > 99999999.99) throw httpError(400, `«${linea.nombre}»: el costo no es válido`);
+      if (cantidad === 0) {
+        await client.query('DELETE FROM compra_items WHERE id = $1', [linea.id]);
+        continue;
+      }
+      llegaron += 1;
+      await client.query(
+        'UPDATE compra_items SET cantidad = $1, precio_unitario = $2, subtotal = $3 WHERE id = $4',
+        [cantidad, precio, Number((cantidad * precio).toFixed(2)), linea.id]
+      );
+    }
+    if (llegaron === 0) throw httpError(400, 'No llegó ningún artículo; si el proveedor no entregará, cancela la compra');
+
+    await client.query(
+      `UPDATE compras SET estado = 'recibida', recibida_en = $1, motivo_cancelacion = NULL,
+         total = (SELECT COALESCE(SUM(subtotal), 0) FROM compra_items WHERE compra_id = $2), updated_at = NOW()
+       WHERE id = $2`,
+      [recibidaEn, compra.id]
+    );
+    await moverInventario(client, compra.id, 1);
+    await client.query('COMMIT');
+    res.status(200).json({
+      success: true,
+      message: `${compra.numero_compra} recibida: sus artículos se sumaron al inventario`
+    });
+  } catch (error) {
+    if (client) await client.query('ROLLBACK');
+    sendError(res, error, 'Error recibiendo la compra');
+  } finally {
+    if (client) client.release();
+  }
+};
+
+module.exports = { getCompras, getCompraById, createCompra, updateCompra, deleteCompra, cambiarEstado, recibirCompra };

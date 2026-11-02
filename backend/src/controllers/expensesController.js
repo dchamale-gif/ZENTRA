@@ -81,7 +81,7 @@ class ExpensesController {
                     MAX(total) as maximo,
                     MIN(total) as minimo
                 FROM compras
-                WHERE 1=1
+                WHERE estado <> 'cancelada'
             `;
 
             const params = [];
@@ -129,7 +129,7 @@ class ExpensesController {
                     AVG(c.total) as promedio
                 FROM compras c
                 LEFT JOIN proveedores p ON c.proveedor_id = p.id
-                WHERE 1=1
+                WHERE c.estado <> 'cancelada'
             `;
 
             const params = [];
