@@ -322,7 +322,7 @@ function navigateToPage(pageId, { fromHistory = false } = {}) {
     currentPage = pageId;
     if (!fromHistory && location.hash !== `#${pageId}`) history.pushState(null, '', `#${pageId}`);
 
-    // Cerrar el drawer después de navegar (en escritorio no hace nada).
+    // Cerrar el menú lateral después de elegir una opción.
     setSidebarOpen(false);
 
     // Re-initialize charts if on dashboard or financial dashboard
@@ -942,11 +942,9 @@ function setupResponsive() {
 
     if (toggleBtn && sidebar) {
         toggleBtn.addEventListener('click', function() {
-            if (isSidebarPinned()) setSidebarCollapsed(!document.body.classList.contains('sidebar-collapsed'));
-            else setSidebarOpen(!sidebar.classList.contains('active'));
+            setSidebarOpen(!sidebar.classList.contains('active'));
         });
     }
-    document.body.classList.toggle('sidebar-collapsed', readSidebarCollapsed());
 
     closeBtn?.addEventListener('click', () => setSidebarOpen(false));
     backdrop?.addEventListener('click', () => setSidebarOpen(false));
@@ -968,34 +966,13 @@ function setSidebarOpen(open) {
     const backdrop = document.getElementById('sidebarBackdrop');
     if (!sidebar || !toggleBtn || !backdrop) return;
 
-    // En escritorio el menú lateral queda fijo, salvo que el usuario lo haya escondido.
-    const pinned = isSidebarPinned();
-    if (pinned) open = false;
-    const visible = pinned ? !document.body.classList.contains('sidebar-collapsed') : open;
-
     sidebar.classList.toggle('active', open);
     backdrop.classList.toggle('active', open);
-    sidebar.setAttribute('aria-hidden', String(!visible));
-    sidebar.inert = !visible;
-    toggleBtn.setAttribute('aria-expanded', String(visible));
-    toggleBtn.setAttribute('aria-label', visible ? 'Esconder menú' : 'Mostrar menú');
-    toggleBtn.setAttribute('title', visible ? 'Esconder menú' : 'Mostrar menú');
-}
-
-const SIDEBAR_COLLAPSED_KEY = 'menu.escondido';
-
-function isSidebarPinned() {
-    return window.matchMedia('(min-width: 1024px)').matches;
-}
-
-function readSidebarCollapsed() {
-    try { return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1'; } catch { return false; }
-}
-
-function setSidebarCollapsed(collapsed) {
-    document.body.classList.toggle('sidebar-collapsed', collapsed);
-    try { localStorage.setItem(SIDEBAR_COLLAPSED_KEY, collapsed ? '1' : '0'); } catch { /* opcional */ }
-    setSidebarOpen(false);
+    sidebar.setAttribute('aria-hidden', String(!open));
+    sidebar.inert = !open;
+    toggleBtn.setAttribute('aria-expanded', String(open));
+    toggleBtn.setAttribute('aria-label', open ? 'Cerrar menú' : 'Abrir menú');
+    toggleBtn.setAttribute('title', open ? 'Cerrar menú' : 'Abrir menú');
 }
 
 function setupMobileListTables() {

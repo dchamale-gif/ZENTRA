@@ -325,32 +325,8 @@ td,
     background: #fef2f2;
 }
 
-/* Escritorio: menú lateral fijo; el botón del encabezado lo esconde para dar más espacio. */
-@media (min-width: 1024px) {
-    .sidebar {
-        transform: none;
-    }
-
-    .main-content {
-        margin-left: var(--sidebar-width);
-        width: calc(100% - var(--sidebar-width));
-        transition: margin-left 220ms var(--ease-drawer), width 220ms var(--ease-drawer);
-    }
-
-    body.sidebar-collapsed .sidebar {
-        transform: translateX(-100%);
-    }
-
-    body.sidebar-collapsed .main-content {
-        margin-left: 0;
-        width: 100%;
-    }
-
-    .sidebar-close,
-    .sidebar-backdrop {
-        display: none !important;
-    }
-}
+/* En todas las pantallas el menú lateral se abre con el botón del encabezado, por encima
+   del contenido, y se cierra al elegir una opción: el contenido usa todo el ancho. */
 
 /* ---------- Encabezado ---------- */
 .header {
