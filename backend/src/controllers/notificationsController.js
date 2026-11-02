@@ -1,6 +1,7 @@
 const pool = require('../db/connection');
 
 const { LOW_STOCK_THRESHOLD } = require('../utils/inventory');
+const { resolveUserAccess } = require('../utils/modules');
 
 const safe = async (query, params = []) => {
   try {
@@ -17,7 +18,7 @@ const safe = async (query, params = []) => {
  */
 const getNotifications = async (req, res) => {
   try {
-    const [lowStock, overdue, purchases, organization] = await Promise.all([
+    const [lowStock, overdue, purchases, organization, depositosPendientes, depositosRechazados] = await Promise.all([
       safe(
         `SELECT COUNT(*)::int AS total,
                 COUNT(*) FILTER (WHERE cantidad_disponible <= 0)::int AS agotados
@@ -37,6 +38,18 @@ const getNotifications = async (req, res) => {
       safe(
         `SELECT subscription_status, trial_ends_at FROM organizations
          WHERE id = app_current_organization_id()`
+      ),
+      // Depósitos al banco: el administrador los confirma; quien registró ve los rechazados.
+      resolveUserAccess(pool, req.user.id, req.organization?.modules)
+        .then((access) => (access.roles.includes('admin')
+          ? safe(`SELECT COUNT(*)::int AS total, COALESCE(SUM(monto), 0)::float AS monto
+                  FROM depositos_caja WHERE estado = 'pendiente'`)
+          : []))
+        .catch(() => []),
+      safe(
+        `SELECT COUNT(*)::int AS total FROM depositos_caja
+         WHERE estado = 'rechazado' AND registrado_por = $1 AND revisado_at > NOW() - INTERVAL '7 days'`,
+        [req.user.id]
       )
     ]);
 
@@ -79,6 +92,30 @@ const getNotifications = async (req, res) => {
         title: 'Compras pendientes',
         message: `${purchases[0].total} compra(s) pendientes de recibir o pagar`,
         page: 'compras'
+      });
+    }
+
+    if (depositosPendientes[0]?.total > 0) {
+      const { total, monto } = depositosPendientes[0];
+      notifications.push({
+        id: 'pending-deposits',
+        type: 'warning',
+        icon: 'fa-building-columns',
+        title: 'Depósitos por confirmar',
+        message: `${total} depósito${total === 1 ? '' : 's'} por Q${monto.toFixed(2)}: revisa que estén en el banco`,
+        page: 'caja'
+      });
+    }
+
+    if (depositosRechazados[0]?.total > 0) {
+      const { total } = depositosRechazados[0];
+      notifications.push({
+        id: 'rejected-deposits',
+        type: 'danger',
+        icon: 'fa-building-columns',
+        title: total === 1 ? 'Depósito rechazado' : 'Depósitos rechazados',
+        message: `${total} depósito${total === 1 ? '' : 's'} que registraste ${total === 1 ? 'fue rechazado' : 'fueron rechazados'}; mira el motivo en Caja`,
+        page: 'caja'
       });
     }
 

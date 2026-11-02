@@ -155,6 +155,13 @@ class CajaController {
                     message: `Este ingreso pertenece a la venta ${linked.rows[0].numero_venta}; edita o elimina la venta para cambiarlo.`
                 });
             }
+            const deposito = await db.query('SELECT numero_boleta FROM depositos_caja WHERE caja_movimiento_id = $1', [req.params.id]);
+            if (deposito.rows.length > 0) {
+                return res.status(409).json({
+                    success: false,
+                    message: `Este egreso es el depósito de la boleta ${deposito.rows[0].numero_boleta}; un administrador puede rechazarlo en «Depósitos al banco».`
+                });
+            }
             const result = await db.query(`
                 UPDATE caja
                 SET estado = 'anulado', updated_at = CURRENT_TIMESTAMP

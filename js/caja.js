@@ -9,7 +9,12 @@ const CajaModule = {
         saldoCaja: 0,
         clientes: [],
         loading: false,
-        error: null
+        error: null,
+        depositos: [],
+        depositosResumen: { pendientes: 0, montoPendiente: 0 },
+        cuentasBancarias: [],
+        depositosError: null,
+        depositoFoto: null
     },
     tiposSalida: ['Egreso', 'Devolución'],
     searchTerm: '',
@@ -38,6 +43,16 @@ const CajaModule = {
         document.querySelectorAll('#movimientoCajaModal .close-btn').forEach(btn => {
             btn.addEventListener('click', () => this.closeMovementModal());
         });
+        document.getElementById('depositosFiltro')?.addEventListener('change', () => this.loadDepositos());
+        document.getElementById('depositosLista')?.addEventListener('click', (event) => {
+            const button = event.target.closest('[data-deposito-action]');
+            if (button) this.revisarDeposito(button.dataset.depositoId, button.dataset.depositoAction);
+        });
+        document.getElementById('depositoForm')?.addEventListener('submit', (event) => {
+            event.preventDefault();
+            this.registrarDeposito();
+        });
+        document.getElementById('depositoFoto')?.addEventListener('change', (event) => this.leerFotoBoleta(event.target.files[0]));
     },
 
     async apiRequest(path, options = {}) {
@@ -77,6 +92,7 @@ const CajaModule = {
             this.state.loading = false;
             this.renderMovimientos();
         }
+        await this.loadDepositos();
     },
 
     // Dirección del movimiento según la base de datos; los tipos de salida quedan como respaldo.
@@ -277,8 +293,202 @@ const CajaModule = {
                 ${tile('Egresos', `${formatQ(egresos)}`, egresos > 0 ? 'is-danger' : '')}
                 ${tile('Neto del período', `${formatQ((ingresos - egresos))}`)}
                 ${tile('Saldo en caja', `${formatQ(this.state.saldoCaja)}`, 'is-accent')}
+                ${tile('Depósitos por confirmar', formatQ(this.state.depositosResumen.montoPendiente), this.state.depositosResumen.pendientes ? 'is-warning' : '')}
             </div>
         `;
+    },
+
+    // ---------- Depósitos al banco ----------
+
+    // Revisar depósitos: solo administradores (y no en soporte de solo lectura).
+    puedeRevisar() {
+        return AccessControl.isAdmin() && AccessControl.canEdit('caja');
+    },
+
+    async loadDepositos() {
+        const estado = document.getElementById('depositosFiltro')?.value || '';
+        try {
+            const data = await this.apiRequest(`/depositos${estado ? `?estado=${encodeURIComponent(estado)}` : ''}`);
+            this.state.depositos = data.depositos || [];
+            this.state.depositosResumen = data.resumen || { pendientes: 0, montoPendiente: 0 };
+            this.state.cuentasBancarias = data.cuentas || [];
+            this.state.depositosError = null;
+        } catch (error) {
+            this.state.depositosError = error.message;
+        }
+        this.renderDepositos();
+        this.updateCashStatus();
+    },
+
+    renderDepositos() {
+        const container = document.getElementById('depositosLista');
+        if (!container) return;
+        const depositoBtn = document.getElementById('cajaDepositoBtn');
+        if (depositoBtn) depositoBtn.hidden = !AccessControl.canEdit('caja');
+        const { pendientes, montoPendiente } = this.state.depositosResumen;
+        const resumen = document.getElementById('depositosResumen');
+        if (resumen) {
+            resumen.textContent = pendientes
+                ? `${pendientes} por confirmar, ${formatQ(montoPendiente)}.${this.puedeRevisar() ? ' Confírmalos cuando los veas en el banco.' : ' Un administrador los confirmará al verlos en el banco.'}`
+                : 'Quien maneja la caja registra el depósito con su boleta; un administrador lo confirma al verlo en el banco.';
+        }
+
+        if (this.state.depositosError) {
+            container.innerHTML = `<p class="depositos-empty">No se pudieron cargar los depósitos: ${this.escapeHtml(this.state.depositosError)}.
+                <button class="btn btn-secondary btn-sm" type="button" onclick="CajaModule.loadDepositos()">Reintentar</button></p>`;
+            return;
+        }
+        if (!this.state.depositos.length) {
+            const filtrado = document.getElementById('depositosFiltro')?.value;
+            container.innerHTML = `<p class="depositos-empty">${filtrado ? 'No hay depósitos en este estado.' : 'Aún no hay depósitos registrados.'}
+                ${!filtrado && AccessControl.canEdit('caja') ? '<button class="btn btn-secondary btn-sm" type="button" onclick="CajaModule.openDepositoModal()"><i class="fas fa-building-columns" aria-hidden="true"></i> Registrar depósito</button>' : ''}</p>`;
+            return;
+        }
+
+        const estados = {
+            pendiente: ['badge-warning', 'Por confirmar'],
+            confirmado: ['badge-success', 'Confirmado'],
+            rechazado: ['badge-danger', 'Rechazado']
+        };
+        const revisar = this.puedeRevisar();
+        const fechaHora = (value) => value ? new Date(value).toLocaleString('es-GT', { dateStyle: 'short', timeStyle: 'short' }) : '';
+        container.innerHTML = `<table class="data-table">
+            <thead><tr>
+                <th>Fecha</th><th>Cuenta y boleta</th><th class="text-right">Monto</th><th>Registró</th><th>Estado</th><th>Acciones</th>
+            </tr></thead>
+            <tbody>${this.state.depositos.map(dep => {
+                const [badge, label] = estados[dep.estado] || ['', dep.estado];
+                const id = this.escapeHtml(dep.id);
+                const revision = dep.estado === 'pendiente' ? ''
+                    : `<small>${dep.estado === 'confirmado' ? 'Confirmó' : 'Rechazó'} ${this.escapeHtml(dep.revisadoPor || '')} · ${this.escapeHtml(fechaHora(dep.revisadoAt))}</small>`;
+                return `<tr class="${dep.estado === 'pendiente' ? 'deposito-pendiente' : ''}">
+                    <td>${this.escapeHtml(dep.fecha)}</td>
+                    <td>
+                        <strong>${this.escapeHtml(dep.cuentaBancaria)}</strong>
+                        <small class="deposito-detalle">Boleta ${this.escapeHtml(dep.numeroBoleta)}${dep.nota ? ` · ${this.escapeHtml(dep.nota)}` : ''}</small>
+                    </td>
+                    <td class="text-right"><strong>${formatQ(dep.monto)}</strong></td>
+                    <td>${this.escapeHtml(dep.registradoPor || '-')}<small class="deposito-detalle">${this.escapeHtml(fechaHora(dep.registradoAt))}</small></td>
+                    <td>
+                        <span class="badge ${badge}">${label}</span>
+                        ${revision}
+                        ${dep.motivoRechazo ? `<small class="deposito-detalle">Motivo: ${this.escapeHtml(dep.motivoRechazo)}</small>` : ''}
+                    </td>
+                    <td class="actions"><div class="deposito-acciones">
+                        ${dep.tieneBoleta ? `<a class="btn btn-secondary btn-sm" href="${authManager.apiBaseUrl}/api/caja/depositos/${encodeURIComponent(dep.id)}/boleta" target="_blank" rel="noopener"><i class="fas fa-image" aria-hidden="true"></i> Boleta</a>` : ''}
+                        ${revisar && dep.estado === 'pendiente' ? `
+                            <button class="btn btn-primary btn-sm" type="button" data-deposito-action="confirmar" data-deposito-id="${id}"><i class="fas fa-check" aria-hidden="true"></i> Confirmar</button>
+                            <button class="btn btn-secondary btn-sm" type="button" data-deposito-action="rechazar" data-deposito-id="${id}">Rechazar</button>` : ''}
+                    </div></td>
+                </tr>`;
+            }).join('')}</tbody>
+        </table>`;
+    },
+
+    openDepositoModal() {
+        if (!AccessControl.canEdit('caja')) return;
+        document.getElementById('depositoForm').reset();
+        this.state.depositoFoto = null;
+        document.getElementById('depositoError').hidden = true;
+        document.getElementById('depositoEnCaja').textContent = formatQ(this.state.saldoCaja);
+        // Lo normal es depositar todo el efectivo de la caja.
+        if (this.state.saldoCaja > 0) document.getElementById('depositoMonto').value = this.state.saldoCaja.toFixed(2);
+        document.getElementById('depositoFecha').value = this.today();
+        document.getElementById('depositoCuentas').innerHTML = this.state.cuentasBancarias
+            .map(cuenta => `<option value="${this.escapeHtml(cuenta)}"></option>`).join('');
+        if (this.state.cuentasBancarias.length) document.getElementById('depositoCuenta').value = this.state.cuentasBancarias[0];
+        document.getElementById('depositoModal').style.display = 'flex';
+        document.getElementById('depositoMonto').focus();
+    },
+
+    closeDepositoModal() {
+        document.getElementById('depositoModal').style.display = 'none';
+    },
+
+    async leerFotoBoleta(file) {
+        this.state.depositoFoto = null;
+        if (!file) return;
+        try {
+            // Grande para que se lean los números de la boleta.
+            this.state.depositoFoto = await CodigosArticulosModule.resizeImage(file, 1600);
+        } catch {
+            this.showDepositoError('No se pudo leer la foto. Prueba con una foto JPG o PNG.');
+            document.getElementById('depositoFoto').value = '';
+        }
+    },
+
+    showDepositoError(message, focusId) {
+        const error = document.getElementById('depositoError');
+        error.textContent = message;
+        error.hidden = false;
+        if (focusId) document.getElementById(focusId)?.focus();
+    },
+
+    async registrarDeposito() {
+        document.getElementById('depositoError').hidden = true;
+        const monto = parseMonto(document.getElementById('depositoMonto').value);
+        const fecha = document.getElementById('depositoFecha').value;
+        const cuentaBancaria = document.getElementById('depositoCuenta').value.trim();
+        const numeroBoleta = document.getElementById('depositoBoleta').value.trim();
+        if (!isValidMonto(monto)) return this.showDepositoError('Escribe el monto depositado, por ejemplo 1500.00.', 'depositoMonto');
+        if (monto > this.state.saldoCaja + 0.004) {
+            return this.showDepositoError(`En la caja hay ${formatQ(this.state.saldoCaja)}; el depósito no puede ser mayor.`, 'depositoMonto');
+        }
+        if (!fecha) return this.showDepositoError('Elige la fecha del depósito.', 'depositoFecha');
+        if (!cuentaBancaria) return this.showDepositoError('Escribe la cuenta bancaria donde depositaste.', 'depositoCuenta');
+        if (!numeroBoleta) return this.showDepositoError('Escribe el número de la boleta.', 'depositoBoleta');
+
+        const button = document.getElementById('depositoSubmit');
+        button.disabled = true;
+        try {
+            const data = await this.apiRequest('/depositos', {
+                method: 'POST',
+                body: JSON.stringify({
+                    monto,
+                    fecha,
+                    cuentaBancaria,
+                    numeroBoleta,
+                    nota: document.getElementById('depositoNota').value.trim(),
+                    boleta: this.state.depositoFoto
+                })
+            });
+            this.closeDepositoModal();
+            showNotification(data.message, 'success');
+            await this.loadData();
+        } catch (error) {
+            this.showDepositoError(error.message);
+        } finally {
+            button.disabled = false;
+        }
+    },
+
+    async revisarDeposito(id, accion) {
+        const deposito = this.state.depositos.find(dep => dep.id === id);
+        if (!deposito) return;
+        const detalle = `${formatQ(deposito.monto)} en ${deposito.cuentaBancaria}, boleta ${deposito.numeroBoleta}`;
+        let body = {};
+        if (accion === 'confirmar') {
+            if (!confirm(`¿Confirmar que el depósito de ${detalle} ya está en el banco?`)) return;
+        } else {
+            const motivo = prompt(`¿Por qué rechazas el depósito de ${detalle}? El monto volverá a contar en la caja.`, 'No aparece en el banco');
+            if (motivo === null) return;
+            if (!motivo.trim()) return showNotification('Escribe el motivo del rechazo.', 'error');
+            body = { motivo: motivo.trim() };
+        }
+        try {
+            const data = await this.apiRequest(`/depositos/${encodeURIComponent(id)}/${accion}`, { method: 'POST', body: JSON.stringify(body) });
+            showNotification(data.message, 'success');
+            await this.loadData();
+            if (typeof NotificationsModule !== 'undefined') NotificationsModule.refresh();
+        } catch (error) {
+            showNotification(`No se pudo ${accion} el depósito: ${error.message}`, 'error');
+            this.loadDepositos();
+        }
+    },
+
+    today() {
+        const now = new Date();
+        return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     },
 
     refreshMovementsTable() {

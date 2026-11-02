@@ -493,6 +493,8 @@ tr.is-inactive td { color: var(--text-gray); }
 
 /* ---------- Diálogos creados por JS ---------- */
 #userFormModal .modal-content { max-width: 640px; width: calc(100% - 32px); }
+/* Un formulario entre el modal y su cuerpo: el cuerpo se desplaza y el pie queda visible. */
+.modal-content > form { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
 
 /* ---------- Pantallas pequeñas ---------- */
 @media (max-width: 768px) {
@@ -1379,6 +1381,27 @@ tr.is-inactive td { color: var(--text-gray); }
     }
 
     .pos-ticket-jump span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+}
+
+/* Depósitos de la caja al banco */
+.depositos-card { margin-bottom: 16px; }
+.depositos-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--border-color); }
+.depositos-header h2 { margin: 0 0 2px; font-size: 15px; }
+.depositos-header small { color: var(--text-gray); font-size: 12.5px; }
+.depositos-header select { width: auto; min-width: 150px; }
+.depositos-empty { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 12px; margin: 0; padding: 20px 16px; color: var(--text-gray); text-align: center; }
+.deposito-detalle { display: block; color: var(--text-gray); font-size: 12px; }
+.depositos-card td small { display: block; }
+.deposito-pendiente { background: #fffbeb; }
+.deposito-acciones { display: flex; flex-wrap: wrap; gap: 6px; }
+@media (min-width: 641px) {
+    .depositos-card .data-table td.actions { display: table-cell; }
+}
+.deposito-en-caja { display: flex; align-items: baseline; justify-content: space-between; margin: 0 0 16px; color: var(--text-gray); }
+.deposito-en-caja strong { font-size: 22px; color: var(--text-dark); }
+@media (max-width: 640px) {
+    .depositos-header { flex-direction: column; }
+    .depositos-header select { width: 100%; }
 }
 
 /* Precios con margen de beneficio */

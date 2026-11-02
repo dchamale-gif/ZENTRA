@@ -1058,14 +1058,36 @@
                     <div class="page-header">
                         <div>
                             <h1>Caja</h1>
-                            <p class="page-subtitle">Ingresos y egresos de efectivo. Las ventas en efectivo y los cobros entran solos.</p>
+                            <p class="page-subtitle">Ingresos y egresos de efectivo. Las ventas en efectivo y los cobros entran solos; el efectivo sale al depositarlo en el banco.</p>
                         </div>
-                        <button class="btn btn-primary" onclick="CajaModule.openMovementModal()">
-                            <i class="fas fa-plus"></i> Nuevo movimiento
-                        </button>
+                        <div class="button-group">
+                            <button class="btn btn-secondary" type="button" id="cajaDepositoBtn" onclick="CajaModule.openDepositoModal()">
+                                <i class="fas fa-building-columns" aria-hidden="true"></i> Registrar depósito
+                            </button>
+                            <button class="btn btn-primary" onclick="CajaModule.openMovementModal()">
+                                <i class="fas fa-plus"></i> Nuevo movimiento
+                            </button>
+                        </div>
                     </div>
 
                     <div id="cashStatus" class="cash-status-container"></div>
+
+                    <section class="table-card depositos-card" aria-labelledby="depositosTitle">
+                        <div class="depositos-header">
+                            <div>
+                                <h2 id="depositosTitle">Depósitos al banco</h2>
+                                <small id="depositosResumen">Quien maneja la caja registra el depósito con su boleta; un administrador lo confirma al verlo en el banco.</small>
+                            </div>
+                            <label class="sr-only" for="depositosFiltro">Estado</label>
+                            <select id="depositosFiltro" class="form-input">
+                                <option value="">Todos</option>
+                                <option value="pendiente">Por confirmar</option>
+                                <option value="confirmado">Confirmados</option>
+                                <option value="rechazado">Rechazados</option>
+                            </select>
+                        </div>
+                        <div id="depositosLista" class="table-responsive"></div>
+                    </section>
 
                     <div class="toolbar">
                         <label class="search-field">
@@ -1586,6 +1608,56 @@
                 <div class="modal-footer">
                     <button class="btn btn-secondary" type="button" onclick="PosModule.closeModal('posNewAccountModal')">Cancelar</button>
                     <button class="btn btn-primary" type="submit" id="posNewAccountSubmit">Abrir cuenta</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="depositoModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="depositoTitle">
+        <div class="modal-content modal-content-lg">
+            <div class="modal-header">
+                <h2 id="depositoTitle">Registrar depósito</h2>
+                <button class="close-btn" type="button" aria-label="Cerrar" onclick="CajaModule.closeDepositoModal()">&times;</button>
+            </div>
+            <form id="depositoForm" novalidate>
+                <div class="modal-body">
+                    <p class="deposito-en-caja">En la caja <strong id="depositoEnCaja">Q0.00</strong></p>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="depositoMonto">Monto depositado</label>
+                            <input id="depositoMonto" class="form-input" type="text" inputmode="decimal" autocomplete="off" placeholder="0.00">
+                        </div>
+                        <div class="form-group">
+                            <label for="depositoFecha">Fecha del depósito</label>
+                            <input id="depositoFecha" class="form-input" type="date">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="depositoCuenta">Cuenta bancaria</label>
+                            <input id="depositoCuenta" class="form-input" type="text" maxlength="120" autocomplete="off" list="depositoCuentas" placeholder="Industrial 123-456789-0">
+                            <datalist id="depositoCuentas"></datalist>
+                        </div>
+                        <div class="form-group">
+                            <label for="depositoBoleta">Número de boleta</label>
+                            <input id="depositoBoleta" class="form-input" type="text" maxlength="60" autocomplete="off">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="depositoFoto">Foto de la boleta (opcional)</label>
+                        <input id="depositoFoto" class="form-input" type="file" accept="image/*" capture="environment" aria-describedby="depositoFotoHint">
+                        <small id="depositoFotoHint">Ayuda al administrador a confirmarlo. Se achica sola antes de enviarse.</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="depositoNota">Nota (opcional)</label>
+                        <input id="depositoNota" class="form-input" type="text" maxlength="500" autocomplete="off" placeholder="Ventas del lunes y martes">
+                    </div>
+                    <p id="depositoError" class="form-error" role="alert" hidden></p>
+                    <small>El monto sale de la caja ahora. Si el administrador rechaza el depósito, vuelve a contar en la caja.</small>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" type="button" onclick="CajaModule.closeDepositoModal()">Cancelar</button>
+                    <button class="btn btn-primary" type="submit" id="depositoSubmit"><i class="fas fa-building-columns" aria-hidden="true"></i> Registrar depósito</button>
                 </div>
             </form>
         </div>
