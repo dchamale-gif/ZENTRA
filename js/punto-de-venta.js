@@ -772,7 +772,8 @@ const PosModule = {
         return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${e(titulo)}</title><style>
             @page { size: ${pagina}; margin: ${papel === 'carta' ? '15mm' : '0'}; }
             * { box-sizing: border-box; }
-            body { width: ${ancho}; margin: 0 auto; padding: 4mm 0; color: #000;
+            /* Abajo queda papel en blanco: el cortador de la térmica no corta la última línea. */
+            body { width: ${ancho}; margin: 0 auto; padding: ${papel === 'carta' ? '0' : '2mm 0 10mm'}; color: #000;
                 font: ${papel === '58' ? '11px' : '12px'}/1.35 "Courier New", Courier, monospace; }
             h1 { margin: 0; font-size: 1.25em; text-align: center; }
             p { margin: 0; text-align: center; }
