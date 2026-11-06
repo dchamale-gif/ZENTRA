@@ -66,3 +66,6 @@ coverage/
 
 # Configuración de nginx generada por configurar-dominio.sh --nginx
 deploy/nginx-erp.*.conf
+
+# Respaldos de bases de datos (traen usuarios y credenciales)
+*.dump
