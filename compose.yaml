@@ -158,17 +158,140 @@ services:
     cap_drop: [ALL]
     cap_add:
       - NET_BIND_SERVICE
-    networks: [frontend, backend]
+    # automatizaciones: para servir el portal de pruebas en /pruebas (pestaña del panel de soporte)
+    networks: [frontend, backend, automatizaciones]
+
+  # ---------- Automatizaciones (pestaña del panel de soporte) ----------
+  # Portal AutomatizacionBotEngine (Java/Spring) con Chrome de Selenium y grabación de video.
+  # Solo arranca con COMPOSE_PROFILES=automatizaciones en .env (necesita unos 2-3 GB de RAM).
+  # Caddy lo publica en /pruebas y solo deja pasar a quien tenga sesión de soporte.
+  automatizaciones:
+    profiles: [automatizaciones]
+    build:
+      context: ./automatizaciones
+      args:
+        BOTENGINE_REF: ${AUTOMATIZACIONES_REF:-prod}
+    restart: unless-stopped
+    # Comparte la red con Chrome: el portal busca Selenium en localhost:4444 y la prueba de
+    # ejemplo entra al propio portal en localhost:8081.
+    network_mode: "service:automatizaciones-chrome"
+    environment:
+      TZ: America/Guatemala
+      JAVA_OPTS: -Xmx512m
+      SERVER_PORT: 8081
+      SERVER_SERVLET_CONTEXT_PATH: /pruebas
+      SERVER_FORWARD_HEADERS_STRATEGY: native
+      SERVER_SERVLET_SESSION_COOKIE_SECURE: "true"
+      SPRING_SERVLET_MULTIPART_MAX_FILE_SIZE: 10MB
+      SPRING_SERVLET_MULTIPART_MAX_REQUEST_SIZE: 10MB
+      SPRING_DATASOURCE_URL: jdbc:postgresql://automatizaciones-db:5432/automatizacion_botengine
+      SPRING_DATASOURCE_USERNAME: botengine_app
+      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+      SPRING_JPA_OPEN_IN_VIEW: "false"
+      BOTENGINE_ADMIN_USERNAME: admin
+      # Parámetros del framework Selenium (config.properties del repositorio)
+      BASE_URL: http://localhost:8081/pruebas/login
+      BROWSER: chrome
+      HEADLESS: "true"
+      TIMEOUT_SECONDS: 15
+      EVIDENCE_PATH: reportes/evidencias
+    secrets:
+      - automatizaciones_db_password
+      - automatizaciones_admin_password
+      - automatizaciones_credential_key
+    volumes:
+      - automatizaciones_storage:/app/storage
+      - automatizaciones_videos:/app/storage/selenium-videos
+      - automatizaciones_reportes:/app/reportes
+    depends_on:
+      automatizaciones-db:
+        condition: service_healthy
+      automatizaciones-chrome:
+        condition: service_healthy
+      automatizaciones-video:
+        condition: service_started
+    security_opt:
+      - no-new-privileges:true
+
+  automatizaciones-db:
+    profiles: [automatizaciones]
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: automatizacion_botengine
+      POSTGRES_USER: botengine_app
+      POSTGRES_PASSWORD_FILE: /run/secrets/automatizaciones_db_password
+    secrets:
+      - automatizaciones_db_password
+    volumes:
+      - automatizaciones_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U botengine_app -d automatizacion_botengine"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [automatizaciones]
+
+  automatizaciones-chrome:
+    profiles: [automatizaciones]
+    image: selenium/standalone-chrome:4.48.0-20260905
+    restart: unless-stopped
+    shm_size: "2gb"
+    environment:
+      SE_START_VNC: "false"
+      SE_SCREEN_WIDTH: "1920"
+      SE_SCREEN_HEIGHT: "1080"
+      SE_NODE_MAX_SESSIONS: "1"
+      TZ: America/Guatemala
+    healthcheck:
+      test: ["CMD", "/opt/bin/check-grid.sh", "--host", "0.0.0.0", "--port", "4444"]
+      interval: 10s
+      timeout: 15s
+      retries: 10
+    networks:
+      automatizaciones:
+        # El portal Java usa la red de este contenedor; Caddy lo encuentra con este nombre.
+        aliases: [automatizaciones-portal]
+      # Salida a internet para abrir los sitios que se prueban.
+      egress:
+
+  automatizaciones-video:
+    profiles: [automatizaciones]
+    image: selenium/video:ffmpeg-8.1-20260905
+    restart: unless-stopped
+    depends_on:
+      automatizaciones-chrome:
+        condition: service_healthy
+    volumes:
+      - automatizaciones_videos:/videos
+    environment:
+      DISPLAY_CONTAINER_NAME: automatizaciones-chrome
+      SE_VIDEO_RECORD_STANDALONE: "true"
+      # El nombre lo manda el portal (se:name) con el UUID de la ejecución.
+      SE_VIDEO_FILE_NAME: "auto"
+      SE_VIDEO_FILE_NAME_SUFFIX: "false"
+      # Solo graba las sesiones que lo piden.
+      SE_RECORD_VIDEO: "false"
+      SE_FRAME_RATE: "15"
+      TZ: America/Guatemala
+    stop_grace_period: 30s
+    networks: [automatizaciones]
 
 volumes:
   postgres_data:
   caddy_data:
+  automatizaciones_pgdata:
+  automatizaciones_storage:
+  automatizaciones_videos:
+  automatizaciones_reportes:
 
 networks:
   frontend:
   backend:
     internal: true
   egress:
+  automatizaciones:
+    internal: true
 
 secrets:
   postgres_password:
@@ -187,3 +310,9 @@ secrets:
     file: ./secrets/integrations_key.txt
   email_api_key:
     file: ./secrets/email_api_key.txt
+  automatizaciones_db_password:
+    file: ./secrets/automatizaciones_db_password.txt
+  automatizaciones_admin_password:
+    file: ./secrets/automatizaciones_admin_password.txt
+  automatizaciones_credential_key:
+    file: ./secrets/automatizaciones_credential_key.txt

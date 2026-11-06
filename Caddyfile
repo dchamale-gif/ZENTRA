@@ -18,6 +18,21 @@
         reverse_proxy backend:3011
     }
 
+    # Portal de automatizaciones (pestaña del panel de soporte). Antes de cada petición el
+    # backend revisa que haya sesión de soporte; sin ella responde 401 y no se llega al portal.
+    # Si el servicio no está encendido (perfil "automatizaciones"), Caddy responde 502.
+    @automatizaciones path /pruebas /pruebas/*
+    handle @automatizaciones {
+        forward_auth backend:3011 {
+            uri /api/platform/sesion
+        }
+        reverse_proxy automatizaciones-portal:8081 {
+            # Caddy ya pone estas cabeceras para todo el sitio; así no quedan repetidas.
+            header_down -Strict-Transport-Security
+            header_down -X-Content-Type-Options
+        }
+    }
+
     handle {
         root * /srv
 
@@ -48,9 +63,13 @@
     header {
         Strict-Transport-Security "max-age=31536000; includeSubDomains"
         X-Content-Type-Options "nosniff"
-        X-Frame-Options "DENY"
         Referrer-Policy "strict-origin-when-cross-origin"
         Permissions-Policy "camera=(), microphone=(), geolocation=()"
         -Server
     }
+
+    # Ninguna página se puede mostrar dentro de otra, salvo el portal de automatizaciones,
+    # que se ve dentro del panel de soporte (el portal manda su propio SAMEORIGIN).
+    @noAutomatizaciones not path /pruebas /pruebas/*
+    header @noAutomatizaciones X-Frame-Options "DENY"
 }

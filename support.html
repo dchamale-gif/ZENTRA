@@ -187,6 +187,12 @@
         .radio-group small { color: var(--muted); font-weight: 400; }
         .user-tag { background: #f1f5f9; border-radius: 999px; color: var(--body); font-size: 11px; font-weight: 600; margin-left: 6px; padding: 2px 8px; }
         .inactive-row td { color: var(--muted); }
+        a.secondary { text-decoration: none; }
+        .auto-frame { background: #fff; border: 1px solid var(--border); border-radius: 12px; display: block; height: calc(100vh - 230px); min-height: 520px; width: 100%; }
+        .auto-frame[hidden], #autoEstado[hidden] { display: none; }
+        .auto-off h3 { color: var(--text); font-size: 14px; margin: 0 0 6px; }
+        .auto-off p { margin: 0 0 12px; }
+        .auto-off code { background: #f1f5f9; border-radius: 4px; color: var(--text); font-size: 12.5px; padding: 1px 6px; }
         :focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
         @media (max-width: 700px) {
             header { padding: 12px 16px; } main { padding: 16px; } .views { padding: 0 8px; }
@@ -207,6 +213,7 @@
         <button type="button" data-view="empresas"><i class="fas fa-building" aria-hidden="true"></i> Empresas</button>
         <button type="button" data-view="facturas"><i class="fas fa-file-invoice-dollar" aria-hidden="true"></i> Facturas</button>
         <button type="button" data-view="sitio"><i class="fas fa-chart-line" aria-hidden="true"></i> Sitio web</button>
+        <button type="button" data-view="automatizaciones"><i class="fas fa-robot" aria-hidden="true"></i> Automatizaciones</button>
     </nav>
     <main>
         <div id="message" class="message" role="status"></div>
@@ -286,6 +293,22 @@
                 </select>
             </div>
             <div id="analyticsBody"><div class="card empty-note">Cargando visitas...</div></div>
+        </section>
+
+        <!-- Portal AutomatizacionBotEngine (Selenium), servido por el servidor en /pruebas -->
+        <section id="view-automatizaciones" class="view" aria-labelledby="autoTitle" hidden>
+            <div class="analytics-head">
+                <div>
+                    <h2 id="autoTitle">Automatizaciones</h2>
+                    <p class="hint">Pruebas automáticas con Selenium: ejecución, evidencias, videos, reportes e historial. El portal tiene su propio usuario.</p>
+                </div>
+                <div class="section-actions">
+                    <button id="autoReload" class="secondary" type="button"><i class="fas fa-rotate" aria-hidden="true"></i> Recargar</button>
+                    <a class="secondary" href="/pruebas/" target="_blank" rel="noopener"><i class="fas fa-up-right-from-square" aria-hidden="true"></i> Abrir en otra pestaña</a>
+                </div>
+            </div>
+            <div id="autoEstado" class="card empty-note">Conectando con el portal de automatizaciones...</div>
+            <iframe id="autoFrame" class="auto-frame" title="Portal de automatizaciones" hidden></iframe>
         </section>
     </main>
 
@@ -513,5 +536,6 @@
     <script src="js/support.js"></script>
     <script src="js/support-crm.js"></script>
     <script src="js/website-analytics.js"></script>
+    <script src="js/support-automatizaciones.js"></script>
 </body>
 </html>

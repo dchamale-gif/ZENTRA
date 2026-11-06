@@ -67,7 +67,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Primero las empresas: el inicio y los formularios las usan.
     const initial = (window.location.hash || '').slice(1);
-    setView(['inicio', 'empresas', 'facturas', 'sitio'].includes(initial) ? initial : 'inicio');
+    setView(['inicio', 'empresas', 'facturas', 'sitio', 'automatizaciones'].includes(initial) ? initial : 'inicio');
     refreshData();
 });
 
@@ -77,6 +77,7 @@ function showView(view) {
     setView(view);
     if (view === 'inicio') loadSummary();
     if (view === 'facturas') loadInvoices();
+    if (view === 'automatizaciones') cargarAutomatizaciones();
 }
 
 function setView(view) {

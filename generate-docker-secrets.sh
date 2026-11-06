@@ -21,14 +21,18 @@ copy_acl() {
   done
 }
 
+# Formato: hex (por defecto) o base64 (la llave AES del portal de automatizaciones).
 generate_secret() {
   local file="$1"
   local bytes="${2:-32}"
+  local format="${3:-hex}"
   local full_path="$SECRETS_DIR/$file"
   if [ -s "$full_path" ]; then
     echo "• Ya existe: $full_path (conservado)"
   else
-    if command -v openssl >/dev/null 2>&1; then
+    if [ "$format" = "base64" ]; then
+      head -c "$bytes" /dev/urandom | base64 | tr -d '\n' > "$full_path"
+    elif command -v openssl >/dev/null 2>&1; then
       openssl rand -hex "$bytes" | tr -d '\n' > "$full_path"
     else
       head -c "$bytes" /dev/urandom | od -An -tx1 | tr -d ' \n' > "$full_path"
@@ -47,6 +51,10 @@ generate_secret "platform_db_password.txt" 32
 generate_secret "jwt_secret.txt" 48
 generate_secret "platform_admin_password.txt" 24
 generate_secret "integrations_key.txt" 32
+# Portal de automatizaciones (pestaña del panel de soporte)
+generate_secret "automatizaciones_db_password.txt" 32
+generate_secret "automatizaciones_admin_password.txt" 16
+generate_secret "automatizaciones_credential_key.txt" 32 base64
 
 # La clave de Brevo la pones tú; si aún no existe se crea vacía para que Docker arranque
 # (sin clave, el ERP crea las empresas pero avisa que el correo no salió).
@@ -60,3 +68,4 @@ fi
 echo ""
 echo "Secretos generados con permisos 0600 en $SECRETS_DIR."
 echo "La contraseña inicial del administrador de plataforma está en: $SECRETS_DIR/platform_admin_password.txt"
+echo "La del usuario admin del portal de automatizaciones está en: $SECRETS_DIR/automatizaciones_admin_password.txt"
