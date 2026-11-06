@@ -188,6 +188,11 @@
         .user-tag { background: #f1f5f9; border-radius: 999px; color: var(--body); font-size: 11px; font-weight: 600; margin-left: 6px; padding: 2px 8px; }
         .inactive-row td { color: var(--muted); }
         a.secondary { text-decoration: none; }
+        .staff-table { min-width: 760px; }
+        .field-help { color: var(--muted); display: block; font-size: 12px; margin-top: 4px; }
+        .row-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+        .activa { background: #dcfce7; color: #166534; }
+        .inactiva { background: #f1f5f9; color: #475569; }
         .auto-frame { background: #fff; border: 1px solid var(--border); border-radius: 12px; display: block; height: calc(100vh - 230px); min-height: 520px; width: 100%; }
         .auto-frame[hidden], #autoEstado[hidden] { display: none; }
         .auto-off h3 { color: var(--text); font-size: 14px; margin: 0 0 6px; }
@@ -214,6 +219,7 @@
         <button type="button" data-view="facturas"><i class="fas fa-file-invoice-dollar" aria-hidden="true"></i> Facturas</button>
         <button type="button" data-view="sitio"><i class="fas fa-chart-line" aria-hidden="true"></i> Sitio web</button>
         <button type="button" data-view="automatizaciones"><i class="fas fa-robot" aria-hidden="true"></i> Automatizaciones</button>
+        <button type="button" data-view="equipo"><i class="fas fa-user-shield" aria-hidden="true"></i> Equipo</button>
     </nav>
     <main>
         <div id="message" class="message" role="status"></div>
@@ -310,6 +316,23 @@
             <div id="autoEstado" class="card empty-note">Conectando con el portal de automatizaciones...</div>
             <iframe id="autoFrame" class="auto-frame" title="Portal de automatizaciones" hidden></iframe>
         </section>
+
+        <!-- Usuarios que entran a este panel de soporte -->
+        <section id="view-equipo" class="view" aria-labelledby="equipoTitle" hidden>
+            <div class="analytics-head">
+                <div>
+                    <h2 id="equipoTitle">Equipo de soporte</h2>
+                    <p class="hint">Personas que pueden entrar a este panel. Una cuenta desactivada pierde el acceso al instante.</p>
+                </div>
+                <button id="newStaffButton" class="primary" type="button"><i class="fas fa-user-plus" aria-hidden="true"></i> Agregar usuario de soporte</button>
+            </div>
+            <section class="card table-wrap">
+                <table class="staff-table">
+                    <thead><tr><th>Nombre</th><th>Correo</th><th>Estado</th><th>Último acceso</th><th>Acciones</th></tr></thead>
+                    <tbody id="staffBody"><tr><td colspan="5">Cargando equipo...</td></tr></tbody>
+                </table>
+            </section>
+        </section>
     </main>
 
     <!-- Ficha de la empresa -->
@@ -384,10 +407,28 @@
             <p class="modal-hint" id="credentialsHint"></p>
             <dl class="credentials">
                 <dt>Usuario</dt><dd id="credentialsEmail" class="key"></dd>
-                <dt>Contraseña temporal</dt><dd id="credentialsPassword" class="key"></dd>
+                <dt id="credentialsPasswordLabel">Contraseña temporal</dt><dd id="credentialsPassword" class="key"></dd>
             </dl>
-            <p class="modal-hint">Esta contraseña no se vuelve a mostrar. Al entrar, el usuario debe crear la suya.</p>
+            <p class="modal-hint" id="credentialsNote">Esta contraseña no se vuelve a mostrar. Al entrar, el usuario debe crear la suya.</p>
             <div class="modal-actions"><button class="secondary" type="button" id="credentialsCopy"><i class="fas fa-copy" aria-hidden="true"></i> Copiar</button><button class="primary" type="button" data-close>Listo</button></div>
+        </div>
+    </div>
+
+    <!-- Usuario de soporte: alta o cambio de contraseña -->
+    <div id="staffModal" class="modal hidden">
+        <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="staffTitle">
+            <h2 id="staffTitle">Nuevo usuario de soporte</h2>
+            <p class="modal-hint" id="staffHint"></p>
+            <form id="staffForm">
+                <div class="form-group" data-staff-new><label for="staffName">Nombre</label><input id="staffName" maxlength="150" autocomplete="off"></div>
+                <div class="form-group" data-staff-new><label for="staffEmail">Correo (usuario para entrar)</label><input id="staffEmail" type="email" maxlength="150" autocomplete="off"></div>
+                <div class="form-group">
+                    <label for="staffPassword">Contraseña</label>
+                    <input id="staffPassword" type="text" minlength="12" maxlength="72" autocomplete="new-password" spellcheck="false" aria-describedby="staffPasswordHelp">
+                    <small id="staffPasswordHelp" class="field-help">Mínimo 12 caracteres. Déjala vacía para generar una segura.</small>
+                </div>
+                <div class="modal-actions"><button class="secondary" type="button" data-close>Cancelar</button><button class="primary" type="submit" id="staffSubmit">Crear usuario</button></div>
+            </form>
         </div>
     </div>
 
@@ -537,5 +578,6 @@
     <script src="js/support-crm.js"></script>
     <script src="js/website-analytics.js"></script>
     <script src="js/support-automatizaciones.js"></script>
+    <script src="js/support-equipo.js"></script>
 </body>
 </html>

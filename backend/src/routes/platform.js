@@ -2,6 +2,7 @@ const express = require('express');
 const platformController = require('../controllers/platformController');
 const clientes = require('../controllers/soporteClientesController');
 const facturas = require('../controllers/facturasPlataformaController');
+const equipo = require('../controllers/equipoSoporteController');
 const { platformAuthMiddleware } = require('../middleware/platformAuth');
 
 const router = express.Router();
@@ -10,6 +11,12 @@ router.use(platformAuthMiddleware);
 // Caddy lo consulta antes de cada petición al portal de automatizaciones (/pruebas):
 // si el middleware deja pasar, hay sesión de soporte activa.
 router.get('/sesion', (req, res) => res.sendStatus(204));
+
+// Equipo de soporte: cuentas que entran a este panel.
+router.get('/equipo', equipo.listar);
+router.post('/equipo', equipo.crear);
+router.post('/equipo/:id/password', equipo.cambiarPassword);
+router.post('/equipo/:id/estado', equipo.cambiarEstado);
 router.post('/organizations', platformController.createOrganization);
 router.post('/contratos/vista-previa', platformController.previewContractDocuments);
 router.get('/organizations', platformController.listOrganizations);

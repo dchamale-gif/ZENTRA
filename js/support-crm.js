@@ -67,7 +67,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Primero las empresas: el inicio y los formularios las usan.
     const initial = (window.location.hash || '').slice(1);
-    setView(['inicio', 'empresas', 'facturas', 'sitio', 'automatizaciones'].includes(initial) ? initial : 'inicio');
+    setView(['inicio', 'empresas', 'facturas', 'sitio', 'automatizaciones', 'equipo'].includes(initial) ? initial : 'inicio');
     refreshData();
 });
 
@@ -78,6 +78,7 @@ function showView(view) {
     if (view === 'inicio') loadSummary();
     if (view === 'facturas') loadInvoices();
     if (view === 'automatizaciones') cargarAutomatizaciones();
+    if (view === 'equipo') cargarEquipo();
 }
 
 function setView(view) {
@@ -737,17 +738,21 @@ async function saveUser(event) {
     });
 }
 
-function showCredentials(data) {
-    document.getElementById('credentialsHint').textContent = data.correoEnviado
+// Las cuentas de soporte (pestaña Equipo) pasan sus propios textos: no hay correo ni cambio obligatorio.
+function showCredentials(data, textos = {}) {
+    document.getElementById('credentialsHint').textContent = textos.hint || (data.correoEnviado
         ? 'También se enviaron por correo. Guárdalos solo si necesitas compartirlos por otro medio.'
-        : 'El correo no salió: compártelos con el cliente por WhatsApp o en persona.';
+        : 'El correo no salió: compártelos con el cliente por WhatsApp o en persona.');
+    document.getElementById('credentialsNote').textContent = textos.note
+        || 'Esta contraseña no se vuelve a mostrar. Al entrar, el usuario debe crear la suya.';
+    document.getElementById('credentialsPasswordLabel').textContent = textos.passwordLabel || 'Contraseña temporal';
     document.getElementById('credentialsEmail').textContent = data.credenciales.email;
     document.getElementById('credentialsPassword').textContent = data.credenciales.password;
     openModal('credentialsModal');
 }
 
 async function copyCredentials() {
-    const text = `Usuario: ${document.getElementById('credentialsEmail').textContent}\nContraseña temporal: ${document.getElementById('credentialsPassword').textContent}\nEntra en: ${window.location.origin}/login.html`;
+    const text = `Usuario: ${document.getElementById('credentialsEmail').textContent}\n${document.getElementById('credentialsPasswordLabel').textContent}: ${document.getElementById('credentialsPassword').textContent}\nEntra en: ${window.location.origin}/login.html`;
     try {
         await navigator.clipboard.writeText(text);
         document.getElementById('credentialsCopy').innerHTML = '<i class="fas fa-check" aria-hidden="true"></i> Copiado';
