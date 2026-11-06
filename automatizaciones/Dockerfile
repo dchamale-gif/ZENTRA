@@ -7,7 +7,8 @@ ARG BOTENGINE_REF=prod
 # Debe coincidir con SERVER_SERVLET_CONTEXT_PATH en compose.yaml y con el Caddyfile.
 ARG RUTA_BASE=/pruebas
 
-FROM eclipse-temurin:17-jdk AS build
+# Java 21: es lo que pide el pom.xml (java.version), aunque el README del repositorio diga 17.
+FROM eclipse-temurin:21-jdk AS build
 ARG BOTENGINE_REPO
 ARG BOTENGINE_REF
 ARG RUTA_BASE
@@ -19,7 +20,7 @@ RUN --mount=type=cache,target=/root/.m2 \
     sh ./mvnw -B -q -DskipTests package \
     && cp target/automatizacion-botengine-*.jar /app.jar
 
-FROM eclipse-temurin:17-jre
+FROM eclipse-temurin:21-jre
 RUN useradd --system --uid 10001 --home-dir /app --shell /usr/sbin/nologin app \
     && mkdir -p /app/storage/evidencias /app/storage/plantillas-evidencia \
                 /app/reportes/testng /app/reportes/evidencias /app/reportes/logs /app/reportes/ejecuciones \
