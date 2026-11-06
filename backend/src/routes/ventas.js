@@ -11,6 +11,7 @@ router.get('/', rolePermissionMiddleware(['ventas_view']), ventasController.getV
 router.get('/receptores', rolePermissionMiddleware(['ventas_view']), ventasController.getReceptores);
 router.post('/receptores', rolePermissionMiddleware(['ventas_create']), clientesController.createCliente);
 router.post('/', sincronizarTrasMovimiento, rolePermissionMiddleware(['ventas_create']), ventasController.createVenta);
+router.post('/:id/factura-externa', rolePermissionMiddleware(['ventas_edit']), ventasController.registrarFacturaExterna);
 router.put('/:id', sincronizarTrasMovimiento, rolePermissionMiddleware(['ventas_edit']), ventasController.updateVenta);
 router.delete('/:id', sincronizarTrasMovimiento, rolePermissionMiddleware(['ventas_delete']), ventasController.deleteVenta);
 

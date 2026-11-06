@@ -8,6 +8,8 @@ const VENTA_SELECT = `
   SELECT v.id, v.numero_venta, v.cliente_id, v.user_id,
          v.fecha, v.hora, v.subtotal, v.descuento, v.impuesto, v.total,
          v.metodo_pago, v.estado, v.observaciones, v.created_at, v.updated_at,
+         v.factura_solicitada, v.factura_receptor_id, v.factura_receptor_tipo, v.factura_receptor_nombre,
+         v.factura_externa, v.factura_externa_at,
          COALESCE(c.nombre, 'Consumidor final') AS receptor_nombre,
          CASE WHEN v.cliente_id IS NOT NULL THEN 'cliente' ELSE 'consumidor' END AS receptor_tipo,
          COALESCE(pg.pagado, 0) AS pagado,
@@ -373,7 +375,34 @@ const deleteVenta = async (req, res) => {
   }
 };
 
+// Factura pendiente (el cliente la pidió sin facturación electrónica activa): se registra la
+// serie y número de la factura emitida fuera del ERP. Con número vacío se vuelve a dejar pendiente.
+const registrarFacturaExterna = async (req, res) => {
+  try {
+    const numero = String(req.body.numero || '').trim().replace(/\s+/g, ' ').slice(0, 120);
+    const venta = await pool.query('SELECT factura_solicitada FROM ventas WHERE id = $1', [req.params.id]);
+    if (!venta.rows[0]) throw httpError(404, 'Venta no encontrada');
+    if (!venta.rows[0].factura_solicitada) throw httpError(400, 'Esta venta no tiene una factura pendiente');
+    const fel = await pool.query(
+      `SELECT 1 FROM fel_documentos WHERE venta_id = $1 AND estado IN ('certificado', 'pendiente') LIMIT 1`,
+      [req.params.id]
+    );
+    if (fel.rows.length) throw httpError(409, 'La venta ya tiene una factura electrónica emitida desde el ERP');
+    await pool.query(
+      `UPDATE ventas SET factura_externa = $2, factura_externa_at = CASE WHEN $2::text IS NULL THEN NULL ELSE NOW() END,
+       updated_at = NOW() WHERE id = $1`,
+      [req.params.id, numero || null]
+    );
+    res.status(200).json({
+      success: true,
+      message: numero ? `Factura ${numero} registrada` : 'La venta vuelve a quedar con factura pendiente'
+    });
+  } catch (error) {
+    sendError(res, error, 'Error registrando la factura');
+  }
+};
+
 module.exports = {
-  getVentas, getReceptores, createVenta, updateVenta, deleteVenta,
+  getVentas, getReceptores, createVenta, updateVenta, deleteVenta, registrarFacturaExterna,
   registrarVenta, sendError, httpError
 };

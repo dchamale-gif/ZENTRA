@@ -120,15 +120,21 @@ const VentasModule = {
         if (!venta.cliente_id && factura && factura.estado === 'certificado' && factura.receptor_id !== 'CF') {
             return factura.receptor_nombre;
         }
+        // Datos que dio al pedir factura en el punto de venta.
+        if (!venta.cliente_id && venta.factura_receptor_id && venta.factura_receptor_id !== 'CF') {
+            return venta.factura_receptor_nombre;
+        }
         return venta.receptor_nombre;
     },
 
-    // Ver la factura, o emitirla si la venta quedó como ticket y la facturación está activa.
+    // Ver la factura, emitirla si la facturación está activa, o registrar el número de la
+    // factura pendiente que se emitió por fuera.
     facturaButton(venta) {
         if (typeof FelModule === 'undefined') return '';
         const vigente = venta.factura && venta.factura.estado !== 'error';
-        if (!vigente && !FelModule.activa()) return '';
-        const label = vigente ? 'Ver factura' : 'Emitir factura';
+        const externa = !vigente && !FelModule.activa() && (venta.factura_solicitada || venta.factura_externa);
+        if (!vigente && !externa && !FelModule.activa()) return '';
+        const label = vigente || venta.factura_externa ? 'Ver factura' : externa ? 'Registrar factura emitida' : 'Emitir factura';
         return `<button class="btn-icon" type="button" title="${label}" aria-label="${label} de ${this.escapeHtml(venta.numero_venta)}" onclick="VentasModule.openFactura('${this.escapeHtml(venta.id)}')">
                         <i class="fas fa-file-invoice" aria-hidden="true"></i>
                     </button>`;

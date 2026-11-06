@@ -238,22 +238,25 @@ const FelModule = {
                 ${factura.estado === 'certificado' ? '<button type="button" class="btn btn-secondary btn-danger-text" id="felAnularBtn">Anular factura</button>' : ''}
                 <button type="button" class="btn btn-primary" onclick="FelModule.closeModal()">Cerrar</button>`;
             document.getElementById('felAnularBtn')?.addEventListener('click', () => this.anular());
+        } else if (!this.activa() && (venta.factura_solicitada || venta.factura_externa)) {
+            this.openExterna(venta);
         } else {
+            const previo = this.receptorDeVenta(venta);
             body.innerHTML = `
                 ${factura?.estado === 'error' ? `<p class="inline-notice fel-error-notice"><span>El intento anterior falló: ${esc(factura.error)}</span></p>` : ''}
-                <p>La venta se registró como ticket. Escribe los datos del cliente para emitir la factura por ${formatQ(Number(venta.total))}.</p>
+                <p>${venta.factura_solicitada ? 'El cliente pidió factura al cobrar. Revisa sus datos' : 'La venta se registró como ticket. Escribe los datos del cliente'} para emitir la factura por ${formatQ(Number(venta.total))}.</p>
                 <div class="fel-receptor">
                     <div class="form-group">
                         <label for="felReceptorId">NIT o CUI</label>
                         <div class="fel-receptor-id">
-                            <input id="felReceptorId" class="form-input" autocomplete="off" placeholder="CF" value="${esc(factura?.receptor_id && factura.receptor_id !== 'CF' ? factura.receptor_id : '')}">
+                            <input id="felReceptorId" class="form-input" autocomplete="off" placeholder="CF" value="${esc(previo && previo.id !== 'CF' ? previo.id : '')}">
                             <button type="button" class="btn btn-secondary btn-sm" data-fel-cf="felReceptorId">CF</button>
                         </div>
                         <small>Vacío o CF = consumidor final.</small>
                     </div>
                     <div class="form-group">
                         <label for="felReceptorNombre">Nombre</label>
-                        <input id="felReceptorNombre" class="form-input" maxlength="400" autocomplete="off" placeholder="Consumidor Final" value="${esc(factura?.receptor_nombre && factura.receptor_id !== 'CF' ? factura.receptor_nombre : '')}">
+                        <input id="felReceptorNombre" class="form-input" maxlength="400" autocomplete="off" placeholder="Consumidor Final" value="${esc(previo && previo.id !== 'CF' ? previo.nombre : '')}">
                     </div>
                 </div>
                 <p id="felModalError" class="form-error" role="alert" hidden></p>`;
@@ -264,7 +267,7 @@ const FelModule = {
         }
         document.getElementById('felModal').style.display = 'flex';
         document.body.style.overflow = 'hidden';
-        document.getElementById('felReceptorId')?.focus();
+        (document.getElementById('felReceptorId') || document.getElementById('felExternaNumero'))?.focus();
     },
 
     closeModal() {
@@ -340,9 +343,72 @@ const FelModule = {
     // Celda de la tabla de Ventas.
     comprobanteCell(venta) {
         const factura = venta.factura;
-        if (!factura) return '<span class="badge">Ticket</span>';
-        if (factura.estado === 'error') return '<span class="badge badge-warning">Ticket · factura con error</span>';
-        return this.estadoBadge(factura, true);
+        if (factura && factura.estado !== 'error') return this.estadoBadge(factura, true);
+        // El cliente pidió factura y no se certificó desde el ERP (sin FEL o con error).
+        if (venta.factura_externa) return `<span class="badge badge-success">Factura ${this.escape(venta.factura_externa)}</span>`;
+        if (venta.factura_solicitada) return '<span class="badge badge-warning">Factura pendiente</span>';
+        if (factura) return '<span class="badge badge-warning">Ticket · factura con error</span>';
+        return '<span class="badge">Ticket</span>';
+    },
+
+    // Datos que dio el cliente al cobrar, para no volver a pedirlos.
+    receptorDeVenta(venta) {
+        const factura = venta.factura;
+        if (factura?.receptor_id) return { id: factura.receptor_id, nombre: factura.receptor_nombre };
+        if (venta.factura_receptor_id) return { id: venta.factura_receptor_id, nombre: venta.factura_receptor_nombre };
+        return null;
+    },
+
+    // Factura pendiente sin facturación electrónica: se emite por fuera y aquí se anota su número.
+    openExterna(venta) {
+        const esc = (value) => this.escape(value);
+        const receptor = this.receptorDeVenta(venta) || { id: 'CF', nombre: 'Consumidor Final' };
+        document.getElementById('felModalBody').innerHTML = `
+            <p>El cliente pidió factura al cobrar. Emítela en el portal de SAT o de tu certificador con estos datos y anota aquí su serie y número.</p>
+            <dl class="info-grid">
+                <div><dt>${/^\d{13}$/.test(receptor.id) && !this.nitValido(receptor.id) ? 'CUI' : 'NIT'}</dt><dd>${esc(receptor.id)}</dd></div>
+                <div><dt>Nombre</dt><dd>${esc(receptor.nombre)}</dd></div>
+                <div><dt>Total</dt><dd>${formatQ(Number(venta.total))}</dd></div>
+                <div><dt>Fecha de la venta</dt><dd>${esc(VentasModule.formatDate(venta.fecha))}</dd></div>
+            </dl>
+            <div class="form-group">
+                <label for="felExternaNumero">Serie y número de la factura</label>
+                <input id="felExternaNumero" class="form-input" maxlength="120" autocomplete="off" value="${esc(venta.factura_externa || '')}" aria-describedby="felExternaHint">
+                <small id="felExternaHint">${venta.factura_externa ? 'Borra el número y guarda para dejarla otra vez pendiente.' : 'Por ejemplo: A1B2C3D4-123456789.'}</small>
+            </div>
+            <p id="felModalError" class="form-error" role="alert" hidden></p>`;
+        document.getElementById('felModalFooter').innerHTML = `
+            <button type="button" class="btn btn-secondary" onclick="FelModule.closeModal()">Cancelar</button>
+            <button type="button" class="btn btn-primary" id="felExternaBtn"><i class="fas fa-check" aria-hidden="true"></i> Guardar número</button>`;
+        document.getElementById('felExternaBtn').addEventListener('click', () => this.guardarExterna());
+        document.getElementById('felExternaNumero').addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') this.guardarExterna();
+        });
+    },
+
+    async guardarExterna() {
+        const venta = this.state.venta;
+        const input = document.getElementById('felExternaNumero');
+        if (!input.value.trim() && !venta.factura_externa) {
+            this.showModalError('Escribe la serie y el número de la factura que emitiste.');
+            input.focus();
+            return;
+        }
+        const button = document.getElementById('felExternaBtn');
+        button.disabled = true;
+        this.showModalError('');
+        try {
+            const data = await this.request(`/api/ventas/${encodeURIComponent(venta.id)}/factura-externa`, {
+                method: 'POST', body: JSON.stringify({ numero: input.value.trim() })
+            });
+            this.closeModal();
+            showNotification(data.message, 'success');
+            await VentasModule.loadData();
+        } catch (requestError) {
+            this.showModalError(requestError.message);
+        } finally {
+            button.disabled = false;
+        }
     },
 
     estadoBadge(factura, conNumero = false) {

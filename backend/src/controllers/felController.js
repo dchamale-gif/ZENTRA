@@ -180,6 +180,13 @@ const prepararFactura = async (receptorInput, felHabilitada) => {
   return { row, receptor: normalizarReceptor(receptorInput) };
 };
 
+// ¿Se puede certificar ahora? Si no, la venta guarda los datos del cliente y la factura queda pendiente.
+const facturacionActiva = async (felHabilitada) => {
+  if (!felHabilitada) return false;
+  const row = await loadConfig();
+  return Boolean(row?.activa);
+};
+
 const DOCUMENTO_PUBLICO = `id, venta_id, tipo_dte, estado, certificador, ambiente, receptor_id, receptor_tipo,
   receptor_nombre, total, fecha_emision, uuid, serie, numero, fecha_certificacion, error,
   anulacion_motivo, anulado_at, created_at`;
@@ -328,5 +335,6 @@ const getXml = async (req, res) => {
 };
 
 module.exports = {
-  getConfig, saveConfig, getEstado, emitir, anular, getXml, prepararFactura, emitirFactura, requireHabilitada
+  getConfig, saveConfig, getEstado, emitir, anular, getXml, prepararFactura, emitirFactura, requireHabilitada,
+  facturacionActiva
 };

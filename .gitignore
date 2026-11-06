@@ -69,3 +69,4 @@ deploy/nginx-erp.*.conf
 
 # Respaldos de bases de datos (traen usuarios y credenciales)
 *.dump
+database/*.tar.gz

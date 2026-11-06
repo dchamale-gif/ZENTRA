@@ -605,9 +605,11 @@ const PosModule = {
         document.getElementById('posChargeTitle').textContent = `Cobrar «${cuenta.nombre}»`;
         document.getElementById('posChargeTotal').textContent = formatQ(Number(cuenta.total));
         document.getElementById('posChargeError').hidden = true;
-        // Ticket o factura: solo si la empresa tiene la facturación activa.
+        // Ticket o factura. Sin facturación electrónica activa, la factura queda pendiente con los
+        // datos del cliente (se emite por fuera y su número se registra en Ventas).
         const fel = typeof FelModule !== 'undefined' && FelModule.activa();
-        document.getElementById('posComprobante').hidden = !fel;
+        document.getElementById('posComprobante').hidden = typeof FelModule === 'undefined';
+        document.getElementById('posReceptorPendiente').hidden = fel;
         if (fel && FelModule.state.estado.comprobantePorDefecto === 'factura') {
             document.querySelector('input[name="posComprobante"][value="factura"]').checked = true;
         }
@@ -681,6 +683,8 @@ const PosModule = {
                 recibido: method === 'efectivo' && received ? received : null,
                 venta: data.venta,
                 factura: data.factura?.estado === 'certificado' ? data.factura : null,
+                // Factura pedida que no se certificó (sin FEL o con error): el ticket lleva los datos del cliente.
+                receptor: data.factura?.estado === 'certificado' ? null : (data.receptor || null),
                 fecha: new Date()
             };
             this.renderReprint();
@@ -693,6 +697,9 @@ const PosModule = {
             } else if (data.factura) {
                 // La venta ya quedó cobrada; la factura se puede reintentar desde Ventas.
                 this.notify(`«${cuenta.nombre}» cobrada (venta ${data.venta.numero_venta}), pero la factura no se certificó: ${data.factura.error}. Emítela desde Ventas.${change}`, 'warning');
+            } else if (data.facturaPendiente) {
+                const cliente = data.receptor?.id === 'CF' ? 'consumidor final' : `NIT ${data.receptor?.id}`;
+                this.notify(`«${cuenta.nombre}» cobrada: venta ${data.venta.numero_venta} con factura pendiente (${cliente}). Emítela y registra su número en Ventas.${change}`, 'success');
             } else {
                 this.notify(`«${cuenta.nombre}» cobrada: venta ${data.venta.numero_venta}.${change}`, 'success');
             }
@@ -798,6 +805,7 @@ const PosModule = {
             ${fila('Cuenta', e(receipt.cuentaNombre))}
             ${cajero ? fila('Atendió', e(cajero)) : ''}
             ${factura ? fila('NIT cliente', e(factura.receptor_id || 'CF')) + fila('Cliente', e(factura.receptor_nombre || 'Consumidor Final')) : ''}
+            ${!factura && receipt.receptor ? fila(receipt.receptor.tipo === 'CUI' ? 'CUI cliente' : 'NIT cliente', e(receipt.receptor.id)) + fila('Cliente', e(receipt.receptor.nombre)) : ''}
             <hr>
             ${receipt.lineas.map(linea => `<div class="item">
                 <div class="item-name">${e(linea.nombre)}</div>
@@ -810,6 +818,7 @@ const PosModule = {
             ${factura ? `<hr>
                 <p class="small">Autorización:<br>${e(factura.uuid)}</p>
                 ${factura.fecha_certificacion ? `<p class="small">Certificada: ${e(new Date(factura.fecha_certificacion).toLocaleString('es-GT'))}</p>` : ''}` : ''}
+            ${!factura && receipt.receptor ? '<hr><p class="small">Su factura se emite por separado.</p>' : ''}
             <hr>
             <p>${receipt.tipo === 'cuenta' ? 'Total a pagar' : '¡Gracias por su compra!'}</p>
         </body></html>`;

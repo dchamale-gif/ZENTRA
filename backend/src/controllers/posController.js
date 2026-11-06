@@ -2,7 +2,8 @@ const pool = require('../db/connection');
 const { generateId } = require('../utils/helpers');
 const { registrarVenta, sendError, httpError } = require('./ventasController');
 const { FOTO_VERSION_COLUMN } = require('../utils/fotos');
-const { prepararFactura, emitirFactura } = require('./felController');
+const { prepararFactura, emitirFactura, facturacionActiva } = require('./felController');
+const { normalizarReceptor } = require('../utils/fel/identificacion');
 
 // El punto de venta cobra al momento; las ventas al crédito se registran en Ventas.
 const METODOS_COBRO = new Set(['efectivo', 'tarjeta', 'transferencia']);
@@ -189,9 +190,12 @@ const cobrarCuenta = async (req, res) => {
   try {
     const metodoPago = String(req.body.metodo_pago || 'efectivo').toLowerCase();
     if (!METODOS_COBRO.has(metodoPago)) throw httpError(400, 'Elige efectivo, tarjeta o transferencia');
-    // Factura: se revisan configuración y NIT antes de cobrar, para no registrar la venta con datos malos.
+    // Factura: el NIT (y la configuración, si hay FEL) se revisan antes de cobrar, para no
+    // registrar la venta con datos malos. Sin facturación activa la factura queda pendiente.
     const conFactura = req.body.comprobante === 'factura';
-    if (conFactura) await prepararFactura(req.body.receptor, req.organization.felHabilitada);
+    const certificar = conFactura && await facturacionActiva(req.organization.felHabilitada);
+    const receptor = conFactura ? normalizarReceptor(req.body.receptor) : null;
+    if (certificar) await prepararFactura(req.body.receptor, req.organization.felHabilitada);
 
     client = await pool.connect();
     await client.query('BEGIN');
@@ -219,6 +223,13 @@ const cobrarCuenta = async (req, res) => {
       }))
     }, req.user.id);
 
+    if (receptor) {
+      await client.query(
+        `UPDATE ventas SET factura_solicitada = true, factura_receptor_id = $2,
+         factura_receptor_tipo = $3, factura_receptor_nombre = $4 WHERE id = $1`,
+        [venta.id, receptor.id, receptor.tipo, receptor.nombre]
+      );
+    }
     await client.query(
       `UPDATE pos_cuentas SET estado = 'cobrada', venta_id = $1, closed_at = NOW(),
        version = version + 1, updated_at = NOW() WHERE id = $2`,
@@ -230,14 +241,14 @@ const cobrarCuenta = async (req, res) => {
 
     // La venta ya quedó cobrada; si la certificación falla, la factura queda pendiente de reintento.
     let factura = null;
-    if (conFactura) {
+    if (certificar) {
       try {
         factura = await emitirFactura(venta.id, req.body.receptor, req.user.id, req.organization.felHabilitada);
       } catch (error) {
         factura = { estado: 'error', error: error.expose ? error.message : 'No se pudo emitir la factura' };
       }
     }
-    res.status(200).json({ success: true, venta, factura });
+    res.status(200).json({ success: true, venta, factura, facturaPendiente: conFactura && !certificar, receptor });
   } catch (error) {
     if (client) await client.query('ROLLBACK');
     sendError(res, error, 'Error cobrando la cuenta');
