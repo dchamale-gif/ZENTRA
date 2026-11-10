@@ -966,20 +966,23 @@
                             <h1>Ajustes de inventario</h1>
                             <p class="page-subtitle">Carga inicial o conteo físico, muerte de animales y descuentos por daño, vencimiento o consumo interno. Cada ajuste queda registrado y se puede anular.</p>
                         </div>
-                        <button class="btn btn-primary" type="button" id="ajusteNuevoBtn">
-                            <i class="fas fa-plus" aria-hidden="true"></i> Nuevo ajuste
-                        </button>
+                        <div class="button-group">
+                            <button class="btn btn-secondary" type="button" id="ajusteTiposBtn" data-admin-only hidden>
+                                <i class="fas fa-sliders" aria-hidden="true"></i> Tipos de ajuste
+                            </button>
+                            <button class="btn btn-primary" type="button" id="ajusteNuevoBtn">
+                                <i class="fas fa-plus" aria-hidden="true"></i> Nuevo ajuste
+                            </button>
+                        </div>
                     </div>
 
                     <div class="stat-strip" id="ajustesResumen"></div>
 
                     <div class="toolbar ajustes-toolbar">
-                        <div class="pos-filters" id="ajustesFiltros" role="group" aria-label="Filtrar por tipo">
-                            <button type="button" class="pos-chip active" data-tipo="">Todos</button>
-                            <button type="button" class="pos-chip" data-tipo="carga_inicial">Carga inicial / conteo</button>
-                            <button type="button" class="pos-chip" data-tipo="mortalidad">Muerte de animales</button>
-                            <button type="button" class="pos-chip" data-tipo="descuento">Descuentos</button>
-                        </div>
+                        <label class="sr-only" for="ajustesFiltroTipo">Tipo de ajuste</label>
+                        <select id="ajustesFiltroTipo" class="form-input">
+                            <option value="">Todos los tipos</option>
+                        </select>
                     </div>
 
                     <div class="panel table-card">
@@ -1834,32 +1837,18 @@
             </div>
             <form id="ajusteForm" novalidate>
                 <div class="modal-body">
-                    <fieldset class="ajuste-tipos">
-                        <legend>Tipo de ajuste</legend>
-                        <label><input type="radio" name="ajusteTipo" value="carga_inicial" checked>
-                            <span><strong>Carga inicial / conteo físico</strong><small>Escribe cuántos hay; se suma o resta la diferencia.</small></span></label>
-                        <label><input type="radio" name="ajusteTipo" value="mortalidad">
-                            <span><strong>Muerte de animales</strong><small>Descuenta los animales que murieron.</small></span></label>
-                        <label><input type="radio" name="ajusteTipo" value="descuento">
-                            <span><strong>Descuento de inventario</strong><small>Daño, vencimiento, consumo interno, extravío.</small></span></label>
-                    </fieldset>
                     <div class="form-row">
+                        <div class="form-group ajuste-tipo-group">
+                            <label for="ajusteTipo">Tipo de ajuste</label>
+                            <select id="ajusteTipo" class="form-input" aria-describedby="ajusteTipoHint"></select>
+                            <small id="ajusteTipoHint"></small>
+                        </div>
                         <div class="form-group">
                             <label for="ajusteFecha">Fecha</label>
                             <input type="date" id="ajusteFecha" class="form-input" required>
                         </div>
-                        <div class="form-group" id="ajusteMotivoGroup" hidden>
-                            <label for="ajusteMotivo">Motivo</label>
-                            <select id="ajusteMotivo" class="form-input">
-                                <option value="danio">Producto dañado</option>
-                                <option value="vencido">Vencido</option>
-                                <option value="consumo_interno">Consumo interno</option>
-                                <option value="extravio">Extravío o robo</option>
-                                <option value="otro">Otro (escríbelo en observaciones)</option>
-                            </select>
-                        </div>
                         <div class="form-group ajuste-obs">
-                            <label for="ajusteObservaciones">Observaciones</label>
+                            <label for="ajusteObservaciones" id="ajusteObservacionesLabel">Observaciones</label>
                             <input type="text" id="ajusteObservaciones" class="form-input" maxlength="2000" autocomplete="off" placeholder="Opcional">
                         </div>
                     </div>
@@ -1910,6 +1899,58 @@
                     <button class="btn btn-primary" type="submit" id="ajusteGuardar"><i class="fas fa-check" aria-hidden="true"></i> Aplicar ajuste</button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <!-- Tipos de ajuste de inventario (administrador) -->
+    <div id="ajusteTiposModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="ajusteTiposTitle">
+        <div class="modal-content modal-content-lg">
+            <div class="modal-header">
+                <h2 id="ajusteTiposTitle">Tipos de ajuste</h2>
+                <button class="close-btn" type="button" aria-label="Cerrar" onclick="AjustesInventarioModule.closeModal('ajusteTiposModal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="ajuste-tipos-intro">Son las opciones del desplegable al hacer un ajuste. Un tipo desactivado ya no aparece, pero los ajustes que se hicieron con él lo conservan.</p>
+                <div class="table-responsive">
+                    <table class="data-table ajuste-tipos-tabla">
+                        <thead>
+                            <tr>
+                                <th scope="col">Nombre</th>
+                                <th scope="col">Qué hace</th>
+                                <th scope="col">Pide observaciones</th>
+                                <th scope="col">Activo</th>
+                                <th scope="col"><span class="sr-only">Guardar</span></th>
+                            </tr>
+                        </thead>
+                        <tbody id="ajusteTiposBody"></tbody>
+                    </table>
+                </div>
+                <form id="ajusteTipoNuevoForm" class="ajuste-tipo-nuevo" novalidate>
+                    <h3>Agregar tipo</h3>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="ajusteTipoNuevoNombre">Nombre</label>
+                            <input id="ajusteTipoNuevoNombre" class="form-input" maxlength="60" autocomplete="off" placeholder="Ej: Regalo a cliente">
+                        </div>
+                        <div class="form-group">
+                            <label for="ajusteTipoNuevoEfecto">Qué hace</label>
+                            <select id="ajusteTipoNuevoEfecto" class="form-input">
+                                <option value="salida">Descuenta del inventario</option>
+                                <option value="entrada">Suma al inventario</option>
+                                <option value="conteo">Conteo: escribir la existencia contada</option>
+                            </select>
+                        </div>
+                    </div>
+                    <label class="check-row"><input type="checkbox" id="ajusteTipoNuevoObs"> Pedir observaciones al usarlo</label>
+                    <div class="ajuste-tipo-nuevo-actions">
+                        <p id="ajusteTiposError" class="form-error" role="alert" hidden></p>
+                        <button class="btn btn-primary" type="submit" id="ajusteTipoNuevoBtn"><i class="fas fa-plus" aria-hidden="true"></i> Agregar tipo</button>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-primary" type="button" onclick="AjustesInventarioModule.closeModal('ajusteTiposModal')">Listo</button>
+            </div>
         </div>
     </div>
 

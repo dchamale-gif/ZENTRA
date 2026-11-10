@@ -1,28 +1,34 @@
 const { randomUUID } = require('crypto');
 const pool = require('../db/connection');
 
-// Regularizaciones de inventario: carga inicial o conteo físico (se escribe la existencia
-// contada y se aplica la diferencia), muerte de animales y descuento de inventario (salidas).
+// Regularizaciones de inventario. Los tipos de ajuste los configura cada empresa y cada uno tiene
+// un efecto: «conteo» (se escribe la existencia contada y se aplica la diferencia), «salida»
+// (descuenta: muerte de animales, producto dañado, vencido…) o «entrada» (suma).
 // Cada línea guarda la existencia de antes y de después; anular un ajuste lo revierte.
 
-const TIPOS = {
-  carga_inicial: 'Carga inicial / conteo',
-  mortalidad: 'Muerte de animales',
-  descuento: 'Descuento de inventario'
+const EFECTOS = {
+  conteo: 'Conteo: escribir la existencia contada',
+  salida: 'Descuenta del inventario',
+  entrada: 'Suma al inventario'
 };
-const MOTIVOS = {
-  danio: 'Producto dañado',
-  vencido: 'Vencido',
-  consumo_interno: 'Consumo interno',
-  extravio: 'Extravío o robo',
-  otro: 'Otro'
-};
+// Tipos de fábrica para una empresa sin ninguno (los mismos que siembra la migración).
+const TIPOS_INICIALES = [
+  ['Carga inicial / conteo físico', 'conteo', false],
+  ['Muerte de animales', 'salida', false],
+  ['Producto dañado', 'salida', false],
+  ['Vencido', 'salida', false],
+  ['Consumo interno', 'salida', false],
+  ['Extravío o robo', 'salida', false],
+  ['Otro descuento', 'salida', true],
+  ['Entrada por ajuste', 'entrada', true]
+];
 const MAX_CANTIDAD = 1000000;
 const MAX_LINEAS = 5000;
 
 const httpError = (status, message) => Object.assign(new Error(message), { status, expose: true });
 
 const sendError = (res, error, fallback) => {
+  if (error.code === '23505') return res.status(409).json({ error: 'Ya existe un tipo de ajuste con ese nombre' });
   if (!error.expose) console.error(fallback, error);
   res.status(error.status || 500).json({ error: error.expose ? error.message : fallback });
 };
@@ -37,8 +43,96 @@ const entero = (valor, { min, label }) => {
   return numero;
 };
 
+// ---------- Tipos de ajuste ----------
+
+const TIPO_COLUMNAS = 'id, nombre, efecto, requiere_observaciones, activo, orden';
+const mapTipo = (row) => ({
+  id: row.id,
+  nombre: row.nombre,
+  efecto: row.efecto,
+  requiereObservaciones: row.requiere_observaciones,
+  activo: row.activo,
+  orden: row.orden
+});
+
+const cargarTipos = async () => {
+  const consulta = () => pool.query(`SELECT ${TIPO_COLUMNAS} FROM tipos_ajuste_inventario ORDER BY orden, nombre`);
+  let { rows } = await consulta();
+  if (!rows.length) {
+    // Empresa nueva: recibe los tipos de fábrica la primera vez.
+    for (const [indice, [nombre, efecto, requiere]] of TIPOS_INICIALES.entries()) {
+      await pool.query(
+        `INSERT INTO tipos_ajuste_inventario (id, nombre, efecto, requiere_observaciones, orden)
+         VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING`,
+        [`TAJ-${randomUUID()}`, nombre, efecto, requiere, indice + 1]
+      );
+    }
+    ({ rows } = await consulta());
+  }
+  return rows.map(mapTipo);
+};
+
+const listarTipos = async (req, res) => {
+  try {
+    res.status(200).json({ success: true, tipos: await cargarTipos(), efectos: EFECTOS });
+  } catch (error) {
+    sendError(res, error, 'Error obteniendo los tipos de ajuste');
+  }
+};
+
+const leerTipo = (body, { parcial = false } = {}) => {
+  const datos = {};
+  if (!parcial || body.nombre !== undefined) {
+    datos.nombre = String(body.nombre || '').trim().replace(/\s+/g, ' ').slice(0, 60);
+    if (!datos.nombre) throw httpError(400, 'Escribe el nombre del tipo de ajuste');
+  }
+  if (!parcial || body.efecto !== undefined) {
+    datos.efecto = String(body.efecto || '');
+    if (!EFECTOS[datos.efecto]) throw httpError(400, 'Elige si el tipo descuenta, suma o es un conteo');
+  }
+  if (body.requiereObservaciones !== undefined) datos.requiere_observaciones = body.requiereObservaciones === true;
+  if (parcial && body.activo !== undefined) datos.activo = body.activo === true;
+  return datos;
+};
+
+const crearTipo = async (req, res) => {
+  try {
+    const datos = leerTipo(req.body);
+    const orden = await pool.query('SELECT COALESCE(MAX(orden), 0) + 1 AS n FROM tipos_ajuste_inventario');
+    const { rows } = await pool.query(
+      `INSERT INTO tipos_ajuste_inventario (id, nombre, efecto, requiere_observaciones, orden)
+       VALUES ($1, $2, $3, $4, $5) RETURNING ${TIPO_COLUMNAS}`,
+      [`TAJ-${randomUUID()}`, datos.nombre, datos.efecto, datos.requiere_observaciones === true, orden.rows[0].n]
+    );
+    res.status(201).json({ success: true, tipo: mapTipo(rows[0]), message: `Tipo «${datos.nombre}» creado` });
+  } catch (error) {
+    sendError(res, error, 'Error creando el tipo de ajuste');
+  }
+};
+
+// Cambiar nombre, efecto, si pide observaciones o activarlo/desactivarlo. Los ajustes ya hechos
+// conservan el nombre y el efecto con que se registraron.
+const actualizarTipo = async (req, res) => {
+  try {
+    const datos = leerTipo(req.body, { parcial: true });
+    const campos = Object.keys(datos);
+    if (!campos.length) throw httpError(400, 'No hay cambios');
+    const { rows } = await pool.query(
+      `UPDATE tipos_ajuste_inventario SET ${campos.map((campo, i) => `${campo} = $${i + 2}`).join(', ')}, updated_at = NOW()
+       WHERE id = $1 RETURNING ${TIPO_COLUMNAS}`,
+      [req.params.id, ...campos.map((campo) => datos[campo])]
+    );
+    if (!rows[0]) throw httpError(404, 'Tipo de ajuste no encontrado');
+    res.status(200).json({ success: true, tipo: mapTipo(rows[0]), message: `Tipo «${rows[0].nombre}» guardado` });
+  } catch (error) {
+    sendError(res, error, 'Error guardando el tipo de ajuste');
+  }
+};
+
+// ---------- Ajustes ----------
+
 const RESUMEN_SELECT = `
-  SELECT a.id, a.numero, a.tipo, a.motivo, a.fecha, a.observaciones, a.estado,
+  SELECT a.id, a.numero, a.tipo_ajuste_id, a.tipo_nombre, a.efecto, a.fecha, a.observaciones, a.estado,
          a.usuario_nombre, a.created_at, a.anulado_at, a.anulado_por_nombre, a.motivo_anulacion,
          COUNT(i.id)::INTEGER AS lineas,
          COALESCE(SUM(i.cantidad), 0)::INTEGER AS unidades,
@@ -50,17 +144,16 @@ const RESUMEN_SELECT = `
 const listar = async (req, res) => {
   try {
     const params = [];
-    const filtros = [];
-    if (TIPOS[req.query.tipo]) {
-      params.push(req.query.tipo);
-      filtros.push(`a.tipo = $${params.length}`);
+    let where = '';
+    if (req.query.tipo) {
+      params.push(String(req.query.tipo));
+      where = 'WHERE a.tipo_ajuste_id = $1';
     }
     const { rows } = await pool.query(
-      `${RESUMEN_SELECT} ${filtros.length ? `WHERE ${filtros.join(' AND ')}` : ''}
-       GROUP BY a.id ORDER BY a.fecha DESC, a.created_at DESC LIMIT 500`,
+      `${RESUMEN_SELECT} ${where} GROUP BY a.id ORDER BY a.fecha DESC, a.created_at DESC LIMIT 500`,
       params
     );
-    res.status(200).json({ success: true, ajustes: rows, tipos: TIPOS, motivos: MOTIVOS });
+    res.status(200).json({ success: true, ajustes: rows });
   } catch (error) {
     sendError(res, error, 'Error obteniendo los ajustes de inventario');
   }
@@ -86,15 +179,18 @@ const detalle = async (req, res) => {
 };
 
 // Lee y valida el cuerpo antes de abrir la transacción.
-const leerAjuste = (body) => {
-  const tipo = String(body.tipo || '');
-  if (!TIPOS[tipo]) throw httpError(400, 'Elige el tipo de ajuste');
-  const motivo = tipo === 'descuento' ? String(body.motivo || '') : null;
-  if (tipo === 'descuento' && !MOTIVOS[motivo]) throw httpError(400, 'Elige el motivo del descuento');
+const leerAjuste = async (body) => {
+  const tipoId = String(body.tipoId || '');
+  if (!tipoId) throw httpError(400, 'Elige el tipo de ajuste');
+  const tipoRow = (await pool.query(`SELECT ${TIPO_COLUMNAS} FROM tipos_ajuste_inventario WHERE id = $1`, [tipoId])).rows[0];
+  if (!tipoRow) throw httpError(400, 'Ese tipo de ajuste ya no existe; recarga la página');
+  const tipo = mapTipo(tipoRow);
+  if (!tipo.activo) throw httpError(400, `El tipo «${tipo.nombre}» está desactivado; elige otro`);
+
   const fecha = body.fecha ? String(body.fecha) : new Date().toISOString().slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha) || Number.isNaN(Date.parse(fecha))) throw httpError(400, 'La fecha no es válida');
   const observaciones = String(body.observaciones || '').trim().slice(0, 2000) || null;
-  if (motivo === 'otro' && !observaciones) throw httpError(400, 'Escribe en observaciones el motivo del descuento');
+  if (tipo.requiereObservaciones && !observaciones) throw httpError(400, `Para «${tipo.nombre}» escribe en observaciones el motivo`);
 
   const items = Array.isArray(body.items) ? body.items : [];
   if (!items.length) throw httpError(400, 'Agrega al menos un artículo');
@@ -106,17 +202,17 @@ const leerAjuste = (body) => {
     if (vistos.has(articuloId)) throw httpError(400, 'Un artículo aparece dos veces; deja una sola línea por artículo');
     vistos.add(articuloId);
     const nota = String(item.nota || '').trim().slice(0, 200) || null;
-    return tipo === 'carga_inicial'
+    return tipo.efecto === 'conteo'
       ? { articuloId, existencia: entero(item.existencia, { min: 0, label: 'La existencia contada' }), nota }
-      : { articuloId, salida: entero(item.cantidad, { min: 1, label: 'La cantidad a descontar' }), nota };
+      : { articuloId, cantidad: entero(item.cantidad, { min: 1, label: tipo.efecto === 'salida' ? 'La cantidad a descontar' : 'La cantidad a sumar' }), nota };
   });
-  return { tipo, motivo, fecha, observaciones, lineas };
+  return { tipo, fecha, observaciones, lineas };
 };
 
 const crear = async (req, res) => {
   let client;
   try {
-    const { tipo, motivo, fecha, observaciones, lineas } = leerAjuste(req.body);
+    const { tipo, fecha, observaciones, lineas } = await leerAjuste(req.body);
 
     client = await pool.connect();
     await client.query('BEGIN');
@@ -135,10 +231,11 @@ const crear = async (req, res) => {
       const articulo = porId.get(linea.articuloId);
       if (!articulo) throw httpError(400, 'Uno de los artículos ya no existe; recarga la página');
       const anterior = Number(articulo.existencia);
-      const cantidad = tipo === 'carga_inicial' ? linea.existencia - anterior : -linea.salida;
+      const cantidad = tipo.efecto === 'conteo' ? linea.existencia - anterior
+        : tipo.efecto === 'salida' ? -linea.cantidad : linea.cantidad;
       if (cantidad === 0) continue;
       if (anterior + cantidad < 0) {
-        faltan.push(`«${articulo.nombre_articulo}» tiene ${anterior} y quieres descontar ${linea.salida}`);
+        faltan.push(`«${articulo.nombre_articulo}» tiene ${anterior} y quieres descontar ${linea.cantidad}`);
         continue;
       }
       aplicar.push({ articulo, anterior, cantidad, nueva: anterior + cantidad, nota: linea.nota });
@@ -155,9 +252,9 @@ const crear = async (req, res) => {
     const numero = `AJ-${String(siguiente.rows[0].n).padStart(5, '0')}`;
     const id = `AJ-${randomUUID()}`;
     await client.query(
-      `INSERT INTO ajustes_inventario (id, numero, tipo, motivo, fecha, observaciones, user_id, usuario_nombre)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-      [id, numero, tipo, motivo, fecha, observaciones, req.user.id, userName(req.user)]
+      `INSERT INTO ajustes_inventario (id, numero, tipo_ajuste_id, tipo_nombre, efecto, fecha, observaciones, user_id, usuario_nombre)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      [id, numero, tipo.id, tipo.nombre, tipo.efecto, fecha, observaciones, req.user.id, userName(req.user)]
     );
     for (const linea of aplicar) {
       await client.query(
@@ -178,7 +275,7 @@ const crear = async (req, res) => {
     res.status(201).json({
       success: true,
       ajuste: { id, numero },
-      message: `Ajuste ${numero} aplicado a ${aplicar.length} ${aplicar.length === 1 ? 'artículo' : 'artículos'}`
+      message: `Ajuste ${numero} (${tipo.nombre}) aplicado a ${aplicar.length} ${aplicar.length === 1 ? 'artículo' : 'artículos'}`
         + (sinCambio ? ` (${sinCambio} sin cambio)` : '')
     });
   } catch (error) {
@@ -236,4 +333,4 @@ const anular = async (req, res) => {
   }
 };
 
-module.exports = { listar, detalle, crear, anular, TIPOS, MOTIVOS };
+module.exports = { listar, detalle, crear, anular, listarTipos, crearTipo, actualizarTipo };

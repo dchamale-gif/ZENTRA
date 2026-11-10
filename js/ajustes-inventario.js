@@ -1,7 +1,8 @@
 // ============================================
 // AJUSTES DE INVENTARIO (regularizaciones)
-// Carga inicial o conteo físico: se escribe cuántos hay y se aplica la diferencia.
-// Muerte de animales y descuento de inventario: se escribe cuántos salen.
+// El tipo de ajuste se elige en un desplegable; los tipos los configura el administrador y cada
+// uno tiene un efecto: conteo (se escribe cuántos hay y se aplica la diferencia), salida
+// (descuenta: muerte de animales, dañado, vencido…) o entrada (suma).
 // Cada ajuste queda registrado con la existencia de antes y de después y se puede anular.
 // ============================================
 
@@ -9,8 +10,7 @@ const AjustesInventarioModule = {
     state: {
         initialized: false,
         ajustes: [],
-        tipos: {},
-        motivos: {},
+        tipos: [],
         filtro: '',
         articulos: [],
         // articuloId -> { articulo, valor, nota }
@@ -18,23 +18,19 @@ const AjustesInventarioModule = {
         detalle: null
     },
 
-    TEXTOS: {
-        carga_inicial: { columna: 'Existencia contada', nota: 'Opcional' },
-        mortalidad: { columna: 'Animales que murieron', nota: 'Causa (opcional)' },
-        descuento: { columna: 'Cantidad a descontar', nota: 'Detalle (opcional)' }
+    EFECTOS: {
+        conteo: { columna: 'Existencia contada', verbo: 'Conteo', ayuda: 'Escribe cuántos hay; se suma o resta la diferencia.' },
+        salida: { columna: 'Cantidad a descontar', verbo: 'Descuenta', ayuda: 'Se descuenta del inventario.' },
+        entrada: { columna: 'Cantidad a sumar', verbo: 'Suma', ayuda: 'Se suma al inventario.' }
     },
 
     init() {
         if (this.state.initialized) return;
         this.state.initialized = true;
         this.field('ajusteNuevoBtn').addEventListener('click', () => this.openNuevo());
-        this.field('ajustesFiltros').addEventListener('click', (event) => {
-            const chip = event.target.closest('[data-tipo]');
-            if (!chip) return;
-            this.state.filtro = chip.dataset.tipo;
-            this.field('ajustesFiltros').querySelectorAll('.pos-chip').forEach((element) => {
-                element.classList.toggle('active', element === chip);
-            });
+        this.field('ajusteTiposBtn').addEventListener('click', () => this.openTipos());
+        this.field('ajustesFiltroTipo').addEventListener('change', (event) => {
+            this.state.filtro = event.target.value;
             this.render();
         });
         this.field('ajustesBody').addEventListener('click', (event) => {
@@ -42,9 +38,7 @@ const AjustesInventarioModule = {
             if (button) this.openDetalle(button.dataset.ajuste);
         });
 
-        document.querySelectorAll('input[name="ajusteTipo"]').forEach((radio) => {
-            radio.addEventListener('change', () => this.cambiarTipo());
-        });
+        this.field('ajusteTipo').addEventListener('change', () => this.cambiarTipo());
         this.field('ajusteForm').addEventListener('submit', (event) => {
             event.preventDefault();
             this.guardar();
@@ -87,6 +81,16 @@ const AjustesInventarioModule = {
             this.state.lineas.delete(quitar.dataset.quitar);
             this.renderLineas();
         });
+
+        // Configuración de tipos (administrador)
+        this.field('ajusteTipoNuevoForm').addEventListener('submit', (event) => {
+            event.preventDefault();
+            this.crearTipo();
+        });
+        this.field('ajusteTiposBody').addEventListener('click', (event) => {
+            const button = event.target.closest('[data-guardar-tipo]');
+            if (button) this.guardarTipo(button.dataset.guardarTipo, button);
+        });
     },
 
     field(id) {
@@ -95,6 +99,10 @@ const AjustesInventarioModule = {
 
     puedeEditar() {
         return typeof AccessControl === 'undefined' || AccessControl.canEdit('articulos');
+    },
+
+    esAdmin() {
+        return typeof AccessControl !== 'undefined' && AccessControl.isAdmin() && AccessControl.canEdit('articulos');
     },
 
     async request(path, options = {}) {
@@ -113,20 +121,35 @@ const AjustesInventarioModule = {
     async load() {
         this.init();
         this.field('ajusteNuevoBtn').hidden = !this.puedeEditar();
+        this.field('ajusteTiposBtn').hidden = !this.esAdmin();
         try {
-            const data = await this.request('/api/ajustes-inventario');
-            this.state.ajustes = data.ajustes;
-            this.state.tipos = data.tipos;
-            this.state.motivos = data.motivos;
+            const [ajustes, tipos] = await Promise.all([
+                this.request('/api/ajustes-inventario'),
+                this.request('/api/ajustes-inventario/tipos')
+            ]);
+            this.state.ajustes = ajustes.ajustes;
+            this.state.tipos = tipos.tipos;
+            this.renderFiltro();
             this.render();
         } catch (error) {
             this.field('ajustesBody').innerHTML = `<tr><td colspan="9">${this.escape(error.message)}</td></tr>`;
         }
     },
 
+    renderFiltro() {
+        const select = this.field('ajustesFiltroTipo');
+        const usados = new Set(this.state.ajustes.map((ajuste) => ajuste.tipo_ajuste_id));
+        // Los desactivados solo aparecen si hay ajustes hechos con ellos.
+        const tipos = this.state.tipos.filter((tipo) => tipo.activo || usados.has(tipo.id));
+        select.innerHTML = '<option value="">Todos los tipos</option>' + tipos.map((tipo) =>
+            `<option value="${this.escape(tipo.id)}">${this.escape(tipo.nombre)}${tipo.activo ? '' : ' (desactivado)'}</option>`).join('');
+        select.value = tipos.some((tipo) => tipo.id === this.state.filtro) ? this.state.filtro : '';
+        this.state.filtro = select.value;
+    },
+
     render() {
         this.renderResumen();
-        const filas = this.state.ajustes.filter((ajuste) => !this.state.filtro || ajuste.tipo === this.state.filtro);
+        const filas = this.state.ajustes.filter((ajuste) => !this.state.filtro || ajuste.tipo_ajuste_id === this.state.filtro);
         const body = this.field('ajustesBody');
         if (!filas.length) {
             body.innerHTML = `<tr><td colspan="9" class="text-center">${this.state.ajustes.length
@@ -140,7 +163,7 @@ const AjustesInventarioModule = {
             return `<tr class="${anulado ? 'row-muted' : ''}">
                 <td><strong>${this.escape(ajuste.numero)}</strong></td>
                 <td>${this.fecha(ajuste.fecha)}</td>
-                <td>${this.tipoTexto(ajuste)}</td>
+                <td>${this.escape(ajuste.tipo_nombre || '—')}</td>
                 <td class="text-right">${Number(ajuste.lineas)}</td>
                 <td class="text-right">${unidades > 0 ? '+' : ''}${unidades.toLocaleString('es-GT')}</td>
                 <td class="text-right">${formatQ(Math.abs(Number(ajuste.valor)))}</td>
@@ -155,47 +178,61 @@ const AjustesInventarioModule = {
         }).join('');
     },
 
-    // Pérdidas del mes: lo que sale por muerte y por descuentos, valorado al precio de compra.
+    // Bajas del mes: lo que salió del inventario (muerte, dañado, vencido…), valorado al costo.
     renderResumen() {
         const mes = this.hoy().slice(0, 7);
         const delMes = this.state.ajustes.filter((ajuste) => ajuste.estado === 'aplicado' && String(ajuste.fecha).slice(0, 7) === mes);
-        const suma = (tipo, campo) => delMes.filter((ajuste) => ajuste.tipo === tipo)
-            .reduce((total, ajuste) => total + Math.abs(Number(ajuste[campo])), 0);
+        const salidas = delMes.filter((ajuste) => ajuste.efecto === 'salida');
+        const unidades = salidas.reduce((total, ajuste) => total + Math.abs(Number(ajuste.unidades)), 0);
+        const perdida = salidas.reduce((total, ajuste) => total + Math.abs(Number(ajuste.valor)), 0);
+        // El tipo de baja con más pérdida del mes.
+        const porTipo = new Map();
+        salidas.forEach((ajuste) => porTipo.set(ajuste.tipo_nombre, (porTipo.get(ajuste.tipo_nombre) || 0) + Math.abs(Number(ajuste.valor))));
+        const mayor = [...porTipo.entries()].sort((a, b) => b[1] - a[1])[0];
         const tile = (label, value, cls = '') => `<div class="stat-tile ${cls}"><span class="stat-label">${label}</span><span class="stat-value">${value}</span></div>`;
         this.field('ajustesResumen').innerHTML = this.state.ajustes.length ? [
-            tile('Animales muertos este mes', suma('mortalidad', 'unidades').toLocaleString('es-GT'), suma('mortalidad', 'unidades') ? 'is-warning' : ''),
-            tile('Pérdida por muerte este mes', formatQ(suma('mortalidad', 'valor'))),
-            tile('Descuentos este mes', formatQ(suma('descuento', 'valor'))),
+            tile('Unidades dadas de baja este mes', unidades.toLocaleString('es-GT'), unidades ? 'is-warning' : ''),
+            tile('Pérdida al costo este mes', formatQ(perdida)),
+            mayor ? tile(`Mayor pérdida: ${this.escape(mayor[0])}`, formatQ(mayor[1])) : '',
             tile('Ajustes este mes', delMes.length.toLocaleString('es-GT'))
         ].join('') : '';
     },
 
-    tipoTexto(ajuste) {
-        const tipo = this.state.tipos[ajuste.tipo] || ajuste.tipo;
-        return ajuste.motivo ? `${this.escape(tipo)} · ${this.escape(this.state.motivos[ajuste.motivo] || ajuste.motivo)}` : this.escape(tipo);
-    },
-
     // ---------- Nuevo ajuste ----------
 
-    tipo() {
-        return document.querySelector('input[name="ajusteTipo"]:checked')?.value || 'carga_inicial';
+    tipoActual() {
+        return this.state.tipos.find((tipo) => tipo.id === this.field('ajusteTipo').value) || null;
     },
 
-    esCarga() {
-        return this.tipo() === 'carga_inicial';
+    efecto() {
+        return this.tipoActual()?.efecto || 'conteo';
     },
 
-    async openNuevo(tipo = 'carga_inicial') {
+    esConteo() {
+        return this.efecto() === 'conteo';
+    },
+
+    async openNuevo() {
+        const activos = this.state.tipos.filter((tipo) => tipo.activo);
+        if (!activos.length) {
+            showNotification(this.esAdmin()
+                ? 'No hay tipos de ajuste activos. Actívalos o crea uno en «Tipos de ajuste».'
+                : 'No hay tipos de ajuste activos; pide al administrador que los configure.', 'warning');
+            return;
+        }
         this.field('ajusteForm').reset();
-        document.querySelector(`input[name="ajusteTipo"][value="${tipo}"]`).checked = true;
+        const textoEfecto = { conteo: 'conteo', salida: 'descuenta', entrada: 'suma' };
+        this.field('ajusteTipo').innerHTML = activos.map((tipo) =>
+            `<option value="${this.escape(tipo.id)}">${this.escape(tipo.nombre)} (${textoEfecto[tipo.efecto]})</option>`).join('');
         this.field('ajusteFecha').value = this.hoy();
         this.field('ajustePegar').hidden = true;
         this.field('ajustePegarAviso').textContent = '';
         this.state.lineas = new Map();
+        this.state.efectoAnterior = null;
         this.mostrarError('');
         this.cambiarTipo();
         this.openModal('ajusteModal');
-        this.field('ajusteBuscar').focus();
+        this.field('ajusteTipo').focus();
         try {
             const data = await this.request('/api/codigos-articulos?activo=true');
             this.state.articulos = data.articulos;
@@ -207,14 +244,20 @@ const AjustesInventarioModule = {
         }
     },
 
-    // Al cambiar de tipo cambia el significado de la cantidad: se vacían los números escritos.
+    // Cambiar de tipo puede cambiar el significado de la cantidad: se vacían los números escritos.
     cambiarTipo() {
-        const tipo = this.tipo();
-        this.field('ajusteMotivoGroup').hidden = tipo !== 'descuento';
-        this.field('ajusteCargaTools').hidden = tipo !== 'carga_inicial';
-        if (tipo !== 'carga_inicial') this.field('ajustePegar').hidden = true;
-        this.field('ajusteColCantidad').textContent = this.TEXTOS[tipo].columna;
-        this.state.lineas.forEach((linea) => { linea.valor = ''; });
+        const tipo = this.tipoActual();
+        const efecto = this.efecto();
+        this.field('ajusteTipoHint').textContent = this.EFECTOS[efecto].ayuda;
+        this.field('ajusteObservacionesLabel').textContent = tipo?.requiereObservaciones ? 'Observaciones (obligatorias)' : 'Observaciones';
+        this.field('ajusteObservaciones').placeholder = tipo?.requiereObservaciones ? 'Explica el motivo' : 'Opcional';
+        this.field('ajusteAgregarTodos').hidden = efecto !== 'conteo';
+        this.field('ajusteSeccion').hidden = efecto !== 'conteo';
+        this.field('ajusteColCantidad').textContent = this.EFECTOS[efecto].columna;
+        if (this.state.efectoAnterior && this.state.efectoAnterior !== efecto) {
+            this.state.lineas.forEach((linea) => { linea.valor = ''; });
+        }
+        this.state.efectoAnterior = efecto;
         this.renderLineas();
     },
 
@@ -228,7 +271,7 @@ const AjustesInventarioModule = {
         const encontrados = this.state.articulos.filter((articulo) => this.normalizar(
             `${articulo.nombre_articulo} ${articulo.codigo} ${articulo.codigo_barras || ''}`
         ).includes(texto)).slice(0, 20);
-        const salida = !this.esCarga();
+        const salida = this.efecto() === 'salida';
         resultados.innerHTML = encontrados.length ? encontrados.map((articulo) => {
             const existencia = Number(articulo.cantidad_disponible || 0);
             const sinExistencia = salida && existencia <= 0;
@@ -303,24 +346,26 @@ const AjustesInventarioModule = {
 
     renderLineas() {
         const body = this.field('ajusteLineas');
-        const textos = this.TEXTOS[this.tipo()];
+        const efecto = this.efecto();
+        const conteo = efecto === 'conteo';
         if (!this.state.lineas.size) {
-            body.innerHTML = `<tr><td colspan="6" class="text-center">${this.esCarga()
+            body.innerHTML = `<tr><td colspan="6" class="text-center">${conteo
                 ? 'Busca un artículo, agrega todos para contarlos o pega las cantidades desde Excel.'
-                : 'Busca el artículo que vas a descontar.'}</td></tr>`;
+                : 'Busca el artículo o pega las cantidades desde Excel.'}</td></tr>`;
             this.renderTotal();
             return;
         }
+        const columna = this.EFECTOS[efecto].columna;
         body.innerHTML = [...this.state.lineas.entries()].map(([id, linea]) => {
             const articulo = linea.articulo;
             const existencia = Number(articulo.cantidad_disponible || 0);
             return `<tr data-linea="${this.escape(id)}">
                 <td><strong>${this.escape(articulo.nombre_articulo)}</strong><small class="ajuste-codigo">${this.escape(articulo.codigo)}</small></td>
                 <td class="text-right">${existencia.toLocaleString('es-GT')}</td>
-                <td class="text-right"><input class="form-input ajuste-cantidad" type="number" min="${this.esCarga() ? 0 : 1}" ${this.esCarga() ? '' : `max="${existencia}"`} step="1" inputmode="numeric"
-                    data-campo="valor" value="${this.escape(linea.valor)}" aria-label="${this.escape(textos.columna)} de ${this.escape(articulo.nombre_articulo)}"></td>
+                <td class="text-right"><input class="form-input ajuste-cantidad" type="number" min="${conteo ? 0 : 1}" ${efecto === 'salida' ? `max="${existencia}"` : ''} step="1" inputmode="numeric"
+                    data-campo="valor" value="${this.escape(linea.valor)}" aria-label="${this.escape(columna)} de ${this.escape(articulo.nombre_articulo)}"></td>
                 <td class="text-right" data-quedara></td>
-                <td><input class="form-input ajuste-nota" type="text" maxlength="200" data-campo="nota" value="${this.escape(linea.nota)}" placeholder="${this.escape(textos.nota)}" aria-label="Nota de ${this.escape(articulo.nombre_articulo)}"></td>
+                <td><input class="form-input ajuste-nota" type="text" maxlength="200" data-campo="nota" value="${this.escape(linea.nota)}" placeholder="Detalle (opcional)" aria-label="Nota de ${this.escape(articulo.nombre_articulo)}"></td>
                 <td><button class="btn-icon" type="button" data-quitar="${this.escape(id)}" title="Quitar" aria-label="Quitar ${this.escape(articulo.nombre_articulo)}"><i class="fas fa-xmark" aria-hidden="true"></i></button></td>
             </tr>`;
         }).join('');
@@ -334,7 +379,10 @@ const AjustesInventarioModule = {
         const valor = Number(linea.valor);
         if (!Number.isInteger(valor) || valor < 0) return null;
         const existencia = Number(linea.articulo.cantidad_disponible || 0);
-        return this.esCarga() ? valor - existencia : -valor;
+        const efecto = this.efecto();
+        if (efecto === 'conteo') return valor - existencia;
+        if (valor === 0) return null;
+        return efecto === 'salida' ? -valor : valor;
     },
 
     actualizarFila(fila, linea) {
@@ -373,31 +421,31 @@ const AjustesInventarioModule = {
     },
 
     async guardar() {
-        const tipo = this.tipo();
-        const carga = tipo === 'carga_inicial';
+        const tipo = this.tipoActual();
+        if (!tipo) return this.mostrarError('Elige el tipo de ajuste.');
+        const conteo = tipo.efecto === 'conteo';
         const items = [];
         const problemas = [];
         this.state.lineas.forEach((linea, id) => {
             if (linea.valor === '') return;
             const diferencia = this.diferencia(linea);
             const nombre = linea.articulo.nombre_articulo;
-            if (diferencia === null || (!carga && Number(linea.valor) < 1)) return problemas.push(`«${nombre}»: escribe un número entero${carga ? '' : ' mayor que 0'}`);
+            if (diferencia === null) return problemas.push(`«${nombre}»: escribe un número entero${conteo ? '' : ' mayor que 0'}`);
             if (Number(linea.articulo.cantidad_disponible || 0) + diferencia < 0) return problemas.push(`«${nombre}»: solo hay ${linea.articulo.cantidad_disponible || 0}`);
-            items.push(carga
+            items.push(conteo
                 ? { articulo_id: id, existencia: Number(linea.valor), nota: linea.nota }
                 : { articulo_id: id, cantidad: Number(linea.valor), nota: linea.nota });
         });
         if (problemas.length) return this.mostrarError(problemas.slice(0, 4).join('. ') + '.');
         if (!items.length) {
-            return this.mostrarError(carga
+            return this.mostrarError(conteo
                 ? 'Escribe la existencia contada de al menos un artículo.'
-                : 'Escribe cuántos se descuentan de al menos un artículo.');
+                : 'Escribe la cantidad de al menos un artículo.');
         }
-        const motivo = this.field('ajusteMotivo').value;
         const observaciones = this.field('ajusteObservaciones').value.trim();
-        if (tipo === 'descuento' && motivo === 'otro' && !observaciones) {
+        if (tipo.requiereObservaciones && !observaciones) {
             this.field('ajusteObservaciones').focus();
-            return this.mostrarError('Escribe en observaciones el motivo del descuento.');
+            return this.mostrarError(`Para «${tipo.nombre}» escribe en observaciones el motivo.`);
         }
 
         const button = this.field('ajusteGuardar');
@@ -406,7 +454,7 @@ const AjustesInventarioModule = {
         try {
             const data = await this.request('/api/ajustes-inventario', {
                 method: 'POST',
-                body: JSON.stringify({ tipo, motivo, fecha: this.field('ajusteFecha').value, observaciones, items })
+                body: JSON.stringify({ tipoId: tipo.id, fecha: this.field('ajusteFecha').value, observaciones, items })
             });
             this.closeModal('ajusteModal');
             showNotification(data.message, 'success');
@@ -424,6 +472,92 @@ const AjustesInventarioModule = {
         error.hidden = !mensaje;
     },
 
+    // ---------- Tipos de ajuste (administrador) ----------
+
+    openTipos() {
+        this.field('ajusteTipoNuevoForm').reset();
+        this.mostrarErrorTipos('');
+        this.renderTipos();
+        this.openModal('ajusteTiposModal');
+    },
+
+    renderTipos() {
+        const opciones = (efecto) => Object.entries({
+            salida: 'Descuenta del inventario', entrada: 'Suma al inventario', conteo: 'Conteo: escribir la existencia contada'
+        }).map(([valor, texto]) => `<option value="${valor}" ${valor === efecto ? 'selected' : ''}>${texto}</option>`).join('');
+        this.field('ajusteTiposBody').innerHTML = this.state.tipos.map((tipo) => `<tr data-tipo="${this.escape(tipo.id)}" class="${tipo.activo ? '' : 'row-muted'}">
+            <td><label class="sr-only" for="tipoNombre-${this.escape(tipo.id)}">Nombre</label>
+                <input id="tipoNombre-${this.escape(tipo.id)}" class="form-input" maxlength="60" value="${this.escape(tipo.nombre)}" data-campo="nombre"></td>
+            <td><label class="sr-only" for="tipoEfecto-${this.escape(tipo.id)}">Qué hace</label>
+                <select id="tipoEfecto-${this.escape(tipo.id)}" class="form-input" data-campo="efecto">${opciones(tipo.efecto)}</select></td>
+            <td class="text-center"><input type="checkbox" data-campo="requiereObservaciones" ${tipo.requiereObservaciones ? 'checked' : ''} aria-label="Pide observaciones: ${this.escape(tipo.nombre)}"></td>
+            <td class="text-center"><input type="checkbox" data-campo="activo" ${tipo.activo ? 'checked' : ''} aria-label="Activo: ${this.escape(tipo.nombre)}"></td>
+            <td><button class="btn btn-secondary btn-sm" type="button" data-guardar-tipo="${this.escape(tipo.id)}">Guardar</button></td>
+        </tr>`).join('');
+    },
+
+    async guardarTipo(id, button) {
+        const fila = this.field('ajusteTiposBody').querySelector(`[data-tipo="${CSS.escape(id)}"]`);
+        const valor = (campo) => fila.querySelector(`[data-campo="${campo}"]`);
+        button.disabled = true;
+        this.mostrarErrorTipos('');
+        try {
+            const data = await this.request(`/api/ajustes-inventario/tipos/${encodeURIComponent(id)}`, {
+                method: 'PUT',
+                body: JSON.stringify({
+                    nombre: valor('nombre').value,
+                    efecto: valor('efecto').value,
+                    requiereObservaciones: valor('requiereObservaciones').checked,
+                    activo: valor('activo').checked
+                })
+            });
+            this.state.tipos = this.state.tipos.map((tipo) => (tipo.id === id ? data.tipo : tipo));
+            this.renderTipos();
+            this.renderFiltro();
+            showNotification(data.message, 'success');
+        } catch (error) {
+            this.mostrarErrorTipos(error.message);
+        } finally {
+            button.disabled = false;
+        }
+    },
+
+    async crearTipo() {
+        const nombre = this.field('ajusteTipoNuevoNombre');
+        if (!nombre.value.trim()) {
+            nombre.focus();
+            return this.mostrarErrorTipos('Escribe el nombre del tipo.');
+        }
+        const button = this.field('ajusteTipoNuevoBtn');
+        button.disabled = true;
+        this.mostrarErrorTipos('');
+        try {
+            const data = await this.request('/api/ajustes-inventario/tipos', {
+                method: 'POST',
+                body: JSON.stringify({
+                    nombre: nombre.value,
+                    efecto: this.field('ajusteTipoNuevoEfecto').value,
+                    requiereObservaciones: this.field('ajusteTipoNuevoObs').checked
+                })
+            });
+            this.state.tipos.push(data.tipo);
+            this.field('ajusteTipoNuevoForm').reset();
+            this.renderTipos();
+            this.renderFiltro();
+            showNotification(data.message, 'success');
+        } catch (error) {
+            this.mostrarErrorTipos(error.message);
+        } finally {
+            button.disabled = false;
+        }
+    },
+
+    mostrarErrorTipos(mensaje) {
+        const error = this.field('ajusteTiposError');
+        error.textContent = mensaje;
+        error.hidden = !mensaje;
+    },
+
     // ---------- Detalle y anulación ----------
 
     async openDetalle(id) {
@@ -434,7 +568,7 @@ const AjustesInventarioModule = {
             this.field('ajusteDetalleTitle').textContent = `Ajuste ${ajuste.numero}`;
             this.field('ajusteDetalleBody').innerHTML = `
                 <dl class="info-grid">
-                    <div><dt>Tipo</dt><dd>${this.tipoTexto(ajuste)}</dd></div>
+                    <div><dt>Tipo</dt><dd>${this.escape(ajuste.tipo_nombre || '—')}</dd></div>
                     <div><dt>Fecha</dt><dd>${this.fecha(ajuste.fecha)}</dd></div>
                     <div><dt>Registró</dt><dd>${this.escape(ajuste.usuario_nombre || '—')}</dd></div>
                     <div><dt>Estado</dt><dd>${anulado ? '<span class="badge badge-danger">Anulado</span>' : '<span class="badge badge-success">Aplicado</span>'}</dd></div>
