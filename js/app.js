@@ -368,6 +368,9 @@ function navigateToPage(pageId, { fromHistory = false } = {}) {
     if (pageId === 'precios' && typeof PreciosModule !== 'undefined') {
         PreciosModule.load();
     }
+    if (pageId === 'ajustes-inventario' && typeof AjustesInventarioModule !== 'undefined') {
+        AjustesInventarioModule.load();
+    }
     if (pageId === 'clientes') {
         ClientesModule.load();
     }

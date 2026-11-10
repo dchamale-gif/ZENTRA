@@ -56,7 +56,8 @@ const run = async () => {
       'precios.sql',
       'depositos-caja.sql',
       'compras-estados.sql',
-      'factura-pendiente.sql'
+      'factura-pendiente.sql',
+      'ajustes-inventario.sql'
     ];
     for (const file of featureMigrations) {
       console.log(`Aplicando ${file}...`);

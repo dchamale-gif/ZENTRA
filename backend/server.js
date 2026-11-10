@@ -19,6 +19,7 @@ const ventasRoutes = require('./src/routes/ventas');
 const posRoutes = require('./src/routes/pos');
 const integracionesRoutes = require('./src/routes/integraciones');
 const preciosRoutes = require('./src/routes/precios');
+const ajustesInventarioRoutes = require('./src/routes/ajustes-inventario');
 const felRoutes = require('./src/routes/fel');
 const cajaRoutes = require('./src/routes/caja');
 const clientesRoutes = require('./src/routes/clientes');
@@ -122,6 +123,7 @@ app.use('/api/ventas', ventasRoutes);
 app.use('/api/pos', posRoutes);
 app.use('/api/integraciones', integracionesRoutes);
 app.use('/api/precios', preciosRoutes);
+app.use('/api/ajustes-inventario', ajustesInventarioRoutes);
 app.use('/api/fel', felRoutes);
 
 

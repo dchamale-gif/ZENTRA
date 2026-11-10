@@ -68,6 +68,10 @@
                     <i class="fas fa-tags"></i>
                     <span>Precios</span>
                 </a>
+                <a href="#" class="nav-item" data-page="ajustes-inventario" data-module="articulos">
+                    <i class="fas fa-scale-balanced"></i>
+                    <span>Ajustes de inventario</span>
+                </a>
                 <a href="#" class="nav-item" data-page="compras" data-module="compras">
                     <i class="fas fa-cart-shopping"></i>
                     <span>Compras</span>
@@ -942,6 +946,50 @@
                     </div>
                 </div>
 
+                <div id="page-ajustes-inventario" class="page">
+                    <div class="page-header">
+                        <div>
+                            <h1>Ajustes de inventario</h1>
+                            <p class="page-subtitle">Carga inicial o conteo físico, muerte de animales y descuentos por daño, vencimiento o consumo interno. Cada ajuste queda registrado y se puede anular.</p>
+                        </div>
+                        <button class="btn btn-primary" type="button" id="ajusteNuevoBtn">
+                            <i class="fas fa-plus" aria-hidden="true"></i> Nuevo ajuste
+                        </button>
+                    </div>
+
+                    <div class="stat-strip" id="ajustesResumen"></div>
+
+                    <div class="toolbar ajustes-toolbar">
+                        <div class="pos-filters" id="ajustesFiltros" role="group" aria-label="Filtrar por tipo">
+                            <button type="button" class="pos-chip active" data-tipo="">Todos</button>
+                            <button type="button" class="pos-chip" data-tipo="carga_inicial">Carga inicial / conteo</button>
+                            <button type="button" class="pos-chip" data-tipo="mortalidad">Muerte de animales</button>
+                            <button type="button" class="pos-chip" data-tipo="descuento">Descuentos</button>
+                        </div>
+                    </div>
+
+                    <div class="panel table-card">
+                        <div class="table-responsive">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th scope="col">Número</th>
+                                        <th scope="col">Fecha</th>
+                                        <th scope="col">Tipo</th>
+                                        <th scope="col" class="text-right">Artículos</th>
+                                        <th scope="col" class="text-right">Unidades</th>
+                                        <th scope="col" class="text-right">Valor al costo</th>
+                                        <th scope="col">Registró</th>
+                                        <th scope="col">Estado</th>
+                                        <th scope="col"><span class="sr-only">Acciones</span></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="ajustesBody"><tr><td colspan="9">Cargando ajustes…</td></tr></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
                 <div id="page-compras" class="page">
                     <div class="page-header">
                         <div>
@@ -1708,6 +1756,106 @@
         </div>
     </div>
 
+    <!-- Nuevo ajuste de inventario -->
+    <div id="ajusteModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="ajusteModalTitle">
+        <div class="modal-content modal-content-xl">
+            <div class="modal-header">
+                <h2 id="ajusteModalTitle">Nuevo ajuste de inventario</h2>
+                <button class="close-btn" type="button" aria-label="Cerrar" onclick="AjustesInventarioModule.closeModal('ajusteModal')">&times;</button>
+            </div>
+            <form id="ajusteForm" novalidate>
+                <div class="modal-body">
+                    <fieldset class="ajuste-tipos">
+                        <legend>Tipo de ajuste</legend>
+                        <label><input type="radio" name="ajusteTipo" value="carga_inicial" checked>
+                            <span><strong>Carga inicial / conteo físico</strong><small>Escribe cuántos hay; se suma o resta la diferencia.</small></span></label>
+                        <label><input type="radio" name="ajusteTipo" value="mortalidad">
+                            <span><strong>Muerte de animales</strong><small>Descuenta los animales que murieron.</small></span></label>
+                        <label><input type="radio" name="ajusteTipo" value="descuento">
+                            <span><strong>Descuento de inventario</strong><small>Daño, vencimiento, consumo interno, extravío.</small></span></label>
+                    </fieldset>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="ajusteFecha">Fecha</label>
+                            <input type="date" id="ajusteFecha" class="form-input" required>
+                        </div>
+                        <div class="form-group" id="ajusteMotivoGroup" hidden>
+                            <label for="ajusteMotivo">Motivo</label>
+                            <select id="ajusteMotivo" class="form-input">
+                                <option value="danio">Producto dañado</option>
+                                <option value="vencido">Vencido</option>
+                                <option value="consumo_interno">Consumo interno</option>
+                                <option value="extravio">Extravío o robo</option>
+                                <option value="otro">Otro (escríbelo en observaciones)</option>
+                            </select>
+                        </div>
+                        <div class="form-group ajuste-obs">
+                            <label for="ajusteObservaciones">Observaciones</label>
+                            <input type="text" id="ajusteObservaciones" class="form-input" maxlength="2000" autocomplete="off" placeholder="Opcional">
+                        </div>
+                    </div>
+
+                    <div class="ajuste-agregar">
+                        <div class="concept-search-input">
+                            <i class="fas fa-magnifying-glass" aria-hidden="true"></i>
+                            <label class="sr-only" for="ajusteBuscar">Agregar artículo</label>
+                            <input type="search" id="ajusteBuscar" class="form-input" placeholder="Agregar artículo: busca por nombre, código o código de barras" autocomplete="off">
+                        </div>
+                        <div class="concept-search-results" id="ajusteResultados" hidden></div>
+                        <div class="ajuste-carga-tools" id="ajusteCargaTools">
+                            <label class="sr-only" for="ajusteSeccion">Sección</label>
+                            <select id="ajusteSeccion" class="form-input"><option value="">Todas las secciones</option></select>
+                            <button type="button" class="btn btn-secondary" id="ajusteAgregarTodos"><i class="fas fa-list-check" aria-hidden="true"></i> Agregar todos para contar</button>
+                            <button type="button" class="btn btn-secondary" id="ajustePegarBtn"><i class="fas fa-paste" aria-hidden="true"></i> Pegar desde Excel</button>
+                        </div>
+                        <div class="ajuste-pegar" id="ajustePegar" hidden>
+                            <label for="ajustePegarTexto">Copia en Excel dos columnas, código y cantidad, y pégalas aquí</label>
+                            <textarea id="ajustePegarTexto" class="form-input" rows="5" placeholder="A-0001&#9;12&#10;A-0002&#9;30"></textarea>
+                            <div class="ajuste-pegar-actions">
+                                <small id="ajustePegarAviso" aria-live="polite"></small>
+                                <button type="button" class="btn btn-primary btn-sm" id="ajustePegarAplicar">Cargar cantidades</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="table-responsive ajuste-lineas-wrap">
+                        <table class="data-table ajuste-lineas">
+                            <thead>
+                                <tr>
+                                    <th scope="col">Artículo</th>
+                                    <th scope="col" class="text-right">Existencia actual</th>
+                                    <th scope="col" class="text-right" id="ajusteColCantidad">Existencia contada</th>
+                                    <th scope="col" class="text-right">Quedará</th>
+                                    <th scope="col">Nota</th>
+                                    <th scope="col"><span class="sr-only">Quitar</span></th>
+                                </tr>
+                            </thead>
+                            <tbody id="ajusteLineas"></tbody>
+                        </table>
+                    </div>
+                    <p class="ajuste-total" id="ajusteTotal" aria-live="polite"></p>
+                    <p id="ajusteError" class="form-error" role="alert" hidden></p>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" type="button" onclick="AjustesInventarioModule.closeModal('ajusteModal')">Cancelar</button>
+                    <button class="btn btn-primary" type="submit" id="ajusteGuardar"><i class="fas fa-check" aria-hidden="true"></i> Aplicar ajuste</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Detalle de un ajuste de inventario -->
+    <div id="ajusteDetalleModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="ajusteDetalleTitle">
+        <div class="modal-content modal-content-lg">
+            <div class="modal-header">
+                <h2 id="ajusteDetalleTitle">Ajuste</h2>
+                <button class="close-btn" type="button" aria-label="Cerrar" onclick="AjustesInventarioModule.closeModal('ajusteDetalleModal')">&times;</button>
+            </div>
+            <div class="modal-body" id="ajusteDetalleBody"></div>
+            <div class="modal-footer" id="ajusteDetalleFooter"></div>
+        </div>
+    </div>
+
     <div id="posChargeModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="posChargeTitle">
         <div class="modal-content">
             <div class="modal-header">
@@ -2361,6 +2509,7 @@
     <script src="js/punto-de-venta.js"></script>
     <script src="js/integraciones.js"></script>
     <script src="js/precios.js"></script>
+    <script src="js/ajustes-inventario.js"></script>
     <script src="js/fel.js"></script>
     <script src="js/caja.js"></script>
     <script src="js/cuentas-por-cobrar.js"></script>
