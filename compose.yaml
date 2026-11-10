@@ -162,9 +162,12 @@ services:
     networks: [frontend, backend, automatizaciones]
 
   # ---------- Automatizaciones (pestaña del panel de soporte) ----------
-  # Portal AutomatizacionBotEngine (Java/Spring) con Chrome de Selenium y grabación de video.
-  # Solo arranca con COMPOSE_PROFILES=automatizaciones en .env (necesita unos 2-3 GB de RAM).
-  # Caddy lo publica en /pruebas y solo deja pasar a quien tenga sesión de soporte.
+  # Portal AutomatizacionBotEngine (Java/Spring + Selenium) en modo ligero: Chrome sin ventana
+  # va dentro del mismo contenedor y solo corre durante cada prueba (sin Selenium Grid ni video).
+  # Solo arranca con COMPOSE_PROFILES=automatizaciones en .env. Caddy lo publica en /pruebas y
+  # solo deja pasar a quien tenga sesión de soporte.
+  # Memoria: tiene tope y, si al servidor le falta, el sistema mata primero estos contenedores
+  # (oom_score_adj alto) y nunca al ERP ni a la web.
   automatizaciones:
     profiles: [automatizaciones]
     build:
@@ -172,20 +175,27 @@ services:
       args:
         BOTENGINE_REF: ${AUTOMATIZACIONES_REF:-prod}
     restart: unless-stopped
-    # Comparte la red con Chrome: el portal busca Selenium en localhost:4444 y la prueba de
-    # ejemplo entra al propio portal en localhost:8081.
-    network_mode: "service:automatizaciones-chrome"
+    mem_limit: 700m
+    oom_score_adj: 900
     environment:
       TZ: America/Guatemala
-      JAVA_OPTS: -Xmx512m
+      # Java con poca memoria; modo local = Chrome dentro de este contenedor.
+      JAVA_OPTS: >-
+        -Xms64m -Xmx192m -XX:MaxMetaspaceSize=160m -XX:ReservedCodeCacheSize=48m
+        -XX:MaxDirectMemorySize=32m -XX:+UseSerialGC -XX:TieredStopAtLevel=1 -Xss512k
+        -Dbotengine.selenium.modo=local
       SERVER_PORT: 8081
       SERVER_SERVLET_CONTEXT_PATH: /pruebas
       SERVER_FORWARD_HEADERS_STRATEGY: native
       SERVER_SERVLET_SESSION_COOKIE_SECURE: "true"
+      SERVER_TOMCAT_THREADS_MAX: 16
+      SERVER_TOMCAT_THREADS_MIN_SPARE: 2
       SPRING_SERVLET_MULTIPART_MAX_FILE_SIZE: 10MB
       SPRING_SERVLET_MULTIPART_MAX_REQUEST_SIZE: 10MB
       SPRING_DATASOURCE_URL: jdbc:postgresql://automatizaciones-db:5432/automatizacion_botengine
       SPRING_DATASOURCE_USERNAME: botengine_app
+      SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: 3
+      SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE: 1
       SPRING_JPA_HIBERNATE_DDL_AUTO: update
       SPRING_JPA_OPEN_IN_VIEW: "false"
       BOTENGINE_ADMIN_USERNAME: admin
@@ -201,22 +211,29 @@ services:
       - automatizaciones_credential_key
     volumes:
       - automatizaciones_storage:/app/storage
+      # Videos de ejecuciones anteriores (las nuevas no graban video).
       - automatizaciones_videos:/app/storage/selenium-videos
       - automatizaciones_reportes:/app/reportes
     depends_on:
       automatizaciones-db:
         condition: service_healthy
-      automatizaciones-chrome:
-        condition: service_healthy
-      automatizaciones-video:
-        condition: service_started
     security_opt:
       - no-new-privileges:true
+    networks:
+      automatizaciones:
+        # Caddy lo encuentra con este nombre.
+        aliases: [automatizaciones-portal]
+      # Salida a internet para abrir los sitios que se prueban (y bajar ChromeDriver).
+      egress:
 
   automatizaciones-db:
     profiles: [automatizaciones]
     image: postgres:17-alpine
     restart: unless-stopped
+    # Base pequeña: pocos datos y pocas conexiones.
+    command: ["postgres", "-c", "shared_buffers=16MB", "-c", "max_connections=20", "-c", "work_mem=2MB"]
+    mem_limit: 128m
+    oom_score_adj: 600
     environment:
       POSTGRES_DB: automatizacion_botengine
       POSTGRES_USER: botengine_app
@@ -230,51 +247,6 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
-    networks: [automatizaciones]
-
-  automatizaciones-chrome:
-    profiles: [automatizaciones]
-    image: selenium/standalone-chrome:4.48.0-20260905
-    restart: unless-stopped
-    shm_size: "2gb"
-    environment:
-      SE_START_VNC: "false"
-      SE_SCREEN_WIDTH: "1920"
-      SE_SCREEN_HEIGHT: "1080"
-      SE_NODE_MAX_SESSIONS: "1"
-      TZ: America/Guatemala
-    healthcheck:
-      test: ["CMD", "/opt/bin/check-grid.sh", "--host", "0.0.0.0", "--port", "4444"]
-      interval: 10s
-      timeout: 15s
-      retries: 10
-    networks:
-      automatizaciones:
-        # El portal Java usa la red de este contenedor; Caddy lo encuentra con este nombre.
-        aliases: [automatizaciones-portal]
-      # Salida a internet para abrir los sitios que se prueban.
-      egress:
-
-  automatizaciones-video:
-    profiles: [automatizaciones]
-    image: selenium/video:ffmpeg-8.1-20260905
-    restart: unless-stopped
-    depends_on:
-      automatizaciones-chrome:
-        condition: service_healthy
-    volumes:
-      - automatizaciones_videos:/videos
-    environment:
-      DISPLAY_CONTAINER_NAME: automatizaciones-chrome
-      SE_VIDEO_RECORD_STANDALONE: "true"
-      # El nombre lo manda el portal (se:name) con el UUID de la ejecución.
-      SE_VIDEO_FILE_NAME: "auto"
-      SE_VIDEO_FILE_NAME_SUFFIX: "false"
-      # Solo graba las sesiones que lo piden.
-      SE_RECORD_VIDEO: "false"
-      SE_FRAME_RATE: "15"
-      TZ: America/Guatemala
-    stop_grace_period: 30s
     networks: [automatizaciones]
 
 volumes:
