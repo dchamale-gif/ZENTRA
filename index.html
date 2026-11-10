@@ -181,6 +181,20 @@
                         <p class="date-info"><i class="fas fa-calendar-alt"></i> <span id="currentDate"></span></p>
                     </div>
 
+                    <!-- Inicio de la cajera: solo lo cobrado por método desde su último cierre -->
+                    <section id="miCaja" class="mi-caja" aria-labelledby="miCajaTitle" hidden>
+                        <div class="mi-caja-head">
+                            <div>
+                                <h2 id="miCajaTitle">Mi caja</h2>
+                                <p id="miCajaPeriodo" class="mi-caja-periodo">Cargando…</p>
+                            </div>
+                            <button class="btn btn-secondary btn-sm" type="button" id="miCajaActualizar"><i class="fas fa-rotate" aria-hidden="true"></i> Actualizar</button>
+                        </div>
+                        <div class="mi-caja-metodos" id="miCajaMetodos"></div>
+                        <p class="mi-caja-entrega" id="miCajaEntrega"></p>
+                        <p class="mi-caja-ultimo" id="miCajaUltimo"></p>
+                    </section>
+
                     <!-- Primeros pasos: se muestra hasta registrar el primer artículo y la primera venta -->
                     <section id="onboardingCard" class="onboarding-card" hidden aria-labelledby="onboardingTitle">
                         <h2 id="onboardingTitle">Primeros pasos</h2>
@@ -1131,6 +1145,22 @@
 
                     <div id="cashStatus" class="cash-status-container"></div>
 
+                    <!-- Cierre de caja: solo el administrador -->
+                    <section class="table-card depositos-card cierres-card" aria-labelledby="cierresTitle" data-admin-only hidden>
+                        <div class="depositos-header">
+                            <div>
+                                <h2 id="cierresTitle">Cierre de caja</h2>
+                                <small>Compara lo que cobró cada cajera con el efectivo que te entregó, los vouchers de tarjeta y las transferencias que ves en la cuenta.</small>
+                            </div>
+                            <button class="btn btn-secondary btn-sm" type="button" id="cierresActualizar"><i class="fas fa-rotate" aria-hidden="true"></i> Actualizar</button>
+                        </div>
+                        <div id="cierresPendientes" class="table-responsive"></div>
+                        <details class="cierres-historial">
+                            <summary>Cierres anteriores</summary>
+                            <div id="cierresHistorial" class="table-responsive"></div>
+                        </details>
+                    </section>
+
                     <section class="table-card depositos-card" aria-labelledby="depositosTitle">
                         <div class="depositos-header">
                             <div>
@@ -1751,6 +1781,45 @@
                 <div class="modal-footer">
                     <button class="btn btn-secondary" type="button" onclick="CajaModule.closeDepositoModal()">Cancelar</button>
                     <button class="btn btn-primary" type="submit" id="depositoSubmit"><i class="fas fa-building-columns" aria-hidden="true"></i> Registrar depósito</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Aprobar un cierre de caja -->
+    <div id="cierreModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="cierreModalTitle">
+        <div class="modal-content modal-content-lg">
+            <div class="modal-header">
+                <h2 id="cierreModalTitle">Cerrar caja</h2>
+                <button class="close-btn" type="button" aria-label="Cerrar" onclick="CierresCajaModule.closeModal()">&times;</button>
+            </div>
+            <form id="cierreForm" novalidate>
+                <div class="modal-body">
+                    <p class="cierre-periodo" id="cierrePeriodo"></p>
+                    <div class="table-responsive">
+                        <table class="data-table cierre-tabla">
+                            <thead>
+                                <tr>
+                                    <th scope="col">Método</th>
+                                    <th scope="col" class="text-right">Según el sistema</th>
+                                    <th scope="col" class="text-right">Lo que recibiste</th>
+                                    <th scope="col" class="text-right">Diferencia</th>
+                                </tr>
+                            </thead>
+                            <tbody id="cierreFilas"></tbody>
+                        </table>
+                    </div>
+                    <div class="form-group">
+                        <label for="cierreNota">Nota</label>
+                        <textarea id="cierreNota" class="form-input" rows="2" maxlength="2000" aria-describedby="cierreNotaHint"></textarea>
+                        <small id="cierreNotaHint">Obligatoria si algo no cuadra: explica el faltante o sobrante.</small>
+                    </div>
+                    <p class="cierre-resultado" id="cierreResultado" aria-live="polite"></p>
+                    <p id="cierreError" class="form-error" role="alert" hidden></p>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" type="button" onclick="CierresCajaModule.closeModal()">Cancelar</button>
+                    <button class="btn btn-primary" type="submit" id="cierreAprobar"><i class="fas fa-check" aria-hidden="true"></i> Aprobar cierre</button>
                 </div>
             </form>
         </div>
@@ -2512,6 +2581,7 @@
     <script src="js/ajustes-inventario.js"></script>
     <script src="js/fel.js"></script>
     <script src="js/caja.js"></script>
+    <script src="js/cierres-caja.js"></script>
     <script src="js/cuentas-por-cobrar.js"></script>
     <script src="js/estados-de-cuenta.js"></script>
     <script src="js/dashboard-financiero.js"></script>

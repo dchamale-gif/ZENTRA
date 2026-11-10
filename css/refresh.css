@@ -1483,3 +1483,39 @@ tr.is-inactive td { color: var(--text-gray); }
     .ajuste-carga-tools select { width: 100%; }
     .ajuste-lineas .ajuste-cantidad { width: 84px; }
 }
+
+/* Cierre de caja */
+.modo-cajera > :not(.page-header):not(#miCaja) { display: none !important; }
+.mi-caja { margin-bottom: 16px; padding: 18px 20px; border: 1px solid var(--border-color); border-radius: var(--radius-lg); background: var(--bg-white); }
+.mi-caja[hidden] { display: none; }
+.mi-caja-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.mi-caja-head h2 { margin: 0; color: var(--text-dark); font-size: 18px; }
+.mi-caja-periodo { margin: 4px 0 0; color: var(--text-gray); font-size: 13.5px; }
+.mi-caja-metodos { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
+.mi-caja-metodo { display: flex; flex-direction: column; gap: 6px; padding: 14px 16px; border: 1px solid var(--border-color); border-radius: var(--radius); }
+.mi-caja-label { color: var(--text-gray); font-size: 13px; font-weight: 500; }
+.mi-caja-label i { width: 18px; color: var(--primary-color); }
+.mi-caja-metodo strong { color: var(--text-dark); font-size: 24px; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+.mi-caja-total { background: var(--primary-soft, #eff6ff); border-color: #bfdbfe; }
+.mi-caja-entrega { margin: 14px 0 0; color: var(--text-dark); font-weight: 500; }
+.mi-caja-ultimo { margin: 8px 0 0; color: var(--text-gray); font-size: 13px; }
+.mi-caja-entrega:empty, .mi-caja-ultimo:empty { display: none; }
+.cierres-card .depositos-header .btn { flex-shrink: 0; }
+.cierres-vacio { margin: 0; padding: 14px 16px; color: var(--text-gray); font-size: 13.5px; }
+.cierre-sub { display: block; color: var(--text-gray); font-size: 12px; font-weight: 400; }
+.cierres-historial { border-top: 1px solid var(--border-color); }
+.cierres-historial summary { padding: 12px 16px; color: var(--primary-color); font-weight: 600; cursor: pointer; }
+.cierre-periodo { margin: 0 0 12px; color: var(--text-body); }
+.cierre-tabla th[scope="row"] { color: var(--text-dark); font-weight: 600; text-align: left; white-space: nowrap; }
+.cierre-tabla th[scope="row"] i { width: 18px; color: var(--primary-color); }
+.cierre-recibido { display: flex; justify-content: flex-end; gap: 6px; }
+.cierre-recibido .form-input { width: 130px; text-align: right; }
+.cierre-ok { color: #166534; font-weight: 600; }
+.cierre-falta { color: var(--danger-color); font-weight: 600; }
+.cierre-sobra { color: #b45309; font-weight: 600; }
+.cierre-resultado { margin: 0 0 8px; color: var(--text-dark); font-weight: 600; }
+.cierre-resultado:empty { display: none; }
+@media (max-width: 600px) {
+    .cierre-recibido .form-input { width: 100px; }
+    .mi-caja-metodo strong { font-size: 20px; }
+}

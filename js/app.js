@@ -355,6 +355,9 @@ function navigateToPage(pageId, { fromHistory = false } = {}) {
     if (pageId === 'caja' && typeof CajaModule !== 'undefined') {
         CajaModule.loadData();
     }
+    if (pageId === 'caja' && typeof CierresCajaModule !== 'undefined' && AccessControl.isAdmin()) {
+        CierresCajaModule.load();
+    }
     if (pageId === 'caja-integrada' && typeof CajaIntegradaModule !== 'undefined') {
         CajaIntegradaModule.loadMovimientosFromAPI();
     }
@@ -454,6 +457,15 @@ function setupSubtabs() {
 let dashboardData = { salesByDay: [], inventoryByCategory: [], recent: [] };
 
 async function setupDashboard() {
+    // Cajera: el inicio muestra solo lo que lleva cobrado por método (efectivo, tarjeta, transferencia).
+    const modoCajera = typeof CierresCajaModule !== 'undefined' && CierresCajaModule.esCajera();
+    document.getElementById('page-dashboard')?.classList.toggle('modo-cajera', modoCajera);
+    const miCaja = document.getElementById('miCaja');
+    if (miCaja) miCaja.hidden = !modoCajera;
+    if (modoCajera) {
+        CierresCajaModule.loadMiCaja();
+        return;
+    }
     try {
         const response = await authManager.fetchWithAuth('/api/dashboard');
         if (!response) return; // sesión cerrada: fetchWithAuth ya redirige al inicio

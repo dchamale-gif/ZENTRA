@@ -184,6 +184,19 @@ const assertSinFacturaVigente = async (client, ventaId, accion) => {
   }
 };
 
+// Una venta cuyo cobro ya entró en un cierre de caja aprobado no se puede cambiar: el cierre
+// quedaría descuadrado.
+const assertSinCierreCaja = async (client, ventaId, accion) => {
+  const result = await client.query(
+    `SELECT c.numero FROM pagos_factura p JOIN cierres_caja c ON c.id = p.cierre_id
+     WHERE p.venta_id = $1 AND p.origen = 'contado' LIMIT 1`,
+    [ventaId]
+  );
+  if (result.rows[0]) {
+    throw httpError(409, `El cobro de esta venta ya está en el cierre de caja ${result.rows[0].numero}; no se puede ${accion === 'eliminarla' ? 'eliminar' : 'modificar'}`);
+  }
+};
+
 // Abonos registrados en Cuentas por Cobrar (no incluye el pago automático de contado).
 const getAbonos = async (client, ventaId) => {
   const result = await client.query(
@@ -320,6 +333,7 @@ const updateVenta = async (req, res) => {
     const existing = await client.query('SELECT id FROM ventas WHERE id = $1 FOR UPDATE', [req.params.id]);
     if (existing.rows.length === 0) throw httpError(404, 'Venta no encontrada');
     await assertSinFacturaVigente(client, req.params.id, 'modificarla');
+    await assertSinCierreCaja(client, req.params.id, 'modificarla');
 
     const abonos = await getAbonos(client, req.params.id);
     if (abonos > 0 && header.metodoPago !== 'credito') {
@@ -359,6 +373,7 @@ const deleteVenta = async (req, res) => {
     const existing = await client.query('SELECT id FROM ventas WHERE id = $1 FOR UPDATE', [req.params.id]);
     if (existing.rows.length === 0) throw httpError(404, 'Venta no encontrada');
     await assertSinFacturaVigente(client, req.params.id, 'eliminarla');
+    await assertSinCierreCaja(client, req.params.id, 'eliminarla');
     if (await getAbonos(client, req.params.id) > 0) {
       throw httpError(409, 'La venta tiene abonos registrados en Cuentas por Cobrar y no se puede eliminar');
     }
