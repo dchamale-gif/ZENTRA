@@ -98,11 +98,11 @@ const AjustesInventarioModule = {
     },
 
     puedeEditar() {
-        return typeof AccessControl === 'undefined' || AccessControl.canEdit('articulos');
+        return typeof AccessControl === 'undefined' || AccessControl.canEdit('ajustes');
     },
 
     esAdmin() {
-        return typeof AccessControl !== 'undefined' && AccessControl.isAdmin() && AccessControl.canEdit('articulos');
+        return typeof AccessControl !== 'undefined' && AccessControl.isAdmin() && AccessControl.canEdit('ajustes');
     },
 
     async request(path, options = {}) {

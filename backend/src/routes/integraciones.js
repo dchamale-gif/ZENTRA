@@ -10,6 +10,6 @@ router.get('/web', rolePermissionMiddleware(['admin_config']), integracionesCont
 router.put('/web', rolePermissionMiddleware(['admin_config']), integracionesController.saveConfig);
 router.delete('/web', rolePermissionMiddleware(['admin_config']), integracionesController.deleteConfig);
 router.post('/web/probar', rolePermissionMiddleware(['admin_config']), integracionesController.probar);
-router.post('/web/sincronizar', rolePermissionMiddleware(['admin_config', 'inventario_view', 'ventas_view']), integracionesController.sincronizar);
+router.post('/web/sincronizar', rolePermissionMiddleware(['admin_config', 'inventario_view', 'ventas_view', 'pos_view']), integracionesController.sincronizar);
 
 module.exports = router;

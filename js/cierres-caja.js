@@ -14,10 +14,10 @@ const CierresCajaModule = {
     ],
     state: { initialized: false, pendientes: [], cierre: null },
 
-    // Inicio de cajera: no es administrador, cobra (ventas) y no tiene el panel financiero.
+    // Inicio de cajera: no es administrador, cobra (punto de venta o ventas) y no tiene el panel financiero.
     esCajera() {
         return typeof AccessControl !== 'undefined' && !AccessControl.isAdmin()
-            && AccessControl.hasModule('ventas') && !AccessControl.hasModule('finanzas');
+            && (AccessControl.hasModule('pos') || AccessControl.hasModule('ventas')) && !AccessControl.hasModule('finanzas');
     },
 
     init() {
@@ -93,7 +93,7 @@ const CierresCajaModule = {
 
     async load() {
         this.init();
-        if (!AccessControl.isAdmin()) return;
+        if (!AccessControl.hasModule('cierres')) return;
         const pendientesEl = document.getElementById('cierresPendientes');
         try {
             const [{ pendientes }, { cierres }] = await Promise.all([this.request('/pendientes'), this.request('')]);
@@ -106,7 +106,7 @@ const CierresCajaModule = {
     },
 
     renderPendientes() {
-        const puedeCerrar = AccessControl.canEdit('caja');
+        const puedeCerrar = AccessControl.canEdit('cierres');
         const contenedor = document.getElementById('cierresPendientes');
         if (!this.state.pendientes.length) {
             contenedor.innerHTML = '<p class="cierres-vacio">No hay cobros por cerrar: todas las cajas están cerradas.</p>';

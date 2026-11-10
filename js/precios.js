@@ -34,7 +34,7 @@ const PreciosModule = {
     },
 
     puedeEditar() {
-        return AccessControl.canEdit('articulos');
+        return AccessControl.canEdit('precios');
     },
 
     async request(path, options = {}) {

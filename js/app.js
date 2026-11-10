@@ -355,7 +355,7 @@ function navigateToPage(pageId, { fromHistory = false } = {}) {
     if (pageId === 'caja' && typeof CajaModule !== 'undefined') {
         CajaModule.loadData();
     }
-    if (pageId === 'caja' && typeof CierresCajaModule !== 'undefined' && AccessControl.isAdmin()) {
+    if (pageId === 'caja' && typeof CierresCajaModule !== 'undefined' && AccessControl.hasModule('cierres')) {
         CierresCajaModule.load();
     }
     if (pageId === 'caja-integrada' && typeof CajaIntegradaModule !== 'undefined') {

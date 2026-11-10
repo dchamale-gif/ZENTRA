@@ -20,10 +20,10 @@ router.get('/stock/bajo', rolePermissionMiddleware(['inventario_view']), codigos
 router.get('/siguiente-codigo', rolePermissionMiddleware(['inventario_view']), codigosArticulosController.getSiguienteCodigo);
 
 // GET - Listar artículos
-router.get('/', rolePermissionMiddleware(['inventario_view', 'ventas_view', 'compras_view']), codigosArticulosController.getArticulos);
+router.get('/', rolePermissionMiddleware(['inventario_view', 'ventas_view', 'compras_view', 'ajustes_view', 'precios_view']), codigosArticulosController.getArticulos);
 
 // Foto del artículo: se ve desde Artículos, Ventas, Compras y el punto de venta.
-router.get('/:id/foto', rolePermissionMiddleware(['inventario_view', 'ventas_view', 'compras_view']), codigosArticulosController.getFoto);
+router.get('/:id/foto', rolePermissionMiddleware(['inventario_view', 'ventas_view', 'compras_view', 'pos_view']), codigosArticulosController.getFoto);
 router.put('/:id/foto', rolePermissionMiddleware(['inventario_edit']), codigosArticulosController.setFoto);
 router.delete('/:id/foto', rolePermissionMiddleware(['inventario_edit']), codigosArticulosController.setFoto);
 
@@ -37,7 +37,7 @@ router.post('/', sincronizarTrasMovimiento, rolePermissionMiddleware(['inventari
 router.put('/:id', sincronizarTrasMovimiento, rolePermissionMiddleware(['inventario_edit']), codigosArticulosController.updateArticulo);
 
 // PUT - Actualizar cantidad
-router.put('/:id/cantidad', sincronizarTrasMovimiento, rolePermissionMiddleware(['inventario_edit']), codigosArticulosController.actualizarCantidad);
+router.put('/:id/cantidad', sincronizarTrasMovimiento, rolePermissionMiddleware(['ajustes_edit']), codigosArticulosController.actualizarCantidad);
 
 // DELETE - Eliminar artículo
 router.delete('/:id', sincronizarTrasMovimiento, rolePermissionMiddleware(['inventario_delete']), codigosArticulosController.deleteArticulo);

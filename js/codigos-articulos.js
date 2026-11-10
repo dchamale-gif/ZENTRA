@@ -585,6 +585,18 @@ const CodigosArticulosModule = {
         }
 
         if (!articulo) document.getElementById('articuloMargen').value = '';
+        // Precio y existencia tienen permiso propio (módulos Precios y Ajustes de inventario). Al
+        // crear un artículo sí se escriben: son su precio y su existencia inicial.
+        this.state.sinPermisoPrecios = Boolean(articulo) && !AccessControl.canEdit('precios');
+        const sinAjustes = Boolean(articulo) && !AccessControl.canEdit('ajustes');
+        ['precioVenta', 'articuloMargen'].forEach((campo) => {
+            const input = document.getElementById(campo);
+            input.readOnly = this.state.sinPermisoPrecios;
+            input.title = this.state.sinPermisoPrecios ? 'Lo cambia quien tiene el módulo Precios' : '';
+        });
+        const cantidad = document.getElementById('articuloCantidad');
+        cantidad.readOnly = sinAjustes;
+        cantidad.title = sinAjustes ? 'La existencia se cambia con un ajuste de inventario' : '';
         this.prepararSugerido();
 
         modal.style.display = 'flex';
@@ -638,7 +650,7 @@ const CodigosArticulosModule = {
         this.state.sugerido = sugerido;
         salida.textContent = formatQ(sugerido);
         const venta = this.parseDecimal(document.getElementById('precioVenta').value);
-        boton.hidden = Math.abs(sugerido - venta) < 0.005;
+        boton.hidden = this.state.sinPermisoPrecios || Math.abs(sugerido - venta) < 0.005;
     },
 
     // ---------- Foto ----------

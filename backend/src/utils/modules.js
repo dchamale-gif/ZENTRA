@@ -1,13 +1,20 @@
 // Catálogo de módulos que se pueden habilitar por empresa y asignar por usuario.
 // `permisos` son los prefijos de permiso del backend que pertenecen al módulo.
+// Punto de venta, Precios, Ajustes de inventario y Cierre de caja son módulos aparte (nov. 2026):
+// una cajera cobra sin poder editar ventas, y bodega maneja artículos sin cambiar precios ni dar
+// de baja inventario.
 const MODULES = [
-  { key: 'ventas', label: 'Ventas', permisos: ['ventas'] },
+  { key: 'pos', label: 'Punto de venta', permisos: ['pos'] },
+  { key: 'ventas', label: 'Ventas (lista, edición y facturas)', permisos: ['ventas'] },
   { key: 'clientes', label: 'Clientes', permisos: ['clientes'] },
   { key: 'cobros', label: 'Cuentas por cobrar y estados de cuenta', permisos: ['cobros'] },
   { key: 'articulos', label: 'Artículos e inventario', permisos: ['inventario'] },
+  { key: 'precios', label: 'Precios', permisos: ['precios'] },
+  { key: 'ajustes', label: 'Ajustes de inventario (carga inicial y bajas)', permisos: ['ajustes'] },
   { key: 'compras', label: 'Compras', permisos: ['compras'] },
   { key: 'proveedores', label: 'Proveedores', permisos: ['proveedores'] },
   { key: 'caja', label: 'Caja', permisos: ['caja'] },
+  { key: 'cierres', label: 'Cierre de caja y confirmar depósitos', permisos: ['cierres'] },
   { key: 'gastos', label: 'Gastos y servicios', permisos: ['gastos'] },
   { key: 'finanzas', label: 'Dashboard ejecutivo y transacciones', permisos: ['finanzas'] },
   { key: 'reportes', label: 'Reportes', permisos: ['reportes'] }
@@ -35,6 +42,12 @@ const permissionsFor = (moduleKey, nivel) => {
   const module = MODULES.find((entry) => entry.key === moduleKey);
   if (!module) return [];
   return module.permisos.flatMap((prefix) => ACCIONES[nivel].map((accion) => `${prefix}_${accion}`));
+};
+
+const HEREDADOS = { ventas: ['pos'], inventario: ['precios', 'ajustes'] };
+const equivalentesHeredados = (permission) => {
+  const [prefix, ...accion] = String(permission).split('_');
+  return [permission, ...(HEREDADOS[prefix] || []).map((nuevo) => [nuevo, ...accion].join('_'))];
 };
 
 // Resuelve rol, módulos visibles y permisos efectivos de un usuario.
@@ -70,8 +83,9 @@ const resolveUserAccess = async (db, userId, organizationModules) => {
     permissions = [
       'dashboard_view',
       ...modules.flatMap((row) => permissionsFor(row.modulo, row.nivel)),
-      // Permisos heredados de roles anteriores, solo de módulos habilitados.
-      ...legacyResult.rows.map((row) => row.nombre)
+      // Permisos heredados de roles anteriores, solo de módulos habilitados. Esos roles son de
+      // antes de separar Punto de venta, Precios y Ajustes: conservan lo que ya podían hacer.
+      ...legacyResult.rows.flatMap((row) => equivalentesHeredados(row.nombre))
         .filter((name) => { const key = moduleOfPermission(name); return !key || enabled.includes(key); })
     ];
   }

@@ -9,7 +9,7 @@ const habilitada = felController.requireHabilitada;
 router.use(authMiddleware);
 router.get('/config', habilitada, rolePermissionMiddleware(['admin_config']), felController.getConfig);
 router.put('/config', habilitada, rolePermissionMiddleware(['admin_config']), felController.saveConfig);
-router.get('/estado', rolePermissionMiddleware(['ventas_view']), felController.getEstado);
+router.get('/estado', rolePermissionMiddleware(['ventas_view', 'pos_view']), felController.getEstado);
 router.post('/ventas/:ventaId/factura', habilitada, rolePermissionMiddleware(['ventas_create']), felController.emitir);
 router.post('/documentos/:id/anular', habilitada, rolePermissionMiddleware(['ventas_delete']), felController.anular);
 router.get('/documentos/:id/xml', rolePermissionMiddleware(['ventas_view']), felController.getXml);

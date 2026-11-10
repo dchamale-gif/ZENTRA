@@ -109,7 +109,7 @@ const PosModule = {
     },
 
     canSell() {
-        return AccessControl.canEdit('ventas');
+        return AccessControl.canEdit('pos');
     },
 
     applyAccess() {

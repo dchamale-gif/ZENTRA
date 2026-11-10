@@ -300,9 +300,9 @@ const CajaModule = {
 
     // ---------- Depósitos al banco ----------
 
-    // Revisar depósitos: solo administradores (y no en soporte de solo lectura).
+    // Revisar depósitos: módulo «Cierre de caja» con edición (administradores y encargados).
     puedeRevisar() {
-        return AccessControl.isAdmin() && AccessControl.canEdit('caja');
+        return AccessControl.canEdit('cierres');
     },
 
     async loadDepositos() {

@@ -284,12 +284,28 @@ const updateArticulo = async (req, res) => {
 
     // Verificar que existe
     const existing = await pool.query(
-      'SELECT id FROM codigos_articulos WHERE id = $1',
+      'SELECT id, precio_unitario, cantidad_disponible, margen FROM codigos_articulos WHERE id = $1',
       [id]
     );
 
     if (existing.rows.length === 0) {
       return res.status(404).json({ error: 'Artículo no encontrado' });
+    }
+
+    // Precio y existencia tienen su propio permiso (módulos Precios y Ajustes de inventario):
+    // desde la ficha solo los cambia quien los tiene; el resto de la ficha, quien edita artículos.
+    const actual = existing.rows[0];
+    const permisos = req.userPermissions || [];
+    const cambia = (nuevo, anterior) => nuevo !== undefined && nuevo !== null && nuevo !== ''
+      && Math.round(Number(nuevo) * 100) !== Math.round(Number(anterior ?? 0) * 100);
+    const margenNuevo = leerMargen(req.body);
+    const cambiaMargen = margenNuevo !== undefined
+      && (margenNuevo === null ? actual.margen !== null : cambia(margenNuevo, actual.margen) || actual.margen === null);
+    if (!permisos.includes('precios_edit') && (cambia(precio_unitario, actual.precio_unitario) || cambiaMargen)) {
+      return res.status(403).json({ error: 'No tienes permiso para cambiar precios; pide acceso al módulo Precios' });
+    }
+    if (!permisos.includes('ajustes_edit') && cambia(cantidad_disponible, actual.cantidad_disponible)) {
+      return res.status(403).json({ error: 'La existencia se cambia con un ajuste de inventario; pide acceso al módulo Ajustes de inventario' });
     }
 
     const result = await pool.query(

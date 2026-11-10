@@ -10,8 +10,8 @@ router.use(authMiddleware);
 router.get('/depositos', rolePermissionMiddleware(['caja_view']), depositos.listar);
 router.get('/depositos/:id/boleta', rolePermissionMiddleware(['caja_view']), depositos.verBoleta);
 router.post('/depositos', rolePermissionMiddleware(['caja_edit']), depositos.registrar);
-router.post('/depositos/:id/confirmar', rolePermissionMiddleware(['admin_config']), depositos.confirmar);
-router.post('/depositos/:id/rechazar', rolePermissionMiddleware(['admin_config']), depositos.rechazar);
+router.post('/depositos/:id/confirmar', rolePermissionMiddleware(['admin_config', 'cierres_edit']), depositos.confirmar);
+router.post('/depositos/:id/rechazar', rolePermissionMiddleware(['admin_config', 'cierres_edit']), depositos.rechazar);
 
 router.get('/', rolePermissionMiddleware(['caja_view']), (req, res) => cajaController.getMovimientos(req, res));
 router.get('/summary', rolePermissionMiddleware(['caja_view']), (req, res) => cajaController.getResumen(req, res));

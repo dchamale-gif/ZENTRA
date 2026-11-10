@@ -181,8 +181,15 @@ const upsertArticulo = async (client, raw, index, { requiresManualId }) => {
 const importArticulos = async (req, res) => {
   try {
     const options = { requiresManualId: await articuloIdIsManual(pool) };
+    // Sin los módulos Precios o Ajustes de inventario, la importación crea artículos completos
+    // pero no cambia el precio de venta ni la existencia de los que ya existen.
+    const permisos = req.userPermissions || [];
+    const soloAlCrear = [
+      ...(permisos.includes('precios_edit') ? [] : ['precio_unitario']),
+      ...(permisos.includes('ajustes_edit') ? [] : ['cantidad_disponible'])
+    ];
     const summary = await runImport(pool, req.body.rows,
-      (client, raw, index) => upsertArticulo(client, raw, index, options),
+      (client, raw, index) => upsertArticulo(client, { ...raw, _soloAlCrear: soloAlCrear }, index, options),
       { dryRun: isDryRun(req) });
     sendResult(res, req, summary);
   } catch (error) {
