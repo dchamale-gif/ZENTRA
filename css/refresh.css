@@ -494,8 +494,11 @@ tr.is-inactive td { color: var(--text-gray); }
 
 /* ---------- Diálogos creados por JS ---------- */
 #userFormModal .modal-content { max-width: 640px; width: calc(100% - 32px); }
-/* Un formulario entre el modal y su cuerpo: el cuerpo se desplaza y el pie queda visible. */
-.modal-content > form { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+/* Un formulario entre el modal y su cuerpo: el cuerpo se desplaza y el pie queda visible.
+   No aplica cuando el formulario ES el cuerpo (usuarios, directorio): ahí, como columna flexible,
+   la lista de permisos se encogía y recortaba sus filas en vez de desplazarse. */
+.modal-content > form:not(.modal-body) { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+.modal-content > form.modal-body { min-height: 0; }
 
 /* ---------- Pantallas pequeñas ---------- */
 @media (max-width: 768px) {
