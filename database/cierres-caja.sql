@@ -69,26 +69,19 @@ BEGIN
         )
         SELECT 'CC-INICIAL-' || p.organization_id, p.organization_id, 'CC-INICIAL', 'inicial',
                'Todas las cajeras', MIN(p.fecha), MAX(p.fecha), COUNT(*),
-               SUM(p.monto) FILTER (WHERE lower(p.metodo_pago) = 'efectivo'),
-               SUM(p.monto) FILTER (WHERE lower(p.metodo_pago) = 'tarjeta'),
-               SUM(p.monto) FILTER (WHERE lower(p.metodo_pago) = 'transferencia'),
-               SUM(p.monto) FILTER (WHERE lower(COALESCE(p.metodo_pago, '')) NOT IN ('efectivo', 'tarjeta', 'transferencia')),
-               SUM(p.monto) FILTER (WHERE lower(p.metodo_pago) = 'efectivo'),
-               SUM(p.monto) FILTER (WHERE lower(p.metodo_pago) = 'tarjeta'),
-               SUM(p.monto) FILTER (WHERE lower(p.metodo_pago) = 'transferencia'),
-               SUM(p.monto) FILTER (WHERE lower(COALESCE(p.metodo_pago, '')) NOT IN ('efectivo', 'tarjeta', 'transferencia')),
+               -- Sin cobros de un método la suma es NULL: se guarda 0 (sistema y recibido iguales).
+               COALESCE(SUM(p.monto) FILTER (WHERE lower(p.metodo_pago) = 'efectivo'), 0),
+               COALESCE(SUM(p.monto) FILTER (WHERE lower(p.metodo_pago) = 'tarjeta'), 0),
+               COALESCE(SUM(p.monto) FILTER (WHERE lower(p.metodo_pago) = 'transferencia'), 0),
+               COALESCE(SUM(p.monto) FILTER (WHERE lower(COALESCE(p.metodo_pago, '')) NOT IN ('efectivo', 'tarjeta', 'transferencia')), 0),
+               COALESCE(SUM(p.monto) FILTER (WHERE lower(p.metodo_pago) = 'efectivo'), 0),
+               COALESCE(SUM(p.monto) FILTER (WHERE lower(p.metodo_pago) = 'tarjeta'), 0),
+               COALESCE(SUM(p.monto) FILTER (WHERE lower(p.metodo_pago) = 'transferencia'), 0),
+               COALESCE(SUM(p.monto) FILTER (WHERE lower(COALESCE(p.metodo_pago, '')) NOT IN ('efectivo', 'tarjeta', 'transferencia')), 0),
                'Cobros anteriores al cierre de caja: se dieron por cerrados al instalarlo, sin revisión.'
         FROM pagos_factura p
         WHERE p.fecha < (NOW() AT TIME ZONE 'America/Guatemala')::date
         GROUP BY p.organization_id;
-
-        -- Las sumas sin cobros de un método quedan NULL; se pasan a 0.
-        UPDATE cierres_caja SET
-            sistema_efectivo = COALESCE(sistema_efectivo, 0), sistema_tarjeta = COALESCE(sistema_tarjeta, 0),
-            sistema_transferencia = COALESCE(sistema_transferencia, 0), sistema_otros = COALESCE(sistema_otros, 0),
-            recibido_efectivo = COALESCE(recibido_efectivo, 0), recibido_tarjeta = COALESCE(recibido_tarjeta, 0),
-            recibido_transferencia = COALESCE(recibido_transferencia, 0), recibido_otros = COALESCE(recibido_otros, 0)
-        WHERE estado = 'inicial';
 
         UPDATE pagos_factura p SET cierre_id = 'CC-INICIAL-' || p.organization_id
         WHERE p.fecha < (NOW() AT TIME ZONE 'America/Guatemala')::date;
