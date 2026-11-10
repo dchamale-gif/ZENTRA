@@ -1528,3 +1528,12 @@ tr.is-inactive td { color: var(--text-gray); }
     .cierre-recibido .form-input { width: 100px; }
     .mi-caja-metodo strong { font-size: 20px; }
 }
+
+/* Usuarios: contraseña inicial al azar */
+.password-generar { display: flex; gap: 8px; }
+.password-generar .form-input { flex: 1 1 auto; min-width: 0; }
+.password-generar .btn { flex-shrink: 0; }
+#userFormModal .check-row { display: flex; align-items: center; gap: 8px; margin: 4px 0 14px; color: var(--text-body); cursor: pointer; }
+#userFormModal .check-row input { width: 18px; height: 18px; accent-color: var(--primary-color); }
+.user-credenciales { margin: 14px 0; padding: 14px 16px; border: 1px solid var(--border-color); border-radius: var(--radius); background: #f8fafc; }
+.user-credenciales code { font-size: 16px; letter-spacing: 0.04em; user-select: all; }

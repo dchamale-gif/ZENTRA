@@ -125,12 +125,14 @@ const createUser = async (req, res) => {
     await client.query('BEGIN');
     const passwordHash = await bcrypt.hash(password, 10);
     // El trigger de la base rechaza el alta si se supera la capacidad de la licencia.
+    // debeCambiarPassword: al entrar por primera vez el sistema le pide crear su propia contraseña.
     const result = await client.query(
       `INSERT INTO users (organization_id, email, password_hash, nombre, apellido, telefono,
-                          activo, verificado, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, true, true, NOW(), NOW())
+                          activo, verificado, debe_cambiar_password, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, true, true, $7, NOW(), NOW())
        RETURNING id`,
-      [req.organization.id, email, passwordHash, nombre, apellido, req.body.telefono?.trim() || null]
+      [req.organization.id, email, passwordHash, nombre, apellido, req.body.telefono?.trim() || null,
+        req.body.debeCambiarPassword === true]
     );
     await saveRoleAndModules(client, result.rows[0].id, rol, modules);
     await client.query('COMMIT');

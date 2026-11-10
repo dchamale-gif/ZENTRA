@@ -161,10 +161,20 @@ const UsuariosModule = {
                         </div>
                         <div class="form-group">
                             <label for="userPassword">Contraseña inicial</label>
-                            <input class="form-input" id="userPassword" name="password" type="password" minlength="8" required autocomplete="new-password">
-                            <small class="field-hint">Mínimo 8 caracteres. Compártela con la persona para su primer ingreso.</small>
+                            <div class="password-generar">
+                                <input class="form-input" id="userPassword" name="password" type="password" minlength="8" required autocomplete="new-password" aria-describedby="userPasswordHint">
+                                <button class="btn btn-secondary" type="button" id="userPasswordGenerar" title="Crear una contraseña al azar">
+                                    <i class="fas fa-wand-magic-sparkles" aria-hidden="true"></i> Generar
+                                </button>
+                            </div>
+                            <small class="field-hint" id="userPasswordHint">Mínimo 8 caracteres, o usa «Generar» para crear una al azar.</small>
                         </div>` : ''}
                     </div>
+                    ${isNew ? `
+                    <label class="check-row">
+                        <input type="checkbox" name="debeCambiar" checked>
+                        Pedir que cambie la contraseña en su primer ingreso
+                    </label>` : ''}
 
                     <fieldset class="role-picker">
                         <legend>Rol</legend>
@@ -210,8 +220,68 @@ const UsuariosModule = {
         modal.querySelectorAll('input[name="rol"]').forEach((radio) => radio.addEventListener('change', () => {
             modal.querySelector('#moduleAccess').hidden = modal.querySelector('input[name="rol"]:checked').value === 'admin';
         }));
+        modal.querySelector('#userPasswordGenerar')?.addEventListener('click', () => {
+            const input = modal.querySelector('#userPassword');
+            input.value = this.passwordAleatoria();
+            input.type = 'text';
+            input.focus();
+            input.select();
+        });
         modal.querySelector('#userForm').addEventListener('submit', (event) => this.saveUser(event, user));
         modal.querySelector('#userNombre').focus();
+    },
+
+    // 12 caracteres sin los que se confunden al dictarlos (0/O, 1/l/I); siempre con letras y números.
+    passwordAleatoria() {
+        const alfabeto = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+        const limite = 256 - (256 % alfabeto.length);
+        let password;
+        do {
+            password = '';
+            while (password.length < 12) {
+                const bytes = crypto.getRandomValues(new Uint8Array(24));
+                for (const byte of bytes) {
+                    // Se descartan los bytes del final para que todas las letras salgan con la misma probabilidad.
+                    if (byte < limite && password.length < 12) password += alfabeto[byte % alfabeto.length];
+                }
+            }
+        } while (!/[A-Za-z]/.test(password) || !/\d/.test(password));
+        return password;
+    },
+
+    // Después de crear el usuario: sus datos de acceso para compartirlos, con botón para copiarlos.
+    mostrarCreado({ nombre, email, password, debeCambiar }) {
+        const modal = document.getElementById('userFormModal');
+        modal.querySelector('.modal-content').innerHTML = `
+            <div class="modal-header">
+                <h2 id="userFormTitle">Usuario creado</h2>
+                <button class="modal-close" type="button" data-close aria-label="Cerrar">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>Comparte estos datos con ${this.escape(nombre)} por un medio privado (en persona o por WhatsApp).</p>
+                <dl class="info-grid user-credenciales">
+                    <div><dt>Usuario</dt><dd>${this.escape(email)}</dd></div>
+                    <div><dt>Contraseña</dt><dd><code>${this.escape(password)}</code></dd></div>
+                </dl>
+                <p class="field-hint">${debeCambiar
+                    ? 'Al entrar por primera vez, el sistema le pedirá crear su propia contraseña.'
+                    : 'Esta contraseña no se vuelve a mostrar; si se pierde, restablécela desde la lista de usuarios.'}</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" type="button" id="userCredencialesCopiar"><i class="fas fa-copy" aria-hidden="true"></i> Copiar</button>
+                <button class="btn btn-primary" type="button" data-close>Listo</button>
+            </div>`;
+        const copiar = modal.querySelector('#userCredencialesCopiar');
+        copiar.addEventListener('click', async () => {
+            const texto = `Usuario: ${email}\nContraseña: ${password}\nEntra en: ${window.location.origin}/login.html`;
+            try {
+                await navigator.clipboard.writeText(texto);
+                copiar.innerHTML = '<i class="fas fa-check" aria-hidden="true"></i> Copiado';
+            } catch {
+                window.prompt('Copia estos datos:', texto.replace(/\n/g, ' · '));
+            }
+        });
+        copiar.focus();
     },
 
     async saveUser(event, user) {
@@ -241,12 +311,17 @@ const UsuariosModule = {
         submit.disabled = true;
         try {
             const body = { nombre: value('nombre'), apellido: value('apellido'), rol, modulos };
-            if (!user) Object.assign(body, { email: value('email'), password: value('password') });
+            const debeCambiar = form.querySelector('[name="debeCambiar"]')?.checked === true;
+            if (!user) Object.assign(body, { email: value('email'), password: value('password'), debeCambiarPassword: debeCambiar });
             const data = await this.request(user ? `/api/users/${user.id}` : '/api/users', {
                 method: user ? 'PUT' : 'POST',
                 body: JSON.stringify(body)
             });
-            document.getElementById('userFormModal').remove();
+            if (user) {
+                document.getElementById('userFormModal').remove();
+            } else {
+                this.mostrarCreado({ nombre: value('nombre'), email: value('email'), password: value('password'), debeCambiar });
+            }
             showNotification(data.message, 'success');
             await this.load();
         } catch (error) {
