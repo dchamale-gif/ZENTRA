@@ -18,7 +18,8 @@ const UsuariosModule = {
             const actions = {
                 edit: () => this.openForm(user),
                 password: () => this.resetPassword(user),
-                toggle: () => this.toggleActive(user)
+                toggle: () => this.toggleActive(user),
+                delete: () => this.deleteUser(user)
             };
             actions[button.dataset.userAction]?.();
         });
@@ -123,7 +124,8 @@ const UsuariosModule = {
                         <div class="row-actions">
                             <button class="icon-btn" type="button" data-user-action="edit" data-id="${user.id}" title="Editar acceso" aria-label="Editar acceso de ${this.escape(user.email)}"><i class="fas fa-pen"></i></button>
                             <button class="icon-btn" type="button" data-user-action="password" data-id="${user.id}" title="Restablecer contraseña" aria-label="Restablecer contraseña de ${this.escape(user.email)}"><i class="fas fa-key"></i></button>
-                            ${isSelf ? '' : `<button class="icon-btn ${user.activo ? 'is-danger' : ''}" type="button" data-user-action="toggle" data-id="${user.id}" title="${user.activo ? 'Desactivar' : 'Activar'}" aria-label="${user.activo ? 'Desactivar' : 'Activar'} a ${this.escape(user.email)}"><i class="fas ${user.activo ? 'fa-user-slash' : 'fa-user-check'}"></i></button>`}
+                            ${isSelf ? '' : `<button class="icon-btn ${user.activo ? 'is-danger' : ''}" type="button" data-user-action="toggle" data-id="${user.id}" title="${user.activo ? 'Desactivar' : 'Activar'}" aria-label="${user.activo ? 'Desactivar' : 'Activar'} a ${this.escape(user.email)}"><i class="fas ${user.activo ? 'fa-user-slash' : 'fa-user-check'}"></i></button>
+                            <button class="icon-btn is-danger" type="button" data-user-action="delete" data-id="${user.id}" title="Eliminar usuario" aria-label="Eliminar a ${this.escape(user.email)}"><i class="fas fa-trash"></i></button>`}
                         </div>
                     </td>
                 </tr>`;
@@ -341,6 +343,22 @@ const UsuariosModule = {
                 method: 'PUT',
                 body: JSON.stringify({ activo: !user.activo })
             });
+            showNotification(data.message, 'success');
+            await this.load();
+        } catch (error) {
+            showNotification(error.message, 'error');
+        }
+    },
+
+    // Eliminar: deja de aparecer y no puede entrar; su historial (ventas, cobros…) conserva su nombre.
+    async deleteUser(user) {
+        const nombre = `${user.nombre} ${user.apellido}`;
+        if (!confirm(`¿Eliminar a ${nombre} (${user.email})?\n\n`
+            + '• Ya no podrá entrar y desaparece de esta lista; se libera su cupo de la licencia.\n'
+            + '• Sus ventas, cobros y movimientos se conservan con su nombre.\n'
+            + '• No se puede deshacer. Si solo quieres quitarle el acceso por un tiempo, usa «Desactivar».')) return;
+        try {
+            const data = await this.request(`/api/users/${user.id}`, { method: 'DELETE' });
             showNotification(data.message, 'success');
             await this.load();
         } catch (error) {

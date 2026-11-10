@@ -86,7 +86,7 @@ const listUsers = async (req, res) => {
        FROM users u
        LEFT JOIN user_roles ur ON ur.user_id = u.id
        LEFT JOIN roles r ON r.id = ur.role_id
-       WHERE u.organization_id = $1
+       WHERE u.organization_id = $1 AND u.email NOT LIKE 'baja-%'
        GROUP BY u.id
        ORDER BY u.activo DESC, u.nombre`,
       [organizationId]
@@ -155,7 +155,7 @@ const updateUser = async (req, res) => {
     client = await pool.connect();
     await client.query('BEGIN');
     const existing = await client.query(
-      'SELECT id, activo FROM users WHERE id = $1 AND organization_id = $2 FOR UPDATE',
+      "SELECT id, activo FROM users WHERE id = $1 AND organization_id = $2 AND email NOT LIKE 'baja-%' FOR UPDATE",
       [userId, organizationId]
     );
     if (existing.rows.length === 0) throw httpError(404, 'Usuario no encontrado');
@@ -200,7 +200,7 @@ const resetPassword = async (req, res) => {
     if (password.length < 8) throw httpError(400, 'La contraseña debe tener al menos 8 caracteres');
     const result = await pool.query(
       `UPDATE users SET password_hash = $1, updated_at = NOW()
-       WHERE id = $2 AND organization_id = $3 RETURNING email`,
+       WHERE id = $2 AND organization_id = $3 AND email NOT LIKE 'baja-%' RETURNING email`,
       [await bcrypt.hash(password, 10), req.params.id, req.organization.id]
     );
     if (result.rows.length === 0) throw httpError(404, 'Usuario no encontrado');
@@ -210,5 +210,51 @@ const resetPassword = async (req, res) => {
   }
 };
 
+// Eliminar un usuario: no se borra la fila, porque sus ventas, cobros, cierres y ajustes la
+// referencian. Se da de baja como hace soporte con las empresas: el correo pasa a
+// «baja-<id>-correo» (queda libre para otra cuenta), se desactiva, pierde rol y módulos y deja de
+// aparecer en la lista. El historial conserva su nombre. No se puede deshacer desde el ERP.
+const deleteUser = async (req, res) => {
+  let client;
+  try {
+    const userId = Number(req.params.id);
+    const organizationId = req.organization.id;
+    if (!Number.isInteger(userId)) throw httpError(400, 'Usuario no válido');
+    if (userId === req.user.id) throw httpError(400, 'No puedes eliminar tu propia cuenta');
+
+    client = await pool.connect();
+    await client.query('BEGIN');
+    const existing = await client.query(
+      `SELECT id, email, nombre, apellido, activo FROM users
+       WHERE id = $1 AND organization_id = $2 AND email NOT LIKE 'baja-%' FOR UPDATE`,
+      [userId, organizationId]
+    );
+    const user = existing.rows[0];
+    if (!user) throw httpError(404, 'Usuario no encontrado');
+    const admin = await client.query(
+      `SELECT 1 FROM user_roles ur JOIN roles r ON r.id = ur.role_id AND r.nombre = 'admin' WHERE ur.user_id = $1`,
+      [userId]
+    );
+    if (admin.rows.length && user.activo && await countActiveAdmins(client, organizationId, userId) === 0) {
+      throw httpError(409, 'Es el único administrador activo; nombra a otro administrador antes de eliminarlo');
+    }
+
+    await client.query(
+      `UPDATE users SET email = LEFT('baja-' || id || '-' || email, 150), activo = false,
+       debe_cambiar_password = false, updated_at = NOW() WHERE id = $1`,
+      [userId]
+    );
+    await client.query('DELETE FROM user_module_access WHERE user_id = $1', [userId]);
+    await client.query('DELETE FROM user_roles WHERE user_id = $1', [userId]);
+    await client.query('COMMIT');
+    res.json({ success: true, message: `${user.nombre} ${user.apellido} (${user.email}) fue eliminado` });
+  } catch (error) {
+    if (client) await client.query('ROLLBACK');
+    sendError(res, error, 'Error eliminando usuario');
+  } finally {
+    if (client) client.release();
+  }
+};
+
 // normalizeModules, saveRoleAndModules y countActiveAdmins también los usa el panel de soporte.
-module.exports = { listUsers, createUser, updateUser, resetPassword, normalizeModules, saveRoleAndModules, countActiveAdmins };
+module.exports = { listUsers, createUser, updateUser, resetPassword, deleteUser, normalizeModules, saveRoleAndModules, countActiveAdmins };
