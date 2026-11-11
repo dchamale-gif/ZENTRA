@@ -10,15 +10,168 @@ const VentasModule = {
         items: [],
         receptorId: '',
         receptorTipo: '',
+        // El período, el comprobante y la búsqueda se filtran en el servidor; la forma de pago,
+        // aquí, para que el resumen siga mostrando el total de cada una.
+        filtros: { periodo: 'mes', desde: '', hasta: '', comprobante: '', q: '', metodo: '' },
+        ventasRequest: 0,
         initialized: false
     },
+
+    METODOS_RESUMEN: [
+        { id: 'efectivo', label: 'Efectivo', icon: 'fa-money-bill-wave' },
+        { id: 'tarjeta', label: 'Tarjeta', icon: 'fa-credit-card' },
+        { id: 'transferencia', label: 'Transferencia', icon: 'fa-building-columns' },
+        { id: 'credito', label: 'Crédito', icon: 'fa-hand-holding-dollar' }
+    ],
 
     init() {
         if (this.state.initialized) return;
         document.getElementById('addSaleBtn')?.addEventListener('click', () => this.openSaleModal());
         document.getElementById('saveSaleBtn')?.addEventListener('click', () => this.saveSale());
+        this.initFiltros();
         this.state.initialized = true;
         this.loadData();
+    },
+
+    initFiltros() {
+        const periodo = document.getElementById('ventasPeriodo');
+        periodo?.addEventListener('change', () => {
+            const anterior = this.rango();
+            this.state.filtros.periodo = periodo.value;
+            if (periodo.value === 'personalizado') {
+                // Se parte del período que se estaba viendo.
+                const hoy = this.ymd(new Date());
+                document.getElementById('ventasDesde').value = anterior.desde || hoy;
+                document.getElementById('ventasHasta').value = anterior.hasta || hoy;
+            }
+            this.renderFechas();
+            this.loadVentas();
+        });
+        ['ventasDesde', 'ventasHasta'].forEach(id => {
+            document.getElementById(id)?.addEventListener('change', () => this.loadVentas());
+        });
+        document.getElementById('ventasComprobante')?.addEventListener('change', (event) => {
+            this.state.filtros.comprobante = event.target.value;
+            this.loadVentas();
+        });
+        document.getElementById('ventasBuscar')?.addEventListener('input', (event) => {
+            clearTimeout(this.state.buscarTimer);
+            this.state.buscarTimer = setTimeout(() => {
+                this.state.filtros.q = event.target.value.trim();
+                this.loadVentas();
+            }, 300);
+        });
+        document.getElementById('ventasResumen')?.addEventListener('click', (event) => {
+            const card = event.target.closest('[data-metodo]');
+            if (!card) return;
+            const metodo = card.dataset.metodo;
+            this.state.filtros.metodo = this.state.filtros.metodo === metodo ? '' : metodo;
+            this.render();
+        });
+    },
+
+    renderFechas() {
+        document.getElementById('ventasFechas').hidden = this.state.filtros.periodo !== 'personalizado';
+    },
+
+    ymd(date) {
+        return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    },
+
+    // Fechas locales del período elegido; «todo» no tiene límite.
+    rango() {
+        const hoy = new Date();
+        const dia = (offset) => new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() + offset);
+        switch (this.state.filtros.periodo) {
+            case 'hoy': return { desde: this.ymd(hoy), hasta: this.ymd(hoy) };
+            case 'ayer': return { desde: this.ymd(dia(-1)), hasta: this.ymd(dia(-1)) };
+            // La semana empieza el lunes.
+            case 'semana': return { desde: this.ymd(dia(-((hoy.getDay() + 6) % 7))), hasta: this.ymd(hoy) };
+            case 'mes': return { desde: this.ymd(new Date(hoy.getFullYear(), hoy.getMonth(), 1)), hasta: this.ymd(hoy) };
+            case 'mes_anterior': return {
+                desde: this.ymd(new Date(hoy.getFullYear(), hoy.getMonth() - 1, 1)),
+                hasta: this.ymd(new Date(hoy.getFullYear(), hoy.getMonth(), 0))
+            };
+            case 'personalizado': {
+                let desde = document.getElementById('ventasDesde')?.value || '';
+                let hasta = document.getElementById('ventasHasta')?.value || '';
+                if (desde && hasta && desde > hasta) [desde, hasta] = [hasta, desde];
+                return { desde, hasta };
+            }
+            default: return { desde: '', hasta: '' };
+        }
+    },
+
+    ventasPath() {
+        const { desde, hasta } = this.rango();
+        const params = new URLSearchParams();
+        if (desde) params.set('desde', desde);
+        if (hasta) params.set('hasta', hasta);
+        if (this.state.filtros.comprobante) params.set('comprobante', this.state.filtros.comprobante);
+        if (this.state.filtros.q) params.set('q', this.state.filtros.q);
+        const query = params.toString();
+        return `/api/ventas${query ? `?${query}` : ''}`;
+    },
+
+    // Solo la lista: al cambiar un filtro no hace falta volver a traer clientes ni artículos.
+    async loadVentas() {
+        const request = ++this.state.ventasRequest;
+        document.getElementById('ventasTable')?.setAttribute('aria-busy', 'true');
+        try {
+            const data = await this.apiRequest(this.ventasPath());
+            if (request !== this.state.ventasRequest) return;
+            this.state.ventas = data.ventas || [];
+            this.render();
+        } catch (error) {
+            if (request === this.state.ventasRequest) this.notify(`No se pudieron cargar las ventas: ${error.message}`, 'error');
+        } finally {
+            if (request === this.state.ventasRequest) document.getElementById('ventasTable')?.removeAttribute('aria-busy');
+        }
+    },
+
+    hayFiltros() {
+        const f = this.state.filtros;
+        return f.periodo !== 'todo' || Boolean(f.comprobante || f.q || f.metodo);
+    },
+
+    quitarFiltros() {
+        clearTimeout(this.state.buscarTimer);
+        Object.assign(this.state.filtros, { periodo: 'todo', comprobante: '', q: '', metodo: '' });
+        document.getElementById('ventasPeriodo').value = 'todo';
+        document.getElementById('ventasComprobante').value = '';
+        document.getElementById('ventasBuscar').value = '';
+        this.renderFechas();
+        this.loadVentas();
+    },
+
+    renderResumen() {
+        const container = document.getElementById('ventasResumen');
+        if (!container) return;
+        const totales = Object.fromEntries(this.METODOS_RESUMEN.map(m => [m.id, { cantidad: 0, total: 0, pendiente: 0 }]));
+        let total = 0;
+        this.state.ventas.forEach(venta => {
+            const monto = Number(venta.total) || 0;
+            total += monto;
+            const fila = totales[venta.metodo_pago];
+            if (!fila) return;
+            fila.cantidad += 1;
+            fila.total += monto;
+            fila.pendiente += Number(venta.pendiente) || 0;
+        });
+        const activo = this.state.filtros.metodo;
+        const ventas = (n) => `${n} ${n === 1 ? 'venta' : 'ventas'}`;
+        const card = (id, label, icon, monto, detalle, extra = '') => `
+            <button type="button" class="ventas-metodo${activo === id ? ' active' : ''}${id === '' ? ' ventas-metodo-total' : ''}" data-metodo="${id}" aria-pressed="${activo === id}">
+                <span class="ventas-metodo-label"><i class="fas ${icon}" aria-hidden="true"></i> ${label}</span>
+                <strong>${formatQ(monto)}</strong>
+                <small>${detalle}${extra}</small>
+            </button>`;
+        container.innerHTML = card('', 'Total vendido', 'fa-chart-line', total, ventas(this.state.ventas.length)) +
+            this.METODOS_RESUMEN.map(m => {
+                const fila = totales[m.id];
+                const extra = m.id === 'credito' && fila.pendiente > 0 ? ` · por cobrar ${formatQ(fila.pendiente)}` : '';
+                return card(m.id, m.label, m.icon, fila.total, ventas(fila.cantidad), extra);
+            }).join('');
     },
 
     async apiRequest(path, options = {}) {
@@ -46,16 +199,19 @@ const VentasModule = {
     async loadData() {
         const felReady = typeof FelModule !== 'undefined' ? FelModule.loadEstado() : null;
         ComprobanteModule.cargarEmpresa();
+        const request = ++this.state.ventasRequest;
         const requests = await Promise.allSettled([
-            this.apiRequest('/api/ventas'),
+            this.apiRequest(this.ventasPath()),
             this.apiRequest('/api/ventas/receptores'),
             this.apiRequest('/api/codigos-articulos')
         ]);
         const [ventasResult, receptoresResult, articulosResult] = requests;
 
-        if (ventasResult.status === 'fulfilled') {
+        // Si mientras tanto cambió un filtro, la lista de esa consulta más nueva es la que vale.
+        const vigente = request === this.state.ventasRequest;
+        if (vigente && ventasResult.status === 'fulfilled') {
             this.state.ventas = ventasResult.value.ventas || [];
-        } else {
+        } else if (vigente) {
             this.notify(`No se pudieron cargar las ventas: ${ventasResult.reason.message}`, 'error');
         }
         if (receptoresResult.status === 'fulfilled') {
@@ -88,11 +244,19 @@ const VentasModule = {
     render() {
         const tbody = document.querySelector('#ventasTable tbody');
         if (!tbody) return;
-        if (this.state.ventas.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="7" class="text-center">No hay ventas registradas</td></tr>';
+        this.renderResumen();
+        const metodo = this.state.filtros.metodo;
+        const ventas = metodo ? this.state.ventas.filter(venta => venta.metodo_pago === metodo) : this.state.ventas;
+        if (ventas.length === 0) {
+            tbody.innerHTML = this.hayFiltros()
+                ? `<tr><td colspan="7" class="text-center">
+                    <p class="ventas-vacio">No hay ventas con estos filtros.</p>
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="VentasModule.quitarFiltros()">Ver todo el historial</button>
+                  </td></tr>`
+                : '<tr><td colspan="7" class="text-center">No hay ventas registradas</td></tr>';
             return;
         }
-        tbody.innerHTML = this.state.ventas.map(venta => `
+        tbody.innerHTML = ventas.map(venta => `
             <tr>
                 <td><strong>${this.escapeHtml(venta.numero_venta)}</strong></td>
                 <td>${this.formatDate(venta.fecha)}</td>

@@ -1557,3 +1557,57 @@ tr.is-inactive td { color: var(--text-gray); }
     .comprobante-vista { height: 40vh; }
     .comprobante-acciones .btn { flex: 1 1 100%; }
 }
+
+/* Ventas: filtros del historial y total por forma de pago */
+.ventas-filtros {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+.ventas-filtros .form-group { flex: 0 0 180px; gap: 0; margin: 0; }
+.ventas-filtros .ventas-fechas { flex: 0 0 auto; flex-direction: row; gap: 8px; }
+.ventas-filtros .ventas-buscar { flex: 1 1 240px; }
+.ventas-filtros label { display: block; margin-bottom: 6px; color: var(--text-dark); font-size: 13px; font-weight: 600; }
+.ventas-fechas { display: flex; gap: 8px; }
+.ventas-fechas[hidden] { display: none; }
+.ventas-fechas .form-input { width: 150px; }
+.ventas-resumen { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
+.ventas-metodo {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    min-width: 0;
+    padding: 12px 14px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    background: var(--bg-white);
+    color: var(--text-body);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: var(--transition);
+}
+.ventas-metodo:hover { border-color: var(--primary-color); }
+.ventas-metodo:focus-visible { outline: none; box-shadow: var(--ring); }
+.ventas-metodo.active { border-color: var(--primary-color); background: var(--primary-soft); }
+.ventas-metodo-label { color: var(--text-gray); font-size: 13px; font-weight: 500; }
+.ventas-metodo-label i { width: 18px; color: var(--primary-color); }
+.ventas-metodo strong { color: var(--text-dark); font-size: 20px; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+.ventas-metodo small { color: var(--text-gray); font-size: 12px; }
+.ventas-resumen-ayuda { margin: 8px 0 16px; color: var(--text-gray); font-size: 12.5px; }
+.ventas-vacio { margin: 0 0 10px; }
+#ventasTable[aria-busy="true"] tbody { opacity: 0.55; transition: opacity 0.15s; }
+
+@media (max-width: 1100px) {
+    .ventas-resumen { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+}
+@media (max-width: 560px) {
+    .ventas-filtros .form-group, .ventas-filtros .ventas-fechas { flex: 1 1 100%; }
+    .ventas-fechas .form-input { width: 100%; }
+    .ventas-fechas > div { flex: 1; }
+    .ventas-resumen { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .ventas-metodo-total { grid-column: 1 / -1; }
+}

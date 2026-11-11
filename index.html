@@ -1050,6 +1050,46 @@
                             <i class="fas fa-plus" aria-hidden="true"></i> Nueva venta
                         </button>
                     </div>
+                    <div class="ventas-filtros" id="ventasFiltros">
+                        <div class="form-group">
+                            <label for="ventasPeriodo">Período</label>
+                            <select id="ventasPeriodo" class="form-input">
+                                <option value="hoy">Hoy</option>
+                                <option value="ayer">Ayer</option>
+                                <option value="semana">Esta semana</option>
+                                <option value="mes" selected>Este mes</option>
+                                <option value="mes_anterior">Mes anterior</option>
+                                <option value="personalizado">Elegir fechas</option>
+                                <option value="todo">Todo el historial</option>
+                            </select>
+                        </div>
+                        <div class="form-group ventas-fechas" id="ventasFechas" hidden>
+                            <div>
+                                <label for="ventasDesde">Desde</label>
+                                <input id="ventasDesde" class="form-input" type="date">
+                            </div>
+                            <div>
+                                <label for="ventasHasta">Hasta</label>
+                                <input id="ventasHasta" class="form-input" type="date">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="ventasComprobante">Comprobante</label>
+                            <select id="ventasComprobante" class="form-input">
+                                <option value="">Todos</option>
+                                <option value="ticket">Ticket</option>
+                                <option value="factura">Factura</option>
+                                <option value="pendiente">Factura pendiente</option>
+                                <option value="anulada">Factura anulada</option>
+                            </select>
+                        </div>
+                        <div class="form-group ventas-buscar">
+                            <label for="ventasBuscar">Buscar</label>
+                            <input id="ventasBuscar" class="form-input" type="search" autocomplete="off" placeholder="Venta, cliente, NIT o factura">
+                        </div>
+                    </div>
+                    <div class="ventas-resumen" id="ventasResumen" role="group" aria-label="Total por forma de pago"></div>
+                    <p class="ventas-resumen-ayuda" id="ventasResumenAyuda">Toca una forma de pago para ver solo esas ventas.</p>
                     <div class="table-container">
                         <table id="ventasTable">
                             <thead>

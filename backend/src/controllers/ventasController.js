@@ -269,14 +269,59 @@ const sendError = (res, error, fallback) => {
   res.status(status).json({ error: status === 500 ? fallback : error.message });
 };
 
+const FECHA_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+// Estado de la última factura de la venta, igual que la columna «Comprobante» de Ventas.
+const ULTIMA_FACTURA = `COALESCE((SELECT estado FROM fel_documentos WHERE venta_id = v.id
+  ORDER BY created_at DESC LIMIT 1), '')`;
+const FACTURA_VIGENTE = `${ULTIMA_FACTURA} IN ('certificado', 'anulado', 'pendiente')`;
+const FILTROS_COMPROBANTE = {
+  factura: `(${ULTIMA_FACTURA} = 'certificado' OR (NOT ${FACTURA_VIGENTE} AND v.factura_externa IS NOT NULL))`,
+  // Pedida al cobrar y aún sin emitir, o con un intento de emisión fallido.
+  pendiente: `(NOT ${FACTURA_VIGENTE} AND v.factura_externa IS NULL
+    AND (COALESCE(v.factura_solicitada, false) OR ${ULTIMA_FACTURA} = 'error'))`,
+  anulada: `${ULTIMA_FACTURA} = 'anulado'`,
+  ticket: `(${ULTIMA_FACTURA} = '' AND v.factura_externa IS NULL AND NOT COALESCE(v.factura_solicitada, false))`
+};
+
+// Filtros del historial: cliente, rango de fechas, tipo de comprobante y búsqueda por texto.
+const filtrosVentas = (query) => {
+  const params = [];
+  const where = [];
+  const param = (value) => {
+    params.push(value);
+    return `$${params.length}`;
+  };
+  if (query.cliente_id) where.push(`v.cliente_id = ${param(String(query.cliente_id))}`);
+  for (const [campo, operador] of [['desde', '>='], ['hasta', '<=']]) {
+    if (!query[campo]) continue;
+    if (!FECHA_RE.test(query[campo]) || Number.isNaN(Date.parse(query[campo]))) {
+      throw httpError(400, 'Usa fechas con el formato AAAA-MM-DD');
+    }
+    where.push(`v.fecha ${operador} ${param(query[campo])}::date`);
+  }
+  if (query.comprobante) {
+    const filtro = FILTROS_COMPROBANTE[query.comprobante];
+    if (!filtro) throw httpError(400, 'Tipo de comprobante no válido');
+    where.push(filtro);
+  }
+  const texto = String(query.q || '').trim().slice(0, 100);
+  if (texto) {
+    // Sin comodines del usuario: «50%» busca el texto tal cual.
+    const like = param(`%${texto.replace(/[\\%_]/g, (char) => `\\${char}`)}%`);
+    where.push(`(v.numero_venta ILIKE ${like} OR c.nombre ILIKE ${like} OR c.nit ILIKE ${like}
+      OR v.factura_receptor_nombre ILIKE ${like} OR v.factura_receptor_id ILIKE ${like}
+      OR v.factura_externa ILIKE ${like}
+      OR EXISTS (SELECT 1 FROM fel_documentos fd WHERE fd.venta_id = v.id
+                 AND (fd.receptor_nombre ILIKE ${like} OR fd.receptor_id ILIKE ${like}
+                      OR fd.numero ILIKE ${like} OR fd.serie ILIKE ${like})))`);
+  }
+  return { where: where.length ? `WHERE ${where.join(' AND ')}` : '', params };
+};
+
 const getVentas = async (req, res) => {
   try {
-    const params = [];
-    let where = '';
-    if (req.query.cliente_id) {
-      params.push(req.query.cliente_id);
-      where = `WHERE v.cliente_id = $${params.length}`;
-    }
+    const { where, params } = filtrosVentas(req.query);
     const result = await pool.query(
       `${VENTA_SELECT} ${where} ${VENTA_GROUP_BY}
        ORDER BY v.fecha DESC, v.created_at DESC`,
