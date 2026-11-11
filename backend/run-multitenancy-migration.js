@@ -62,7 +62,8 @@ const run = async () => {
       'ajustes-inventario-tipos.sql',
       'permisos-modulos-separados.sql',
       'descuentos.sql',
-      'notas-comprobante.sql'
+      'notas-comprobante.sql',
+      'eliminar-empresa.sql'
     ];
     for (const file of featureMigrations) {
       console.log(`Aplicando ${file}...`);

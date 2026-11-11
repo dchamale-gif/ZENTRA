@@ -492,14 +492,16 @@ function drawerGeneral(ficha, organization) {
             <div><dt>Módulos</dt><dd>${modulesSummary(organization)}</dd></div>
             <div><dt>Saldo pendiente</dt><dd class="${organization.saldoVencido > 0 ? 'owes' : ''}">${money(organization.saldoPendiente)}</dd></div>
         </dl>
-        ${baja ? '<p class="modal-hint">Empresa dada de baja: sus correos quedaron libres y no se puede reactivar.</p>' : `
+        ${baja ? `<p class="modal-hint">Empresa dada de baja: sus correos quedaron libres y no se puede reactivar.</p>
+        <div class="section-actions"><button class="danger" type="button" data-drawer="eliminar">Eliminar empresa</button></div>` : `
         <div class="section-actions">
             <button class="primary" type="button" data-drawer="license">${empresa.estado === 'active' ? 'Renovar licencia' : 'Activar licencia'}</button>
             <button class="secondary" type="button" data-drawer="newkey">Generar clave nueva</button>
             <button class="secondary" type="button" data-drawer="modules">Módulos</button>
             ${organization.admin?.pendienteCambio ? '<button class="secondary" type="button" data-drawer="correo">Reenviar correo de alta</button>' : ''}
             ${['suspended', 'cancelled'].includes(empresa.estado)
-                ? '<button class="danger" type="button" data-drawer="baja">Dar de baja</button>'
+                ? `<button class="danger" type="button" data-drawer="baja">Dar de baja</button>
+                   <button class="danger" type="button" data-drawer="eliminar">Eliminar empresa</button>`
                 : '<button class="danger" type="button" data-drawer="suspend">Suspender</button>'}
         </div>`}
         <h3>Datos de la empresa y facturación</h3>
@@ -599,6 +601,7 @@ function bindDrawer(body, ficha) {
             if (action === 'correo') return resendEmail(id, button);
             if (action === 'suspend') return suspendOrganization(id, button);
             if (action === 'baja') return deactivateOrganization(id, button);
+            if (action === 'eliminar') return deleteOrganization(id, button);
             if (action === 'newuser') return openUser();
             if (action === 'newinvoice') return openInvoice(id);
             return null;

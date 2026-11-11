@@ -191,6 +191,28 @@ async function deactivateOrganization(id, button) {
     }
 }
 
+// Borra la empresa con todos sus datos (para empresas de ejemplo). No se puede deshacer.
+async function deleteOrganization(id, button) {
+    const organization = state.organizations.find(entry => String(entry.id) === String(id));
+    if (!organization) return;
+    const answer = window.prompt(`ELIMINAR ${organization.name}: se borran para siempre la empresa, sus usuarios, ventas, artículos, clientes y todos sus datos. No se puede deshacer.\n\nEscribe el nombre de la empresa para confirmar:`);
+    if (answer === null) return;
+    if (answer.trim().toLowerCase() !== organization.name.trim().toLowerCase()) {
+        showMessage('El nombre escrito no coincide; la empresa no se eliminó.', 'error');
+        return;
+    }
+    button.disabled = true;
+    try {
+        const data = await apiRequest(`/organizations/${id}/eliminar`, { method: 'POST', body: JSON.stringify({ confirmacion: answer }) });
+        if (typeof closeDrawer === 'function' && String(crm.drawerId) === String(id)) closeDrawer();
+        showMessage(data.message);
+        await refreshData();
+    } catch (error) {
+        showMessage(error.message, 'error');
+        button.disabled = false;
+    }
+}
+
 // Activa la licencia (plan, vigencia y usuarios), con o sin clave nueva.
 function openLicense(id, { newKey = false } = {}) {
     const organization = state.organizations.find(entry => String(entry.id) === String(id));

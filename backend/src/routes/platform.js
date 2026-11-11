@@ -27,6 +27,7 @@ router.get('/modules', platformController.listModules);
 router.post('/organizations/:id/modules', platformController.updateModules);
 router.post('/organizations/:id/correo', platformController.resendOnboardingEmail);
 router.post('/organizations/:id/baja', platformController.deactivateOrganization);
+router.post('/organizations/:id/eliminar', platformController.deleteOrganization);
 router.get('/website-analytics', platformController.getWebsiteAnalytics);
 
 // CRM: ficha de la empresa, usuarios, notas y entrada como cliente.

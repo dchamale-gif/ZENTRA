@@ -343,6 +343,24 @@ const deactivateOrganization = async (req, res) => {
   }
 };
 
+// Borra la empresa con todos sus datos; las reglas (suspendida, nombre, sin facturas pagadas)
+// las aplica la función eliminar_empresa de la base de datos.
+const deleteOrganization = async (req, res) => {
+  const id = Number.parseInt(req.params.id, 10);
+  if (!Number.isInteger(id) || id <= 0) return res.status(404).json({ error: 'Empresa no encontrada' });
+  try {
+    const { rows } = await pool.query('SELECT eliminar_empresa($1, $2) AS nombre', [id, String(req.body.confirmacion || '')]);
+    console.log(`Empresa ${id} (${rows[0].nombre}) eliminada por soporte: ${req.platformAdmin?.email || 'desconocido'}`);
+    res.json({ success: true, message: `${rows[0].nombre} se eliminó con todos sus datos` });
+  } catch (error) {
+    if (error.code === 'P0001') {
+      return res.status(error.message === 'Empresa no encontrada' ? 404 : 409).json({ error: error.message });
+    }
+    console.error('Error eliminando la empresa:', error);
+    res.status(500).json({ error: 'Error eliminando la empresa' });
+  }
+};
+
 // Impide bajar la capacidad por debajo de los usuarios que ya están activos.
 const checkActiveUsersFit = async (organizationId, userLimit) => {
   const { rows } = await pool.query(
@@ -530,6 +548,7 @@ module.exports = {
   resendOnboardingEmail,
   previewContractDocuments,
   deactivateOrganization,
+  deleteOrganization,
   getWebsiteAnalytics,
   createOrganization,
   listOrganizations,
