@@ -1661,3 +1661,4 @@ tr.is-inactive td { color: var(--text-gray); }
         color: var(--text-gray);
     }
 }
+.venta-notas { white-space: pre-wrap; }

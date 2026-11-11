@@ -2084,6 +2084,11 @@
                         <small id="posChargeChange" aria-live="polite"></small>
                     </div>
                     <div class="form-group">
+                        <label for="posNotas">Notas para el comprobante (opcional)</label>
+                        <textarea id="posNotas" class="form-input" rows="2" maxlength="500" aria-describedby="posNotasHint" placeholder="Ej.: Garantía de 6 meses en la bomba de agua."></textarea>
+                        <small id="posNotasHint">Se imprimen en el ticket, la hoja y la factura.</small>
+                    </div>
+                    <div class="form-group">
                         <label for="posPrintPaper">Imprimir ticket al cobrar</label>
                         <select id="posPrintPaper" class="form-input" aria-describedby="posPrintPaperHint">
                             <option value="80">Sí, papel de 80 mm</option>
@@ -2184,8 +2189,9 @@
                         </div>
                     </div>
                     <div class="form-group full-width">
-                        <label>Observaciones</label>
-                        <textarea id="saleObservations" class="form-input" rows="3"></textarea>
+                        <label for="saleObservations">Notas del comprobante</label>
+                        <textarea id="saleObservations" class="form-input" rows="3" maxlength="500" aria-describedby="saleObservationsHint" placeholder="Ej.: Garantía de 6 meses en la bomba de agua. Entregar por la tarde."></textarea>
+                        <small id="saleObservationsHint">Se imprimen en el ticket, la hoja y la factura.</small>
                     </div>
                 </form>
             </div>

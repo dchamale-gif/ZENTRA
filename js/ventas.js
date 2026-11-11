@@ -371,7 +371,9 @@ const VentasModule = {
         document.getElementById('saleId').value = venta?.id || '';
         document.getElementById('saleDate').value = venta ? this.dateValue(venta.fecha) : this.dateValue(new Date());
         document.getElementById('salePaymentMethod').value = venta?.metodo_pago || 'efectivo';
-        document.getElementById('saleObservations').value = venta?.observaciones || '';
+        // Las ventas antiguas del punto de venta guardaban aquí el nombre de la cuenta: no es una nota.
+        const notas = venta?.observaciones || '';
+        document.getElementById('saleObservations').value = /^Punto de venta · /.test(notas) ? '' : notas;
         document.getElementById('saleRecipientSearch').value = venta?.receptor_nombre === 'Consumidor final' ? '' : (venta?.receptor_nombre || '');
         document.getElementById('saleRecipientResults').hidden = true;
         this.state.receptorId = venta ? String(venta.cliente_id || '') : '';
@@ -822,7 +824,7 @@ const VentasModule = {
             </table></div>
             ${descuento > 0 ? `<p class="text-right">Subtotal ${formatQ(Number(venta.subtotal))}${Number(venta.descuento_general) > 0 ? ` · Descuento al total −${formatQ(Number(venta.descuento_general))}` : ''} · Descuentos −${formatQ(descuento)}</p>` : ''}
             <p class="text-right"><strong>Total: ${formatQ(Number(venta.total))}</strong></p>
-            ${venta.observaciones ? `<p><strong>Observaciones:</strong> ${esc(venta.observaciones)}</p>` : ''}`);
+            ${venta.observaciones && !/^Punto de venta · /.test(venta.observaciones) ? `<p class="venta-notas"><strong>Notas:</strong> ${esc(venta.observaciones)}</p>` : ''}`);
     },
 
     editSale(id) {

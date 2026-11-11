@@ -73,7 +73,7 @@ const calcularLineas = (items, afiliacion) => items.map((item, index) => {
   return linea;
 });
 
-const generarFactura = ({ emisor, receptor, items, fechaEmision = new Date(), moneda = 'GTQ' }) => {
+const generarFactura = ({ emisor, receptor, items, notas = null, fechaEmision = new Date(), moneda = 'GTQ' }) => {
   const afiliacion = emisor.afiliacionIVA;
   const tipo = TIPO_DTE[afiliacion];
   if (!tipo) throw Object.assign(new Error(`Régimen de IVA no soportado: ${afiliacion}`), { status: 400, expose: true });
@@ -137,7 +137,10 @@ const generarFactura = ({ emisor, receptor, items, fechaEmision = new Date(), mo
         </dte:Totales>
       </dte:DatosEmision>
     </dte:DTE>
-  </dte:SAT>
+  </dte:SAT>${notas ? `
+  <dte:Adenda>
+    <Observaciones>${escapeXml(notas)}</Observaciones>
+  </dte:Adenda>` : ''}
 </dte:GTDocumento>
 `;
   return { xml, tipo, granTotal, totalIva: round(totalIva, 2) };

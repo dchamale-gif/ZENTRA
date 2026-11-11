@@ -199,7 +199,7 @@ const emitirFactura = async (ventaId, receptorInput, userId, felHabilitada) => {
   const { row, receptor } = await prepararFactura(receptorInput, felHabilitada);
   const { config } = row;
 
-  const venta = await pool.query('SELECT id, total, estado FROM ventas WHERE id = $1', [ventaId]);
+  const venta = await pool.query('SELECT id, total, estado, observaciones FROM ventas WHERE id = $1', [ventaId]);
   if (!venta.rows[0]) throw httpError(404, 'Venta no encontrada');
   const lineas = await pool.query(
     `SELECT vi.cantidad, vi.precio_unitario, COALESCE(a.nombre_articulo, m.nombre, 'Producto') AS descripcion,
@@ -213,9 +213,12 @@ const emitirFactura = async (ventaId, receptorInput, userId, felHabilitada) => {
     [ventaId]
   );
   const fechaEmision = new Date();
+  // Ventas antiguas del punto de venta guardaban ahí el nombre de la cuenta: eso no es una nota.
+  const notas = /^Punto de venta · /.test(venta.rows[0].observaciones || '') ? null : venta.rows[0].observaciones;
   const { xml, tipo, granTotal } = generarFactura({
     emisor: { ...config.emisor },
     receptor,
+    notas,
     fechaEmision,
     items: lineas.rows.map((linea) => ({
       cantidad: Number(linea.cantidad),

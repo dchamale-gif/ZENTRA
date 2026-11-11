@@ -243,7 +243,8 @@ const cobrarCuenta = async (req, res) => {
       metodo_pago: metodoPago,
       pagos: req.body.pagos,
       cliente_id: req.body.cliente_id || null,
-      observaciones: `Punto de venta · ${cuenta.nombre}`,
+      // Notas del comprobante (garantía, condiciones). El nombre de la cuenta queda en pos_cuentas.
+      observaciones: req.body.notas,
       descuento_general: descuentoGeneral,
       items: lineas.rows.map((linea) => ({
         tipo: 'articulo',

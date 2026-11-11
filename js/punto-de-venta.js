@@ -723,6 +723,7 @@ const PosModule = {
         const received = Number(document.getElementById('posChargeReceived').value);
         const error = document.getElementById('posChargeError');
         error.hidden = true;
+        const notas = document.getElementById('posNotas').value.trim();
         const descuentoGeneral = this.descuentoGeneral();
         if (descuentoGeneral.error) {
             error.textContent = descuentoGeneral.error;
@@ -764,7 +765,7 @@ const PosModule = {
         try {
             const data = await this.apiRequest(`/api/pos/cuentas/${encodeURIComponent(cuenta.id)}/cobrar`, {
                 method: 'POST',
-                body: JSON.stringify({ metodo_pago: method, pagos, descuento_general: descuentoGeneral.monto, fecha: this.today(), comprobante, receptor })
+                body: JSON.stringify({ metodo_pago: method, pagos, descuento_general: descuentoGeneral.monto, notas, fecha: this.today(), comprobante, receptor })
             });
             this.closeModal('posChargeModal');
             const factura = data.factura?.estado === 'certificado' ? data.factura : null;
@@ -788,7 +789,7 @@ const PosModule = {
                 // Factura pedida que no se certificó (sin FEL o con error): el ticket lleva los datos del cliente.
                 facturaPendiente: !factura && Boolean(data.receptor),
                 cliente: this.clienteDe(factura ? { id: factura.receptor_id, nombre: factura.receptor_nombre } : data.receptor),
-                observaciones: '',
+                observaciones: notas,
                 atendio: this.cajero()
             };
             this.renderReprint();

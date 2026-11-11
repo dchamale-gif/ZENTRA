@@ -20,6 +20,7 @@ const VENTA_SELECT = `
          CASE WHEN v.cliente_id IS NOT NULL THEN 'cliente' ELSE 'consumidor' END AS receptor_tipo,
          c.nit AS cliente_nit, c.dpi AS cliente_dpi, c.telefono AS cliente_telefono,
          c.direccion AS cliente_direccion,
+         (SELECT pc.nombre FROM pos_cuentas pc WHERE pc.venta_id = v.id LIMIT 1) AS cuenta_nombre,
          COALESCE(pg.pagado, 0) AS pagado,
          (SELECT COALESCE(json_agg(json_build_object('metodo', p.metodo_pago, 'monto', p.monto)
                   ORDER BY p.created_at, p.id), '[]'::json)
@@ -195,6 +196,14 @@ const normalizePagos = (pagos) => {
     .map((metodo) => ({ metodo, centavos: porMetodo.get(metodo) }));
 };
 
+// Notas del comprobante: se imprimen en el ticket, la hoja y la factura electrónica.
+const MAX_NOTAS = 500;
+const normalizeNotas = (texto) => {
+  const notas = String(texto ?? '').replace(/\r\n/g, '\n').trim();
+  if (notas.length > MAX_NOTAS) throw httpError(400, `Las notas admiten hasta ${MAX_NOTAS} caracteres`);
+  return notas || null;
+};
+
 const normalizeHeader = (body) => {
   let metodoPago = String(body.metodo_pago || 'efectivo').toLowerCase();
   if (!METODOS_PAGO.has(metodoPago)) throw httpError(400, 'Método de pago no válido');
@@ -217,7 +226,7 @@ const normalizeHeader = (body) => {
     fecha: body.fecha,
     metodoPago,
     pagos,
-    observaciones: body.observaciones ? String(body.observaciones).trim() : null
+    observaciones: normalizeNotas(body.observaciones)
   };
 };
 

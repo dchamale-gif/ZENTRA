@@ -49,12 +49,12 @@ const ComprobanteModule = {
     // Comprobante de una venta guardada (lista de Ventas).
     deVenta(venta) {
         const factura = venta.factura?.estado === 'certificado' ? venta.factura : null;
-        let cuentaNombre = '';
+        let cuentaNombre = venta.cuenta_nombre || '';
         let observaciones = venta.observaciones || '';
         // El punto de venta anota de qué cuenta salió la venta; eso no es una nota para el cliente.
         const pos = observaciones.match(/^Punto de venta · (.*)$/);
         if (pos) {
-            cuentaNombre = pos[1];
+            cuentaNombre ||= pos[1];
             observaciones = '';
         }
         const total = Number(venta.total) || 0;
@@ -341,7 +341,7 @@ const ComprobanteModule = {
                 ${c.metodo === 'credito' ? fila('Pagado', formatQ(c.pagado)) + fila('Saldo pendiente', formatQ(c.pendiente)) : ''}
                 ${c.recibido ? fila('Efectivo recibido', formatQ(c.recibido)) + fila('Cambio', formatQ(this.cambio(c))) : ''}
             </div>
-            ${c.observaciones ? `<div class="cpb-caja"><div class="cpb-caja-titulo">Observaciones</div><div class="cpb-nota">${e(c.observaciones)}</div></div>` : ''}
+            ${c.observaciones ? `<div class="cpb-caja"><div class="cpb-caja-titulo">Notas</div><div class="cpb-nota">${e(c.observaciones)}</div></div>` : ''}
             ${factura ? `<div class="cpb-caja cpb-fel">
                 <div class="cpb-caja-titulo">Documento tributario electrónico</div>
                 <p>Número de autorización: ${e(factura.uuid)}</p>
