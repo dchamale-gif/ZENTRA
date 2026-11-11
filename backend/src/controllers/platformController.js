@@ -419,6 +419,35 @@ const deleteOrganization = async (req, res) => {
   }
 };
 
+// Movimientos anteriores a una fecha: cuenta lo que se borraría o lo borra (función borrar_movimientos_antes).
+const borrarMovimientos = async (req, res) => {
+  const id = Number.parseInt(req.params.id, 10);
+  const desde = String(req.body.desde || '');
+  if (!Number.isInteger(id) || id <= 0) return res.status(404).json({ error: 'Empresa no encontrada' });
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(desde)) return res.status(400).json({ error: 'Indica la fecha (AAAA-MM-DD)' });
+  const ejecutar = req.body.ejecutar === true;
+  try {
+    const { rows } = await pool.query(
+      'SELECT borrar_movimientos_antes($1, $2::DATE, $3, $4) AS conteo',
+      [id, desde, String(req.body.confirmacion || ''), ejecutar]
+    );
+    const conteo = rows[0].conteo;
+    if (ejecutar) {
+      console.log(`Movimientos anteriores a ${desde} borrados en la empresa ${id} por soporte: ${req.platformAdmin?.email || 'desconocido'}`, JSON.stringify(conteo));
+    }
+    res.json({
+      success: true,
+      conteo,
+      message: ejecutar ? `Se borraron los movimientos de ${conteo.empresa} anteriores al ${desde.split('-').reverse().join('/')}` : undefined
+    });
+  } catch (error) {
+    if (error.code === 'P0001') return res.status(409).json({ error: error.message });
+    if (error.code === '22008' || error.code === '22007') return res.status(400).json({ error: 'La fecha no es válida' });
+    console.error('Error borrando movimientos:', error);
+    res.status(500).json({ error: 'Error borrando los movimientos' });
+  }
+};
+
 // Un cliente sin ERP empieza a usarlo: prueba con licencia nueva y su administrador recibe el alta.
 const activarErp = async (req, res) => {
   let client;
@@ -695,6 +724,7 @@ module.exports = {
   previewContractDocuments,
   deactivateOrganization,
   deleteOrganization,
+  borrarMovimientos,
   activarErp,
   estadoClienteSinErp,
   getWebsiteAnalytics,

@@ -51,6 +51,8 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('invoiceCompany').addEventListener('change', fillInvoiceDefaults);
     document.getElementById('monthlyForm').addEventListener('submit', saveMonthly);
     document.getElementById('erpForm').addEventListener('submit', saveActivarErp);
+    document.getElementById('movimientosForm').addEventListener('submit', saveMovimientos);
+    document.getElementById('movimientosDesde').addEventListener('change', previewMovimientos);
     document.getElementById('paymentForm').addEventListener('submit', savePayment);
 
     document.getElementById('drawerClose').addEventListener('click', closeDrawer);
@@ -522,6 +524,7 @@ function drawerGeneral(ficha, organization) {
             <button class="primary" type="button" data-drawer="license">${empresa.estado === 'active' ? 'Renovar licencia' : 'Activar licencia'}</button>
             <button class="secondary" type="button" data-drawer="newkey">Generar clave nueva</button>
             <button class="secondary" type="button" data-drawer="modules">Módulos</button>
+            <button class="secondary" type="button" data-drawer="movimientos">Borrar movimientos anteriores</button>
             ${organization.admin?.pendienteCambio ? '<button class="secondary" type="button" data-drawer="correo">Reenviar correo de alta</button>' : ''}
             ${['suspended', 'cancelled'].includes(empresa.estado)
                 ? `<button class="danger" type="button" data-drawer="baja">Dar de baja</button>
@@ -552,6 +555,74 @@ function companyDataForm(empresa) {
             <div class="form-group"><label for="dataAddress">Dirección</label><input id="dataAddress" maxlength="255" value="${escapeHtml(empresa.direccion || '')}"></div>
             <div class="modal-actions"><button class="primary" type="submit">Guardar datos</button></div>
         </form>`;
+}
+
+// ---------- Borrar movimientos anteriores a una fecha ----------
+
+const movimientosRequest = (ejecutar) => apiRequest(`/organizations/${crm.drawerId}/borrar-movimientos`, {
+    method: 'POST',
+    body: JSON.stringify({
+        desde: document.getElementById('movimientosDesde').value,
+        confirmacion: document.getElementById('movimientosConfirm').value,
+        ejecutar
+    })
+});
+
+function openMovimientos(empresa) {
+    crm.movimientosEmpresa = empresa.nombre;
+    document.getElementById('movimientosTitle').textContent = `Borrar movimientos de ${empresa.nombre}`;
+    document.getElementById('movimientosForm').reset();
+    const desde = document.getElementById('movimientosDesde');
+    desde.value = todayInput();
+    desde.max = todayInput();
+    openModal('movimientosModal');
+    previewMovimientos();
+}
+
+// Cuenta lo que se borraría con la fecha elegida, sin borrar nada.
+async function previewMovimientos() {
+    const box = document.getElementById('movimientosConteo');
+    const submit = document.getElementById('movimientosSubmit');
+    submit.disabled = true;
+    if (!document.getElementById('movimientosDesde').value) { box.textContent = ''; return; }
+    box.textContent = 'Contando...';
+    try {
+        const { conteo: c } = await movimientosRequest(false);
+        const filas = [
+            [c.ventas, 'venta', 'ventas'], [c.cobros, 'cobro', 'cobros'], [c.compras, 'compra', 'compras'],
+            [c.caja, 'movimiento de caja', 'movimientos de caja'], [c.depositos, 'depósito', 'depósitos'],
+            [c.ajustes, 'ajuste de inventario', 'ajustes de inventario'], [c.cierres, 'cierre de caja', 'cierres de caja'],
+            [c.cuentasPos, 'cuenta del punto de venta', 'cuentas del punto de venta'], [c.facturasFel, 'documento FEL', 'documentos FEL']
+        ].filter(([n]) => n > 0);
+        if (!filas.length) {
+            box.innerHTML = `No hay movimientos anteriores al ${formatDueDate(c.desde)}.`;
+            return;
+        }
+        box.innerHTML = `Se borrarán:<ul>${filas.map(([n, uno, varios]) => `<li>${n} ${n === 1 ? uno : varios}</li>`).join('')}</ul>${
+            c.cobrosRecientes > 0 ? `<p class="aviso">${c.cobrosRecientes} cobro${c.cobrosRecientes === 1 ? '' : 's'} desde esa fecha ${c.cobrosRecientes === 1 ? 'es' : 'son'} de ventas anteriores y también se ${c.cobrosRecientes === 1 ? 'borra' : 'borran'}.</p>` : ''}`;
+        submit.disabled = false;
+    } catch (error) {
+        box.textContent = error.message;
+    }
+}
+
+async function saveMovimientos(event) {
+    event.preventDefault();
+    const confirmacion = document.getElementById('movimientosConfirm').value.trim().toLowerCase();
+    if (confirmacion !== String(crm.movimientosEmpresa || '').trim().toLowerCase()) {
+        alert('El nombre escrito no coincide con el de la empresa.');
+        return;
+    }
+    await withButton(document.getElementById('movimientosSubmit'), async () => {
+        try {
+            const data = await movimientosRequest(true);
+            closeModal('movimientosModal');
+            showMessage(data.message);
+            await refreshData();
+        } catch (error) {
+            alert(error.message);
+        }
+    });
 }
 
 // ---------- Clientes sin ERP ----------
@@ -678,6 +749,7 @@ function bindDrawer(body, ficha) {
             if (action === 'baja') return deactivateOrganization(id, button);
             if (action === 'eliminar') return deleteOrganization(id, button);
             if (action === 'activarerp') return openActivarErp(ficha.empresa);
+            if (action === 'movimientos') return openMovimientos(ficha.empresa);
             if (action === 'inactivar' || action === 'reactivar') return setClientActive(id, action === 'reactivar', button);
             if (action === 'newuser') return openUser();
             if (action === 'newinvoice') return openInvoice(id);

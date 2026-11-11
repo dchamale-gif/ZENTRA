@@ -77,6 +77,10 @@
         .choice-row input { accent-color: var(--primary); grid-row: span 2; height: 16px; margin-top: 2px; min-height: 0; width: 16px; }
         .choice-row small { color: var(--muted); font-weight: 400; }
         .plain-fieldset { border: 0; margin: 0; min-width: 0; padding: 0; }
+        .movimientos-conteo { background: #f8fafc; border: 1px solid var(--border); border-radius: 8px; font-size: 13.5px; margin-bottom: 14px; padding: 10px 12px; }
+        .movimientos-conteo:empty { display: none; }
+        .movimientos-conteo ul { columns: 2; margin: 6px 0 0; padding-left: 18px; }
+        .movimientos-conteo .aviso { color: #b45309; margin: 8px 0 0; }
         /* Los botones y ayudas tienen display propio; «hidden» debe ganar siempre. */
         [hidden] { display: none !important; }
         .kind-tag { background: #f1f5f9; border-radius: 999px; color: var(--muted); display: inline-block; font-size: 11.5px; font-weight: 600; padding: 1px 8px; }
@@ -500,6 +504,19 @@
     </div>
 
     <!-- Entrar como cliente -->
+    <div id="movimientosModal" class="modal hidden">
+        <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="movimientosTitle">
+            <h2 id="movimientosTitle">Borrar movimientos anteriores</h2>
+            <p class="modal-hint">Para empezar limpio después de las pruebas. Se borran ventas, compras, cobros, caja, gastos, depósitos, ajustes, cierres y cuentas cerradas del punto de venta con fecha anterior a la indicada. Se conservan artículos y su existencia, clientes, proveedores, usuarios y configuración. No se puede deshacer.</p>
+            <form id="movimientosForm">
+                <div class="form-group"><label for="movimientosDesde">Conservar desde</label><input id="movimientosDesde" type="date" required><small class="field-hint">Se borra todo lo anterior a este día; lo de este día en adelante se queda.</small></div>
+                <div id="movimientosConteo" class="movimientos-conteo" aria-live="polite"></div>
+                <div class="form-group"><label for="movimientosConfirm">Escribe el nombre de la empresa para confirmar</label><input id="movimientosConfirm" required autocomplete="off"></div>
+                <div class="modal-actions"><button class="secondary" type="button" data-close>Cancelar</button><button class="danger" type="submit" id="movimientosSubmit" disabled>Borrar movimientos</button></div>
+            </form>
+        </div>
+    </div>
+
     <div id="erpModal" class="modal hidden">
         <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="erpTitle">
             <h2 id="erpTitle">Activar BotEngine ERP</h2>
