@@ -6,7 +6,8 @@ const { prepararFactura, emitirFactura, facturacionActiva } = require('./felCont
 const { normalizarReceptor } = require('../utils/fel/identificacion');
 
 // El punto de venta cobra al momento; las ventas al crédito se registran en Ventas.
-const METODOS_COBRO = new Set(['efectivo', 'tarjeta', 'transferencia']);
+// «mixto» es el pago dividido: llega con el detalle en pagos [{ metodo, monto }].
+const METODOS_COBRO = new Set(['efectivo', 'tarjeta', 'transferencia', 'mixto']);
 const MAX_CANTIDAD = 999;
 
 const userName = (user) => [user.nombre, user.apellido].filter(Boolean).join(' ') || user.email;
@@ -189,7 +190,7 @@ const cobrarCuenta = async (req, res) => {
   let client;
   try {
     const metodoPago = String(req.body.metodo_pago || 'efectivo').toLowerCase();
-    if (!METODOS_COBRO.has(metodoPago)) throw httpError(400, 'Elige efectivo, tarjeta o transferencia');
+    if (!METODOS_COBRO.has(metodoPago)) throw httpError(400, 'Elige efectivo, tarjeta, transferencia o pago dividido');
     // Factura: el NIT (y la configuración, si hay FEL) se revisan antes de cobrar, para no
     // registrar la venta con datos malos. Sin facturación activa la factura queda pendiente.
     const conFactura = req.body.comprobante === 'factura';
@@ -213,6 +214,7 @@ const cobrarCuenta = async (req, res) => {
       // Fecha local de la caja, igual que en Ventas.
       fecha: req.body.fecha || new Date().toISOString().slice(0, 10),
       metodo_pago: metodoPago,
+      pagos: req.body.pagos,
       cliente_id: req.body.cliente_id || null,
       observaciones: `Punto de venta · ${cuenta.nombre}`,
       items: lineas.rows.map((linea) => ({

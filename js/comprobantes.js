@@ -12,7 +12,7 @@ const ComprobanteModule = {
     HOJAS: { carta: { ancho: 215.9, alto: 279.4, css: 'letter' }, oficio: { ancho: 215.9, alto: 330.2, css: '8.5in 13in' } },
     TICKETS: { 80: 72, 58: 48 },
     MARGEN_HOJA: 12,
-    METODOS: { efectivo: 'Efectivo', tarjeta: 'Tarjeta', transferencia: 'Transferencia', credito: 'Crédito' },
+    METODOS: { efectivo: 'Efectivo', tarjeta: 'Tarjeta', transferencia: 'Transferencia', credito: 'Crédito', mixto: 'Pago dividido' },
 
     state: { empresa: null, cargandoEmpresa: null, actual: null, pdf: null, initialized: false },
 
@@ -71,6 +71,7 @@ const ComprobanteModule = {
             })),
             total,
             metodo: venta.metodo_pago,
+            pagos: venta.metodo_pago === 'mixto' ? (venta.pagos_contado || []) : null,
             pagado: Number(venta.pagado) || 0,
             pendiente: venta.metodo_pago === 'credito' ? Number(venta.pendiente) || 0 : 0,
             factura,
@@ -121,6 +122,13 @@ const ComprobanteModule = {
     },
 
     // ---------- Contenido ----------
+
+    // El cambio es sobre lo que se pagó en efectivo (en un pago dividido, solo esa parte).
+    cambio(c) {
+        if (!c.recibido) return 0;
+        const efectivo = c.efectivo ?? (c.pagos ? c.pagos.find(pago => pago.metodo === 'efectivo')?.monto || 0 : c.total);
+        return c.recibido - Number(efectivo);
+    },
 
     titulo(c, hoja) {
         if (c.tipo === 'cuenta') return 'Cuenta (no es comprobante de pago)';
@@ -203,7 +211,7 @@ const ComprobanteModule = {
         const fila = (label, value, cls = '') => `<div class="cpb-fila ${cls}"><span>${label}</span><span>${value}</span></div>`;
         const factura = c.factura;
         const cliente = c.cliente && !c.cliente.consumidorFinal ? c.cliente : null;
-        const cambio = c.recibido ? c.recibido - c.total : 0;
+        const cambio = this.cambio(c);
         return `<div class="cpb cpb-${e(formato)}${pdf ? ' cpb-pdf' : ''}">
             ${empresa.nombre ? `<h1>${e(empresa.nombre)}</h1>` : ''}
             ${empresa.razonSocial ? `<p>${e(empresa.razonSocial)}</p>` : ''}
@@ -228,6 +236,7 @@ const ComprobanteModule = {
             <hr>
             ${fila('TOTAL', formatQ(c.total), 'cpb-total')}
             ${c.metodo ? fila('Pago', e(this.METODOS[c.metodo] || c.metodo)) : ''}
+            ${(c.pagos || []).map(pago => fila(`&nbsp;&nbsp;${e(this.METODOS[pago.metodo] || pago.metodo)}`, formatQ(Number(pago.monto)))).join('')}
             ${c.metodo === 'credito' ? fila('Pagado', formatQ(c.pagado)) + fila('Saldo', formatQ(c.pendiente)) : ''}
             ${c.recibido ? fila('Recibido', formatQ(c.recibido)) + fila('Cambio', formatQ(cambio)) : ''}
             ${c.observaciones ? `<hr><p class="cpb-nota">${e(c.observaciones)}</p>` : ''}
@@ -272,7 +281,7 @@ const ComprobanteModule = {
                 ${dato('Cliente:', cliente.nombre)}
                 ${dato(`${cliente.idTipo === 'CUI' ? 'CUI' : 'NIT'}:`, cliente.id || 'CF')}
                 ${dato('Teléfono:', cliente.telefono)}
-                ${dato('Forma de pago:', this.METODOS[c.metodo] || c.metodo)}
+                ${dato('Forma de pago:', c.pagos?.length ? PagoDividido.texto(c.pagos) : this.METODOS[c.metodo] || c.metodo, Boolean(c.pagos?.length))}
                 ${dato('Dirección:', cliente.direccion, true)}
                 ${dato('Atendió:', c.atendio)}
                 ${dato('Cuenta:', c.cuentaNombre)}
@@ -298,7 +307,7 @@ const ComprobanteModule = {
             <div class="cpb-totales">
                 <div class="cpb-fila cpb-total"><span>TOTAL</span><span>${formatQ(c.total)}</span></div>
                 ${c.metodo === 'credito' ? fila('Pagado', formatQ(c.pagado)) + fila('Saldo pendiente', formatQ(c.pendiente)) : ''}
-                ${c.recibido ? fila('Recibido', formatQ(c.recibido)) + fila('Cambio', formatQ(c.recibido - c.total)) : ''}
+                ${c.recibido ? fila('Efectivo recibido', formatQ(c.recibido)) + fila('Cambio', formatQ(this.cambio(c))) : ''}
             </div>
             ${c.observaciones ? `<div class="cpb-caja"><div class="cpb-caja-titulo">Observaciones</div><div class="cpb-nota">${e(c.observaciones)}</div></div>` : ''}
             ${factura ? `<div class="cpb-caja cpb-fel">
@@ -326,7 +335,8 @@ const ComprobanteModule = {
         return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${this.escape(this.titulo(c, Boolean(hoja)))}</title><style>
             @page { ${pagina} }
             html, body { margin: 0; padding: 0; background: #fff; }
-            ${vista ? `body { padding: 12px; background: #e5e7eb; }
+            ${vista ? `html, body { min-height: 100%; background: #e5e7eb; }
+            body { padding: 12px; box-sizing: border-box; }
             .cpb-papel { ${papel} margin: 0 auto; background: #fff; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2); }` : ''}
             ${this.css(formato)}
         </style></head><body>${vista ? '<div class="cpb-papel">' : ''}${this.cuerpo(c, formato, empresa)}${vista ? '</div>' : ''}</body></html>`;

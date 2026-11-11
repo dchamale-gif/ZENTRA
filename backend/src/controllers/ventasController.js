@@ -3,7 +3,12 @@ const authPool = require('../db/authConnection');
 const { dbInputErrorMessage } = require('../utils/inventory');
 const { registrarMovimientoCaja, anularMovimientosDeVenta } = require('../utils/cajaLedger');
 
-const METODOS_PAGO = new Set(['efectivo', 'tarjeta', 'transferencia', 'credito']);
+const METODOS_CONTADO = ['efectivo', 'tarjeta', 'transferencia'];
+// Venta pagada con varias formas a la vez (por ejemplo, parte en efectivo y el resto con tarjeta).
+const METODO_DIVIDIDO = 'mixto';
+const METODOS_PAGO = new Set([...METODOS_CONTADO, 'credito', METODO_DIVIDIDO]);
+// Sufijo del id de cada parte del pago de contado (el id admite 50 caracteres).
+const SUFIJO_PAGO = { efectivo: 'EF', tarjeta: 'TA', transferencia: 'TR' };
 
 const VENTA_SELECT = `
   SELECT v.id, v.numero_venta, v.cliente_id, v.user_id,
@@ -16,6 +21,9 @@ const VENTA_SELECT = `
          c.nit AS cliente_nit, c.dpi AS cliente_dpi, c.telefono AS cliente_telefono,
          c.direccion AS cliente_direccion,
          COALESCE(pg.pagado, 0) AS pagado,
+         (SELECT COALESCE(json_agg(json_build_object('metodo', p.metodo_pago, 'monto', p.monto)
+                  ORDER BY p.created_at, p.id), '[]'::json)
+          FROM pagos_factura p WHERE p.venta_id = v.id AND p.origen = 'contado') AS pagos_contado,
          (SELECT row_to_json(f) FROM (
             SELECT id, estado, tipo_dte, serie, numero, uuid, receptor_id, receptor_nombre, error, ambiente,
                    fecha_certificacion
@@ -98,20 +106,66 @@ const normalizeItems = (items) => {
   });
 };
 
+// Pago dividido: [{ metodo, monto }] entre efectivo, tarjeta y transferencia. Se juntan los
+// montos de una misma forma y se descartan los que vienen en cero. Los montos van en centavos
+// para comparar con el total sin errores de redondeo.
+const normalizePagos = (pagos) => {
+  if (!Array.isArray(pagos)) throw httpError(400, 'Indica cuánto se paga con cada forma de pago');
+  const porMetodo = new Map();
+  for (const pago of pagos) {
+    const metodo = String(pago?.metodo || '').toLowerCase();
+    if (!METODOS_CONTADO.includes(metodo)) {
+      throw httpError(400, 'Cada parte del pago debe ser en efectivo, tarjeta o transferencia');
+    }
+    const monto = Number(pago.monto);
+    if (!Number.isFinite(monto) || monto < 0 || monto > 99999999.99) {
+      throw httpError(400, 'Escribe montos válidos en el pago dividido, por ejemplo 150.50');
+    }
+    const centavos = Math.round(monto * 100);
+    if (centavos > 0) porMetodo.set(metodo, (porMetodo.get(metodo) || 0) + centavos);
+  }
+  if (porMetodo.size === 0) throw httpError(400, 'Indica cuánto se paga con cada forma de pago');
+  return METODOS_CONTADO.filter((metodo) => porMetodo.has(metodo))
+    .map((metodo) => ({ metodo, centavos: porMetodo.get(metodo) }));
+};
+
 const normalizeHeader = (body) => {
-  const metodoPago = String(body.metodo_pago || 'efectivo').toLowerCase();
+  let metodoPago = String(body.metodo_pago || 'efectivo').toLowerCase();
   if (!METODOS_PAGO.has(metodoPago)) throw httpError(400, 'Método de pago no válido');
   if (!body.fecha) throw httpError(400, 'La fecha es requerida');
   const clienteId = body.cliente_id ? String(body.cliente_id) : null;
   if (metodoPago === 'credito' && !clienteId) {
     throw httpError(400, 'Las ventas al crédito requieren un cliente para poder cobrarlas después');
   }
+  let pagos = null;
+  if (metodoPago === METODO_DIVIDIDO) {
+    pagos = normalizePagos(body.pagos);
+    // Si todo quedó en una sola forma, la venta es de esa forma.
+    if (pagos.length === 1) {
+      metodoPago = pagos[0].metodo;
+      pagos = null;
+    }
+  }
   return {
     clienteId,
     fecha: body.fecha,
     metodoPago,
+    pagos,
     observaciones: body.observaciones ? String(body.observaciones).trim() : null
   };
+};
+
+// Las partes del pago deben sumar exactamente el total de la venta.
+const assertPagosCuadran = (pagos, total) => {
+  if (!pagos) return;
+  const suma = pagos.reduce((acc, pago) => acc + pago.centavos, 0);
+  const esperado = Math.round(Number(total) * 100);
+  if (suma !== esperado) {
+    const q = (centavos) => `Q${(centavos / 100).toFixed(2)}`;
+    throw httpError(400, suma < esperado
+      ? `Los pagos suman ${q(suma)} y el total es ${q(esperado)}: faltan ${q(esperado - suma)}`
+      : `Los pagos suman ${q(suma)} y el total es ${q(esperado)}: sobran ${q(suma - esperado)}`);
+  }
 };
 
 const getNextNumeroVenta = async (client) => {
@@ -232,21 +286,30 @@ const getAbonos = async (client, ventaId) => {
   return Number(result.rows[0].total);
 };
 
-// Una venta de contado queda pagada al registrarse y, si es en efectivo, entra a caja.
+// Una venta de contado queda pagada al registrarse: un pago por cada forma usada (uno solo si
+// no es pago dividido). Lo que se pagó en efectivo entra a caja.
 // Una venta al crédito queda pendiente en Cuentas por Cobrar.
-const aplicarPago = async (client, venta, userId) => {
+const aplicarPago = async (client, venta, userId, pagos = null) => {
   if (venta.metodo_pago === 'credito' || Number(venta.total) <= 0) return;
-  await client.query(
-    `INSERT INTO pagos_factura (id, venta_id, monto, fecha, metodo_pago, observaciones, usuario_id, origen)
-     VALUES ($1, $2, $3, $4, $5, 'Pago de contado', $6, 'contado')`,
-    [`PAG-CONT-${venta.id}`, venta.id, venta.total, venta.fecha, venta.metodo_pago, userId]
-  );
-  if (venta.metodo_pago === 'efectivo') {
+  const partes = pagos
+    ? pagos.map((pago) => ({ metodo: pago.metodo, monto: pago.centavos / 100 }))
+    : [{ metodo: venta.metodo_pago, monto: Number(venta.total) }];
+  for (const parte of partes) {
+    await client.query(
+      `INSERT INTO pagos_factura (id, venta_id, monto, fecha, metodo_pago, observaciones, usuario_id, origen)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'contado')`,
+      [partes.length > 1 ? `PAG-CONT-${venta.id}-${SUFIJO_PAGO[parte.metodo]}` : `PAG-CONT-${venta.id}`,
+        venta.id, parte.monto, venta.fecha, parte.metodo,
+        partes.length > 1 ? 'Pago de contado (pago dividido)' : 'Pago de contado', userId]
+    );
+  }
+  const efectivo = partes.find((parte) => parte.metodo === 'efectivo');
+  if (efectivo) {
     await registrarMovimientoCaja(client, {
       direccion: 'entrada',
       tipoMovimiento: 'Ingreso por Venta',
-      monto: Number(venta.total),
-      descripcion: `Venta ${venta.numero_venta}`,
+      monto: efectivo.monto,
+      descripcion: partes.length > 1 ? `Venta ${venta.numero_venta} (parte en efectivo)` : `Venta ${venta.numero_venta}`,
       fecha: venta.fecha,
       clienteId: venta.cliente_id,
       referencia: venta.numero_venta,
@@ -352,6 +415,7 @@ const registrarVenta = async (client, body, userId) => {
   const header = normalizeHeader(body);
   const items = normalizeItems(body.items);
   const subtotal = Number(items.reduce((sum, item) => sum + item.subtotal, 0).toFixed(2));
+  assertPagosCuadran(header.pagos, subtotal);
 
   await validateReceiver(client, header.clienteId);
   await client.query("SELECT pg_advisory_xact_lock(hashtext('ventas_numero_correlativo'))");
@@ -368,7 +432,7 @@ const registrarVenta = async (client, body, userId) => {
       header.fecha, subtotal, header.metodoPago, header.observaciones]
   );
   await insertItems(client, ventaId, items);
-  await aplicarPago(client, { ...result.rows[0], fecha: header.fecha }, userId);
+  await aplicarPago(client, { ...result.rows[0], fecha: header.fecha }, userId, header.pagos);
   return result.rows[0];
 };
 
@@ -376,8 +440,9 @@ const createVenta = async (req, res) => {
   let client;
   try {
     // Validar antes de pedir conexión: los errores de datos no deben ocupar el pool.
-    normalizeHeader(req.body);
-    normalizeItems(req.body.items);
+    const header = normalizeHeader(req.body);
+    const items = normalizeItems(req.body.items);
+    assertPagosCuadran(header.pagos, items.reduce((sum, item) => sum + item.subtotal, 0));
 
     client = await pool.connect();
     await client.query('BEGIN');
@@ -398,6 +463,7 @@ const updateVenta = async (req, res) => {
     const header = normalizeHeader(req.body);
     const items = normalizeItems(req.body.items);
     const subtotal = Number(items.reduce((sum, item) => sum + item.subtotal, 0).toFixed(2));
+    assertPagosCuadran(header.pagos, subtotal);
 
     client = await pool.connect();
     await client.query('BEGIN');
@@ -426,7 +492,7 @@ const updateVenta = async (req, res) => {
     );
     await client.query('DELETE FROM venta_items WHERE venta_id = $1', [req.params.id]);
     await insertItems(client, req.params.id, items);
-    await aplicarPago(client, { ...result.rows[0], fecha: header.fecha }, req.user.id);
+    await aplicarPago(client, { ...result.rows[0], fecha: header.fecha }, req.user.id, header.pagos);
     await client.query('COMMIT');
     res.status(200).json({ success: true, message: 'Venta actualizada exitosamente', venta: result.rows[0] });
   } catch (error) {

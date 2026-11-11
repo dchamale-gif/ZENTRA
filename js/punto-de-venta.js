@@ -76,6 +76,19 @@ const PosModule = {
             this.charge();
         });
         document.getElementById('posChargeForm')?.addEventListener('input', () => this.renderChange());
+        const split = document.getElementById('posSplit');
+        if (split) {
+            PagoDividido.montar(split, {
+                prefijo: 'posSplit',
+                getTotal: () => Number(this.state.cuenta?.total || 0),
+                onChange: () => this.renderChange()
+            });
+        }
+        document.getElementById('posChargeForm')?.addEventListener('change', (event) => {
+            if (event.target.name === 'posPaymentMethod' && event.target.value === 'mixto') {
+                document.querySelector('#posSplit [data-pago]')?.focus();
+            }
+        });
         document.getElementById('posPrintPaper')?.addEventListener('change', (event) => this.storePaper(event.target.value));
         document.getElementById('posPrintBtn')?.addEventListener('click', () => this.printCuenta());
         // Última venta cobrada: imprimir en otro formato, descargar el PDF o enviarlo por WhatsApp.
@@ -616,6 +629,7 @@ const PosModule = {
             document.querySelector('input[name="posComprobante"][value="factura"]').checked = true;
         }
         document.getElementById('posPrintPaper').value = this.readPaper();
+        PagoDividido.limpiar(document.getElementById('posSplit'));
         this.renderChange();
         this.openModal('posChargeModal');
         document.getElementById('posChargeReceived').focus();
@@ -626,22 +640,34 @@ const PosModule = {
         return document.querySelector('input[name="posComprobante"]:checked')?.value || 'ticket';
     },
 
+    // Lo que se paga en efectivo: todo el total, la parte en efectivo del pago dividido o nada.
+    efectivoACobrar(method) {
+        const total = Number(this.state.cuenta?.total || 0);
+        if (method === 'efectivo') return total;
+        if (method === 'mixto') return PagoDividido.efectivo(document.getElementById('posSplit'));
+        return 0;
+    },
+
     renderChange() {
         const method = document.querySelector('input[name="posPaymentMethod"]:checked')?.value || 'efectivo';
+        const split = document.getElementById('posSplit');
+        split.hidden = method !== 'mixto';
+        if (method === 'mixto') PagoDividido.render(split, Number(this.state.cuenta?.total || 0));
+        // El cambio se calcula sobre lo que se paga en efectivo.
+        const efectivo = this.efectivoACobrar(method);
         const cashGroup = document.getElementById('posCashGroup');
-        cashGroup.hidden = method !== 'efectivo';
+        cashGroup.hidden = efectivo <= 0;
         document.getElementById('posReceptor').hidden = this.comprobante() !== 'factura';
-        const total = Number(this.state.cuenta?.total || 0);
         const received = Number(document.getElementById('posChargeReceived').value);
         const change = document.getElementById('posChargeChange');
-        if (method !== 'efectivo' || !received) {
+        if (efectivo <= 0 || !received) {
             change.textContent = '';
             return;
         }
-        change.textContent = received >= total
-            ? `Cambio: ${formatQ(received - total)}`
-            : `Faltan ${formatQ(total - received)}`;
-        change.classList.toggle('pos-line-warning', received < total);
+        change.textContent = received >= efectivo
+            ? `Cambio: ${formatQ(received - efectivo)}`
+            : `Faltan ${formatQ(efectivo - received)}`;
+        change.classList.toggle('pos-line-warning', received < efectivo);
     },
 
     async charge() {
@@ -651,8 +677,20 @@ const PosModule = {
         const received = Number(document.getElementById('posChargeReceived').value);
         const error = document.getElementById('posChargeError');
         error.hidden = true;
-        if (method === 'efectivo' && received && received < Number(cuenta.total)) {
-            error.textContent = `Lo recibido es menor al total. Faltan ${formatQ(Number(cuenta.total) - received)}.`;
+        let pagos;
+        if (method === 'mixto') {
+            const dividido = PagoDividido.validar(document.getElementById('posSplit'), Number(cuenta.total));
+            if (dividido.error) {
+                error.textContent = dividido.error;
+                error.hidden = false;
+                dividido.focus?.focus();
+                return;
+            }
+            pagos = dividido.pagos;
+        }
+        const efectivo = this.efectivoACobrar(method);
+        if (efectivo > 0 && received && received < efectivo) {
+            error.textContent = `Lo recibido es menor a lo que se paga en efectivo. Faltan ${formatQ(efectivo - received)}.`;
             error.hidden = false;
             return;
         }
@@ -673,10 +711,12 @@ const PosModule = {
         try {
             const data = await this.apiRequest(`/api/pos/cuentas/${encodeURIComponent(cuenta.id)}/cobrar`, {
                 method: 'POST',
-                body: JSON.stringify({ metodo_pago: method, fecha: this.today(), comprobante, receptor })
+                body: JSON.stringify({ metodo_pago: method, pagos, fecha: this.today(), comprobante, receptor })
             });
             this.closeModal('posChargeModal');
             const factura = data.factura?.estado === 'certificado' ? data.factura : null;
+            // Si en el pago dividido todo quedó en una sola forma, la venta es de esa forma.
+            const metodo = data.venta?.metodo_pago || method;
             this.state.lastReceipt = {
                 tipo: 'venta',
                 numero: data.venta?.numero_venta || '',
@@ -684,8 +724,10 @@ const PosModule = {
                 cuentaNombre: cuenta.nombre,
                 lineas: this.receiptLines(cuenta),
                 total: Number(data.venta?.total ?? cuenta.total),
-                metodo: method,
-                recibido: method === 'efectivo' && received ? received : null,
+                metodo,
+                pagos: metodo === 'mixto' ? pagos : null,
+                efectivo,
+                recibido: efectivo > 0 && received ? received : null,
                 factura,
                 // Factura pedida que no se certificó (sin FEL o con error): el ticket lleva los datos del cliente.
                 facturaPendiente: !factura && Boolean(data.receptor),
@@ -696,8 +738,8 @@ const PosModule = {
             this.renderReprint();
             const papel = document.getElementById('posPrintPaper').value;
             if (papel !== 'no') this.printReceipt(this.state.lastReceipt, papel);
-            const change = method === 'efectivo' && received > Number(cuenta.total)
-                ? ` Cambio: ${formatQ(received - Number(cuenta.total))}.` : '';
+            const change = efectivo > 0 && received > efectivo
+                ? ` Cambio: ${formatQ(received - efectivo)}.` : '';
             if (data.factura?.estado === 'certificado') {
                 this.notify(`«${cuenta.nombre}» cobrada con factura ${data.factura.serie}-${data.factura.numero}.${change}`, 'success');
             } else if (data.factura) {

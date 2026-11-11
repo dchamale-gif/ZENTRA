@@ -28,6 +28,8 @@ const VentasModule = {
         if (this.state.initialized) return;
         document.getElementById('addSaleBtn')?.addEventListener('click', () => this.openSaleModal());
         document.getElementById('saveSaleBtn')?.addEventListener('click', () => this.saveSale());
+        const split = document.getElementById('saleSplit');
+        if (split) PagoDividido.montar(split, { prefijo: 'saleSplit', getTotal: () => this.totalVenta() });
         this.initFiltros();
         this.state.initialized = true;
         this.loadData();
@@ -150,13 +152,15 @@ const VentasModule = {
         const totales = Object.fromEntries(this.METODOS_RESUMEN.map(m => [m.id, { cantidad: 0, total: 0, pendiente: 0 }]));
         let total = 0;
         this.state.ventas.forEach(venta => {
-            const monto = Number(venta.total) || 0;
-            total += monto;
-            const fila = totales[venta.metodo_pago];
-            if (!fila) return;
-            fila.cantidad += 1;
-            fila.total += monto;
-            fila.pendiente += Number(venta.pendiente) || 0;
+            total += Number(venta.total) || 0;
+            // Un pago dividido suma a cada forma la parte que se pagó con ella.
+            this.partesDePago(venta).forEach(parte => {
+                const fila = totales[parte.metodo];
+                if (!fila) return;
+                fila.cantidad += 1;
+                fila.total += parte.monto;
+                if (parte.metodo === 'credito') fila.pendiente += Number(venta.pendiente) || 0;
+            });
         });
         const activo = this.state.filtros.metodo;
         const ventas = (n) => `${n} ${n === 1 ? 'venta' : 'ventas'}`;
@@ -246,7 +250,9 @@ const VentasModule = {
         if (!tbody) return;
         this.renderResumen();
         const metodo = this.state.filtros.metodo;
-        const ventas = metodo ? this.state.ventas.filter(venta => venta.metodo_pago === metodo) : this.state.ventas;
+        const ventas = metodo
+            ? this.state.ventas.filter(venta => this.partesDePago(venta).some(parte => parte.metodo === metodo))
+            : this.state.ventas;
         if (ventas.length === 0) {
             tbody.innerHTML = this.hayFiltros()
                 ? `<tr><td colspan="7" class="text-center">
@@ -323,12 +329,23 @@ const VentasModule = {
         else this.init();
     },
 
-    paymentLabels: { efectivo: 'Efectivo', tarjeta: 'Tarjeta', transferencia: 'Transferencia', credito: 'Crédito' },
+    paymentLabels: { efectivo: 'Efectivo', tarjeta: 'Tarjeta', transferencia: 'Transferencia', credito: 'Crédito', mixto: 'Dividido' },
+
+    // Cada forma con su monto: el pago dividido trae sus partes; las demás ventas, una sola.
+    partesDePago(venta) {
+        if (venta.metodo_pago === 'mixto') {
+            return (venta.pagos_contado || []).map(pago => ({ metodo: pago.metodo, monto: Number(pago.monto) || 0 }));
+        }
+        return [{ metodo: venta.metodo_pago || 'efectivo', monto: Number(venta.total) || 0 }];
+    },
 
     // Método de pago y, si es al crédito, lo que falta cobrar.
     paymentCell(venta) {
         const label = this.paymentLabels[venta.metodo_pago] || this.capitalize(venta.metodo_pago || 'efectivo');
         const pendiente = Number(venta.pendiente) || 0;
+        if (venta.metodo_pago === 'mixto') {
+            return `<span class="badge badge-success">${label}</span> <small>${this.escapeHtml(PagoDividido.texto(venta.pagos_contado))}</small>`;
+        }
         if (venta.metodo_pago !== 'credito') return `<span class="badge badge-success">${label}</span>`;
         return pendiente > 0
             ? `<span class="badge badge-warning">${label}</span> <small>Pendiente ${formatQ(pendiente)}</small>`
@@ -336,8 +353,16 @@ const VentasModule = {
     },
 
     updateCreditHint() {
+        const metodo = document.getElementById('salePaymentMethod').value;
         const hint = document.getElementById('saleCreditHint');
-        if (hint) hint.hidden = document.getElementById('salePaymentMethod').value !== 'credito';
+        if (hint) hint.hidden = metodo !== 'credito';
+        const split = document.getElementById('saleSplit');
+        if (!split) return;
+        const mostrar = metodo === 'mixto';
+        const estaba = !split.hidden;
+        split.hidden = !mostrar;
+        if (mostrar) PagoDividido.render(split, this.totalVenta());
+        if (mostrar && !estaba && !this.state.cargandoVenta) split.querySelector('[data-pago]')?.focus();
     },
 
     openSaleModal(venta = null) {
@@ -357,8 +382,12 @@ const VentasModule = {
             precio_unitario: Number(item.precio_unitario),
             filtros: { seccion: '', familia: '', subfamilia: '' }
         })) : [{ tipo: 'articulo', concepto_id: '', cantidad: 1, precio_unitario: 0, filtros: { seccion: '', familia: '', subfamilia: '' } }];
+        const split = document.getElementById('saleSplit');
+        if (split) PagoDividido.llenar(split, venta?.metodo_pago === 'mixto' ? venta.pagos_contado : []);
         this.renderItems();
+        this.state.cargandoVenta = true;
         this.updateCreditHint();
+        this.state.cargandoVenta = false;
         this.renderCatalogNotice();
         document.getElementById('saleModal').style.display = 'flex';
         document.body.style.overflow = 'hidden';
@@ -608,10 +637,17 @@ const VentasModule = {
         return item.texto?.[field] ?? item[field];
     },
 
+    totalVenta() {
+        const centavos = this.state.items.reduce((sum, item) =>
+            sum + Math.round(Math.max(0, Number(item.cantidad) || 0) * Math.max(0, Number(item.precio_unitario) || 0) * 100), 0);
+        return centavos / 100;
+    },
+
     updateTotalsOnly() {
-        const total = this.state.items.reduce((sum, item) =>
-            sum + Math.max(0, Number(item.cantidad) || 0) * Math.max(0, Number(item.precio_unitario) || 0), 0);
+        const total = this.totalVenta();
         document.getElementById('saleCalculatedTotal').textContent = `${formatQ(total)}`;
+        const split = document.getElementById('saleSplit');
+        if (split && !split.hidden) PagoDividido.render(split, total);
     },
 
     async saveSale() {
@@ -643,6 +679,15 @@ const VentasModule = {
             this.notify('Selecciona o crea un cliente: las ventas al crédito se cobran después en Cuentas por Cobrar.', 'warning');
             return;
         }
+        if (payload.metodo_pago === 'mixto') {
+            const dividido = PagoDividido.validar(document.getElementById('saleSplit'), this.totalVenta());
+            if (dividido.error) {
+                this.notify(dividido.error, 'warning');
+                dividido.focus?.focus();
+                return;
+            }
+            payload.pagos = dividido.pagos;
+        }
 
         const button = document.getElementById('saveSaleBtn');
         button.disabled = true;
@@ -652,10 +697,11 @@ const VentasModule = {
                 body: JSON.stringify(payload)
             });
             this.closeSaleModal();
-            const destino = {
-                efectivo: 'el ingreso quedó en Caja',
-                credito: 'el saldo quedó en Cuentas por Cobrar'
-            }[payload.metodo_pago] || 'quedó registrada como pagada';
+            const partesEnEfectivo = (payload.pagos || []).some(pago => pago.metodo === 'efectivo');
+            const destino = payload.metodo_pago === 'credito' ? 'el saldo quedó en Cuentas por Cobrar'
+                : payload.metodo_pago === 'efectivo' ? 'el ingreso quedó en Caja'
+                    : partesEnEfectivo ? 'la parte en efectivo quedó en Caja'
+                        : 'quedó registrada como pagada';
             this.notify(`${id ? 'Venta actualizada' : 'Venta registrada'}: existencias descontadas y ${destino}.`, 'success');
             const tbody = document.querySelector('#ventasTable tbody');
             if (tbody && !this.state.ventas.length) tbody.innerHTML = '<tr><td colspan="7" class="text-center">Actualizando la lista…</td></tr>';

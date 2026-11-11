@@ -213,7 +213,12 @@ const ClientesModule = createDirectoryModule({
         columns: [
             { label: 'Venta', render: (row, e) => `<strong>${e(row.numero_venta)}</strong>` },
             { label: 'Fecha', render: (row) => historyDate(row.fecha) },
-            { label: 'Pago', render: (row, e) => e(row.metodo_pago || 'efectivo') },
+            { label: 'Pago', render: (row, e) => {
+                const metodo = row.metodo_pago || 'efectivo';
+                const label = (typeof PagoDividido !== 'undefined' && PagoDividido.LABELS[metodo]) || metodo;
+                return metodo === 'mixto' && typeof PagoDividido !== 'undefined'
+                    ? `${e(label)}: ${e(PagoDividido.texto(row.pagos_contado))}` : e(label);
+            } },
             { label: 'Total', render: (row) => historyMoney(row.total) },
             { label: 'Pendiente', render: (row) => historyMoney(row.pendiente) }
         ]

@@ -1611,3 +1611,22 @@ tr.is-inactive td { color: var(--text-gray); }
     .ventas-resumen { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .ventas-metodo-total { grid-column: 1 / -1; }
 }
+
+/* Pago dividido (cobro del punto de venta y formulario de Ventas) */
+.pos-payment-methods-4 { grid-template-columns: repeat(4, 1fr); }
+.pago-dividido { margin: 0 0 16px; padding: 12px 14px; border: 1px solid var(--border-color); border-radius: var(--radius); background: var(--bg-light, #f8fafc); }
+.pago-dividido[hidden] { display: none; }
+.pago-dividido-ayuda { margin: 0 0 10px; color: var(--text-gray); font-size: 12.5px; }
+.pago-dividido-fila { display: grid; grid-template-columns: 130px minmax(0, 220px) auto; align-items: center; gap: 8px; margin-bottom: 8px; }
+.pago-dividido-fila label { margin: 0; color: var(--text-dark); font-size: 13.5px; font-weight: 500; }
+.pago-dividido-fila label i { width: 18px; color: var(--primary-color); }
+.pago-dividido-fila .form-input { text-align: right; font-variant-numeric: tabular-nums; }
+.pago-dividido-estado { margin: 4px 0 0; font-size: 13px; font-weight: 600; }
+.pago-dividido-ok { color: #166534; }
+.pago-dividido-falta { color: #b45309; }
+
+@media (max-width: 480px) {
+    .pos-payment-methods-4 { grid-template-columns: repeat(2, 1fr); }
+    .pago-dividido-fila { grid-template-columns: minmax(0, 1fr) 96px auto; }
+    .pago-dividido-fila label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+}

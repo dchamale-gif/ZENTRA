@@ -2045,12 +2045,14 @@
             <form id="posChargeForm" novalidate>
                 <div class="modal-body">
                     <p class="pos-charge-total">Total <strong id="posChargeTotal">Q0.00</strong></p>
-                    <fieldset class="pos-payment-methods">
+                    <fieldset class="pos-payment-methods pos-payment-methods-4">
                         <legend>Forma de pago</legend>
                         <label><input type="radio" name="posPaymentMethod" value="efectivo" checked> <i class="fas fa-money-bill-wave" aria-hidden="true"></i> Efectivo</label>
                         <label><input type="radio" name="posPaymentMethod" value="tarjeta"> <i class="fas fa-credit-card" aria-hidden="true"></i> Tarjeta</label>
                         <label><input type="radio" name="posPaymentMethod" value="transferencia"> <i class="fas fa-building-columns" aria-hidden="true"></i> Transferencia</label>
+                        <label><input type="radio" name="posPaymentMethod" value="mixto"> <i class="fas fa-arrows-split-up-and-left" aria-hidden="true"></i> Dividido</label>
                     </fieldset>
+                    <div id="posSplit" hidden></div>
                     <fieldset class="pos-payment-methods pos-comprobante" id="posComprobante" hidden>
                         <legend>Comprobante</legend>
                         <label><input type="radio" name="posComprobante" value="ticket" checked> <i class="fas fa-receipt" aria-hidden="true"></i> Ticket</label>
@@ -2146,11 +2148,13 @@
                                 <option value="efectivo">Efectivo</option>
                                 <option value="tarjeta">Tarjeta</option>
                                 <option value="transferencia">Transferencia</option>
+                                <option value="mixto">Pago dividido</option>
                                 <option value="credito">Crédito</option>
                             </select>
                         </div>
                     </div>
                     <p id="saleCreditHint" class="date-info" hidden>Las ventas al crédito quedan en Cuentas por Cobrar y requieren un cliente.</p>
+                    <div id="saleSplit" hidden></div>
                     <div class="purchase-items-header">
                         <h3>Artículos</h3>
                         <button class="btn btn-secondary" type="button" onclick="VentasModule.addItem()">
@@ -2686,6 +2690,7 @@
     <script src="js/clasificaciones.js"></script>
     <script src="js/caja-integrada.js"></script>
     <script src="js/compras.js"></script>
+    <script src="js/pago-dividido.js"></script>
     <script src="js/comprobantes.js"></script>
     <script src="js/ventas.js"></script>
     <script src="js/punto-de-venta.js"></script>
