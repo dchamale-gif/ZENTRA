@@ -44,6 +44,9 @@ const mapOrganization = (row) => ({
   subscriptionEndsAt: row.subscription_ends_at,
   daysRemaining: Number(row.days_remaining || 0),
   telefono: row.telefono ?? null,
+  // false = cliente de otros servicios (bot, web...): sin usuarios ni licencia del ERP.
+  usaErp: row.usa_erp !== false,
+  servicios: row.servicios ?? null,
   cuotaMensual: row.cuota_mensual === undefined || row.cuota_mensual === null ? null : Number(row.cuota_mensual),
   saldoPendiente: Number(row.saldo?.pendiente || 0),
   saldoVencido: Number(row.saldo?.vencido || 0),
@@ -57,7 +60,7 @@ const listOrganizations = async (req, res) => {
     const result = await authPool.query(
       `SELECT id, nombre, sector_comercial, email, nit, telefono, subscription_status,
               license_plan, license_key, license_issued_at, license_max_users, modulos_habilitados, fel_habilitada, trial_ends_at,
-              subscription_started_at, subscription_ends_at, created_at, cuota_mensual,
+              subscription_started_at, subscription_ends_at, created_at, cuota_mensual, usa_erp, servicios,
               ${ACTIVE_USERS_SQL},
               (SELECT json_build_object('email', u.email, 'verificado', u.email_verificado_en IS NOT NULL,
                                         'pendienteCambio', u.debe_cambiar_password)
@@ -114,9 +117,80 @@ const getOrganization = async (req, res) => {
   }
 };
 
+// Primer usuario de la empresa, administrador; entra después de verificar su correo.
+const crearAdministrador = async (client, organizationId, correo, nombre) => {
+  const usuario = await client.query(
+    `INSERT INTO users
+     (organization_id, email, password_hash, nombre, activo, verificado, debe_cambiar_password, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, true, false, true, NOW(), NOW())
+     RETURNING id`,
+    [organizationId, correo, await hashInutilizable(), nombre]
+  );
+  await client.query(
+    `INSERT INTO user_roles (user_id, role_id) SELECT $1, id FROM roles WHERE nombre = 'admin'`,
+    [usuario.rows[0].id]
+  );
+  return usuario.rows[0].id;
+};
+
+// Envía el enlace de verificación al administrador; si falla, se reenvía desde el panel.
+const enviarAlta = async ({ userId, correo, nombre, empresa }) => {
+  try {
+    await enviarVerificacion({ userId, email: correo, nombre, empresa });
+    return { enviado: true };
+  } catch (error) {
+    if (!error.expose) console.error('Error enviando verificación:', error);
+    return { enviado: false, error: error.expose ? error.message : 'No se pudo enviar el correo' };
+  }
+};
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// Cuota con IVA en quetzales: null si viene vacía, undefined si no es válida.
+const leerCuota = (value) => {
+  if (value === null || value === undefined || value === '') return null;
+  const cuota = Math.round(Number(value) * 100) / 100;
+  return Number.isFinite(cuota) && cuota >= 0 && cuota <= 1000000 ? cuota : undefined;
+};
+
+// Cliente de otros servicios (bot, página web, automatizaciones): sin usuarios, licencia ni correo de alta.
+const crearClienteSinErp = async (req, res) => {
+  const nombre = String(req.body.name || '').trim().slice(0, 150);
+  const correo = String(req.body.email || '').trim().toLowerCase();
+  const cuota = leerCuota(req.body.cuotaMensual);
+  if (!nombre) return res.status(400).json({ error: 'El nombre del cliente es requerido' });
+  if (correo && !EMAIL_RE.test(correo)) return res.status(400).json({ error: 'El correo de contacto no es válido' });
+  if (cuota === undefined) return res.status(400).json({ error: 'La cuota mensual no es válida' });
+  const texto = (value, max) => String(value ?? '').trim().slice(0, max) || null;
+  const result = await authPool.query(
+    `INSERT INTO organizations
+     (nombre, slug, sector_comercial, email, nit, telefono, subscription_status, subscription_started_at,
+      usa_erp, servicios, cuota_mensual)
+     VALUES ($1, $2, $3, $4, $5, $6, 'active', NOW(), false, $7, $8)
+     RETURNING id, nombre, sector_comercial, email, nit, telefono, subscription_status, subscription_started_at,
+               created_at, usa_erp, servicios, cuota_mensual, license_max_users`,
+    [
+      nombre,
+      `${nombre.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40)}-${crypto.randomBytes(3).toString('hex')}`,
+      texto(req.body.sector, 150),
+      correo || null,
+      texto(req.body.nit, 30),
+      texto(req.body.telefono, 30),
+      texto(req.body.servicios, 255),
+      cuota
+    ]
+  );
+  res.status(201).json({
+    success: true,
+    message: `Cliente ${nombre} agregado sin BotEngine ERP.`,
+    organization: mapOrganization(result.rows[0])
+  });
+};
+
 const createOrganization = async (req, res) => {
   let client;
   try {
+    if (req.body.usaErp === false) return await crearClienteSinErp(req, res);
     const {
       name,
       sector,
@@ -178,17 +252,7 @@ const createOrganization = async (req, res) => {
       ]
     );
     const organization = result.rows[0];
-    const usuario = await client.query(
-      `INSERT INTO users
-       (organization_id, email, password_hash, nombre, activo, verificado, debe_cambiar_password, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, true, false, true, NOW(), NOW())
-       RETURNING id`,
-      [organization.id, correo, await hashInutilizable(), nombreAdmin]
-    );
-    await client.query(
-      `INSERT INTO user_roles (user_id, role_id) SELECT $1, id FROM roles WHERE nombre = 'admin'`,
-      [usuario.rows[0].id]
-    );
+    const adminId = await crearAdministrador(client, organization.id, correo, nombreAdmin);
     const registro = contrato && await registrarContrato(client, {
       organizationId: organization.id,
       contrato,
@@ -200,13 +264,7 @@ const createOrganization = async (req, res) => {
     client = null;
 
     // Si el correo no sale, la empresa queda creada y se reenvía desde el panel.
-    let correoVerificacion = { enviado: true };
-    try {
-      await enviarVerificacion({ userId: usuario.rows[0].id, email: correo, nombre: nombreAdmin, empresa: organization.nombre });
-    } catch (error) {
-      correoVerificacion = { enviado: false, error: error.expose ? error.message : 'No se pudo enviar el correo' };
-      if (!error.expose) console.error('Error enviando verificación:', error);
-    }
+    const correoVerificacion = await enviarAlta({ userId: adminId, correo, nombre: nombreAdmin, empresa: organization.nombre });
 
     let documentos = null;
     if (registro) {
@@ -361,6 +419,94 @@ const deleteOrganization = async (req, res) => {
   }
 };
 
+// Un cliente sin ERP empieza a usarlo: prueba con licencia nueva y su administrador recibe el alta.
+const activarErp = async (req, res) => {
+  let client;
+  try {
+    const correo = String(req.body.email || '').trim().toLowerCase();
+    const nombreAdmin = String(req.body.adminName || '').trim().replace(/\s+/g, ' ').slice(0, 100);
+    const days = Number(req.body.durationDays ?? 30);
+    const userLimit = parseMaxUsers(req.body.maxUsers ?? DEFAULT_MAX_USERS);
+    if (!nombreAdmin || !EMAIL_RE.test(correo)) {
+      return res.status(400).json({ error: 'Nombre y correo válido del administrador son requeridos' });
+    }
+    if (!Number.isInteger(days) || days < 1 || days > 3650) {
+      return res.status(400).json({ error: 'Los días de prueba deben estar entre 1 y 3650' });
+    }
+    if (!userLimit) return res.status(400).json({ error: 'Los usuarios permitidos deben estar entre 1 y 1000' });
+
+    client = await authPool.connect();
+    await client.query('BEGIN');
+    const { rows } = await client.query('SELECT id, nombre, usa_erp FROM organizations WHERE id = $1 FOR UPDATE', [req.params.id]);
+    const organization = rows[0];
+    if (!organization) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Cliente no encontrado' });
+    }
+    if (organization.usa_erp) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: `${organization.nombre} ya usa BotEngine ERP` });
+    }
+    const existente = await client.query('SELECT 1 FROM users WHERE email = $1', [correo]);
+    if (existente.rows.length) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: `Ya existe un usuario con el correo ${correo}; usa otro correo para el administrador` });
+    }
+    const licencia = generateLicenseKey();
+    await client.query(
+      `UPDATE organizations
+       SET usa_erp = true, subscription_status = 'trial', license_plan = $2, license_key = $3, license_issued_at = NOW(),
+           license_max_users = $4, trial_started_at = NOW(), trial_ends_at = NOW() + ($5 * INTERVAL '1 day'),
+           subscription_started_at = NULL, subscription_ends_at = NULL,
+           email = COALESCE(email, $6), updated_at = NOW()
+       WHERE id = $1`,
+      [organization.id, String(req.body.plan || '').trim().slice(0, 50) || 'Demo', licencia, userLimit, days, correo]
+    );
+    const adminId = await crearAdministrador(client, organization.id, correo, nombreAdmin);
+    await client.query('COMMIT');
+    client.release();
+    client = null;
+
+    const envio = await enviarAlta({ userId: adminId, correo, nombre: nombreAdmin, empresa: organization.nombre });
+    res.json({
+      success: true,
+      correo: envio,
+      message: envio.enviado
+        ? `${organization.nombre} ya tiene BotEngine ERP (${days} días de prueba, licencia ${licencia}). Enviamos el enlace de verificación a ${correo}.`
+        : `${organization.nombre} ya tiene BotEngine ERP (licencia ${licencia}), pero el correo no salió: ${envio.error}. Usa «Reenviar correo de alta».`
+    });
+  } catch (error) {
+    if (client) {
+      await client.query('ROLLBACK').catch(() => {});
+      client.release();
+    }
+    console.error('Error activando el ERP:', error);
+    res.status(500).json({ error: 'Error activando BotEngine ERP para el cliente' });
+  }
+};
+
+// Cliente sin ERP: activo (entra en las mensualidades) o inactivo.
+const estadoClienteSinErp = async (req, res) => {
+  try {
+    const activo = req.body.activo === true;
+    const { rows } = await authPool.query(
+      `UPDATE organizations SET subscription_status = $2, updated_at = NOW()
+       WHERE id = $1 AND NOT usa_erp RETURNING nombre`,
+      [req.params.id, activo ? 'active' : 'cancelled']
+    );
+    if (!rows[0]) return res.status(404).json({ error: 'Cliente sin ERP no encontrado' });
+    res.json({
+      success: true,
+      message: activo
+        ? `${rows[0].nombre} quedó activo de nuevo`
+        : `${rows[0].nombre} quedó inactivo; ya no se le generan mensualidades`
+    });
+  } catch (error) {
+    console.error('Error cambiando el estado del cliente:', error);
+    res.status(500).json({ error: 'Error cambiando el estado del cliente' });
+  }
+};
+
 // Impide bajar la capacidad por debajo de los usuarios que ya están activos.
 const checkActiveUsersFit = async (organizationId, userLimit) => {
   const { rows } = await pool.query(
@@ -487,7 +633,7 @@ const updateLicense = async (req, res) => {
              ELSE subscription_ends_at
            END,
            updated_at = NOW()
-       WHERE id = $5
+       WHERE id = $5 AND usa_erp
        RETURNING id, nombre, sector_comercial, email, nit, subscription_status,
                  license_plan, license_key, license_issued_at, license_max_users, modulos_habilitados, fel_habilitada, trial_ends_at,
                  subscription_started_at, subscription_ends_at, created_at,
@@ -549,6 +695,8 @@ module.exports = {
   previewContractDocuments,
   deactivateOrganization,
   deleteOrganization,
+  activarErp,
+  estadoClienteSinErp,
   getWebsiteAnalytics,
   createOrganization,
   listOrganizations,

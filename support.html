@@ -70,6 +70,16 @@
         .check-row { align-items: center; color: var(--text); display: flex; font-size: 13.5px; font-weight: 500; gap: 10px; margin: 6px 0 14px; }
         .check-row input { accent-color: var(--primary); height: 16px; min-height: 0; width: 16px; }
         .contract-fields { border-top: 1px solid var(--border); margin-bottom: 14px; padding-top: 14px; }
+        /* Alta de cliente: con ERP o solo otros servicios. */
+        .choice-row { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); margin-bottom: 16px; }
+        .choice-row label { border: 1px solid var(--border); border-radius: 8px; cursor: pointer; display: grid; font-size: 13.5px; font-weight: 600; gap: 2px 10px; grid-template-columns: auto 1fr; margin: 0; padding: 10px 12px; }
+        .choice-row label:has(input:checked) { background: #eff6ff; border-color: #bfdbfe; }
+        .choice-row input { accent-color: var(--primary); grid-row: span 2; height: 16px; margin-top: 2px; min-height: 0; width: 16px; }
+        .choice-row small { color: var(--muted); font-weight: 400; }
+        .plain-fieldset { border: 0; margin: 0; min-width: 0; padding: 0; }
+        /* Los botones y ayudas tienen display propio; «hidden» debe ganar siempre. */
+        [hidden] { display: none !important; }
+        .kind-tag { background: #f1f5f9; border-radius: 999px; color: var(--muted); display: inline-block; font-size: 11.5px; font-weight: 600; padding: 1px 8px; }
         .form-row { display: grid; gap: 12px; grid-template-columns: 1fr 1fr; }
         @media (max-width: 480px) { .form-row { grid-template-columns: 1fr; } }
         .field-hint { color: #64748b; display: block; font-size: 12px; margin-top: 4px; }
@@ -249,12 +259,13 @@
                         <button type="button" data-filtro="trial" aria-pressed="false">En prueba</button>
                         <button type="button" data-filtro="vence" aria-pressed="false">Por vencer</button>
                         <button type="button" data-filtro="saldo" aria-pressed="false">Con saldo</button>
+                        <button type="button" data-filtro="sinErp" aria-pressed="false">Sin ERP</button>
                         <button type="button" data-filtro="suspended" aria-pressed="false">Suspendidas</button>
                         <button type="button" data-filtro="cancelled" aria-pressed="false">Canceladas</button>
                     </div>
                 </div>
                 <button id="refreshButton" class="secondary" type="button"><i class="fas fa-rotate" aria-hidden="true"></i> Actualizar</button>
-                <button id="addCompanyButton" class="primary" type="button"><i class="fas fa-plus" aria-hidden="true"></i> Agregar empresa</button>
+                <button id="addCompanyButton" class="primary" type="button"><i class="fas fa-plus" aria-hidden="true"></i> Agregar cliente</button>
             </section>
             <section class="card table-wrap">
                 <table>
@@ -489,6 +500,23 @@
     </div>
 
     <!-- Entrar como cliente -->
+    <div id="erpModal" class="modal hidden">
+        <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="erpTitle">
+            <h2 id="erpTitle">Activar BotEngine ERP</h2>
+            <p class="modal-hint">El cliente empieza una prueba con licencia nueva. Al administrador le enviamos un enlace para confirmar el correo; al confirmarlo recibe su usuario y una contraseña temporal.</p>
+            <form id="erpForm">
+                <div class="form-group"><label for="erpAdminName">Nombre del administrador</label><input id="erpAdminName" required maxlength="100" autocomplete="off"></div>
+                <div class="form-group"><label for="erpEmail">Correo del administrador</label><input id="erpEmail" type="email" required maxlength="150" autocomplete="off"></div>
+                <div class="form-row">
+                    <div class="form-group"><label for="erpPlan">Plan</label><input id="erpPlan" value="Demo" maxlength="50"></div>
+                    <div class="form-group"><label for="erpMaxUsers">Usuarios permitidos</label><input id="erpMaxUsers" type="number" min="1" max="1000" value="3" required></div>
+                </div>
+                <div class="form-group"><label for="erpDays">Días de prueba</label><input id="erpDays" type="number" min="1" max="3650" value="30" required></div>
+                <div class="modal-actions"><button class="secondary" type="button" data-close>Cancelar</button><button class="primary" type="submit" id="erpSubmit">Activar y enviar acceso</button></div>
+            </form>
+        </div>
+    </div>
+
     <div id="enterModal" class="modal hidden">
         <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="enterTitle">
             <h2 id="enterTitle">Entrar como cliente</h2>
@@ -507,13 +535,25 @@
 
     <div id="companyModal" class="modal hidden">
         <div class="modal-content">
-            <h2>Agregar empresa</h2>
+            <h2>Agregar cliente</h2>
             <form id="companyForm">
+                <div class="choice-row" role="radiogroup" aria-label="Tipo de cliente">
+                    <label><input type="radio" name="companyKind" value="erp" checked> Usa BotEngine ERP<small>Se crea su cuenta y el administrador recibe el acceso.</small></label>
+                    <label><input type="radio" name="companyKind" value="otros"> Otros servicios, sin ERP<small>Bot, página web, automatizaciones... Solo facturas, cobros y notas.</small></label>
+                </div>
                 <div class="form-group"><label for="companyName">Nombre</label><input id="companyName" required maxlength="150"></div>
-                <div class="form-group"><label for="companySector">Sector comercial</label><input id="companySector" required maxlength="150"></div>
-                <div class="form-group"><label for="companyAdminName">Nombre del administrador</label><input id="companyAdminName" required maxlength="100" autocomplete="off"></div>
-                <div class="form-group"><label for="companyEmail">Correo del administrador</label><input id="companyEmail" type="email" required maxlength="150" aria-describedby="companyEmailHint"><small id="companyEmailHint" class="field-hint">Le enviamos un enlace para confirmar el correo; al confirmarlo recibe su usuario y una contraseña temporal.</small></div>
+                <div class="form-group"><label for="companySector">Sector comercial<span data-kind-only="otros"> (opcional)</span></label><input id="companySector" required maxlength="150"></div>
+                <fieldset class="plain-fieldset" data-kind="erp">
+                    <div class="form-group"><label for="companyAdminName">Nombre del administrador</label><input id="companyAdminName" required maxlength="100" autocomplete="off"></div>
+                </fieldset>
+                <div class="form-group"><label for="companyEmail"><span data-kind-only="erp">Correo del administrador</span><span data-kind-only="otros">Correo de contacto y facturas (opcional)</span></label><input id="companyEmail" type="email" required maxlength="150" aria-describedby="companyEmailHint"><small id="companyEmailHint" class="field-hint" data-kind-only="erp">Le enviamos un enlace para confirmar el correo; al confirmarlo recibe su usuario y una contraseña temporal.</small></div>
                 <div class="form-group"><label for="companyNit">NIT (opcional)</label><input id="companyNit" maxlength="30"></div>
+                <fieldset class="plain-fieldset" data-kind="otros" disabled hidden>
+                    <div class="form-group"><label for="companyPhone">Teléfono (opcional)</label><input id="companyPhone" type="tel" maxlength="30"></div>
+                    <div class="form-group"><label for="companyServices">Servicios que contrata</label><input id="companyServices" maxlength="255" placeholder="Ej.: Chatbot de WhatsApp y página web"><small class="field-hint">También es el concepto de su factura mensual.</small></div>
+                    <div class="form-group"><label for="companyFee">Cuota mensual con IVA (Q, opcional)</label><input id="companyFee" type="number" min="0" step="0.01"><small class="field-hint">Con cuota, entra en «Generar mensualidades».</small></div>
+                </fieldset>
+                <fieldset class="plain-fieldset" data-kind="erp">
                 <div class="form-group"><label for="companyPlan">Plan</label><input id="companyPlan" value="Demo" maxlength="50"></div>
                 <div class="form-group"><label for="companyMaxUsers">Usuarios permitidos</label><input id="companyMaxUsers" type="number" min="1" max="1000" value="3" required></div>
                 <div class="form-group"><label for="companyDays">Días de prueba</label><input id="companyDays" type="number" min="1" max="3650" value="30" required></div>
@@ -534,6 +574,7 @@
                         <small class="field-hint">La empresa queda habilitada solo con estos módulos.</small>
                     </div>
                 </div>
+                </fieldset>
                 <div class="modal-actions"><button class="secondary" id="cancelCompanyButton" type="button">Cancelar</button><button class="primary" type="submit" id="saveCompanyButton">Guardar empresa</button></div>
             </form>
         </div>

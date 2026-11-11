@@ -24,6 +24,8 @@ document.addEventListener('DOMContentLoaded', () => {
         openModal('companyModal');
     });
     document.getElementById('companyContract').addEventListener('change', toggleContractFields);
+    document.querySelectorAll('input[name="companyKind"]').forEach(input => input.addEventListener('change', toggleCompanyKind));
+    toggleCompanyKind();
     document.getElementById('previewBackButton').addEventListener('click', () => {
         closePreview();
         document.getElementById('companyModal').classList.remove('hidden');
@@ -38,7 +40,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Con contrato, primero se revisan los documentos; la empresa se crea desde la vista previa.
     document.getElementById('companyForm').addEventListener('submit', event => {
         event.preventDefault();
-        return document.getElementById('companyContract').checked ? openPreview() : createCompany();
+        return usaErpEnAlta() && document.getElementById('companyContract').checked ? openPreview() : createCompany();
     });
     document.getElementById('logoutButton').addEventListener('click', async () => {
         await authManager.logout();
@@ -79,16 +81,25 @@ async function loadOrganizations() {
     }
 }
 
-const expiresSoon = (organization) => ['trial', 'active'].includes(organization.status) && organization.daysRemaining <= 15;
+// Clientes de otros servicios (bot, web...): no tienen licencia ni usuarios del ERP.
+const sinErp = (organization) => organization.usaErp === false;
+
+const expiresSoon = (organization) => !sinErp(organization) && ['trial', 'active'].includes(organization.status) && organization.daysRemaining <= 15;
+
+// Sin ERP solo hay cliente activo o inactivo.
+const statusLabel = (organization) => sinErp(organization)
+    ? (organization.status === 'active' ? 'Activo' : 'Inactivo')
+    : (statusLabels[organization.status] || organization.status);
 
 const companyFilters = {
     todas: () => true,
-    active: (organization) => organization.status === 'active',
+    active: (organization) => !sinErp(organization) && organization.status === 'active',
     trial: (organization) => organization.status === 'trial',
     vence: expiresSoon,
     saldo: (organization) => organization.saldoPendiente > 0,
-    suspended: (organization) => organization.status === 'suspended',
-    cancelled: (organization) => organization.status === 'cancelled'
+    sinErp,
+    suspended: (organization) => !sinErp(organization) && organization.status === 'suspended',
+    cancelled: (organization) => !sinErp(organization) && organization.status === 'cancelled'
 };
 
 function setCompanyFilter(filter) {
@@ -118,10 +129,10 @@ function renderOrganizations() {
         body.innerHTML = '<tr><td colspan="8">Ninguna empresa coincide con la búsqueda o el filtro.</td></tr>';
         return;
     }
-    body.innerHTML = rows.map((organization) => `
+    body.innerHTML = rows.map((organization) => sinErp(organization) ? clientRow(organization) : `
         <tr>
             <td><button class="row-link" type="button" data-action="ficha" data-id="${organization.id}">${escapeHtml(organization.name)}</button><br><small>${escapeHtml(organization.email || 'Sin correo')}</small><br>${mailState(organization)}</td>
-            <td><span class="status ${organization.status}">${escapeHtml(statusLabels[organization.status] || organization.status)}</span><br><small>${organization.daysRemaining} días</small></td>
+            <td><span class="status ${organization.status}">${escapeHtml(statusLabel(organization))}</span><br><small>${organization.daysRemaining} días</small></td>
             <td><span class="key">${escapeHtml(organization.licenseKey || 'Sin licencia')}</span><br><small>${escapeHtml(organization.plan || '')} · ${modulesSummary(organization)}</small></td>
             <td class="${organization.activeUsers >= organization.maxUsers ? 'users-full' : ''}">${organization.activeUsers} / ${organization.maxUsers}</td>
             <td class="num">${organization.cuotaMensual ? money(organization.cuotaMensual) : '<small>Sin cuota</small>'}</td>
@@ -139,6 +150,19 @@ function renderOrganizations() {
             : openDrawer(button.dataset.id));
     });
 }
+
+// Fila de un cliente sin ERP: lo que contrata en lugar de licencia, usuarios y vencimiento.
+const clientRow = (organization) => `
+        <tr>
+            <td><button class="row-link" type="button" data-action="ficha" data-id="${organization.id}">${escapeHtml(organization.name)}</button><br><small>${escapeHtml(organization.email || 'Sin correo')}</small><br><span class="kind-tag">Sin ERP</span></td>
+            <td><span class="status ${organization.status}">${escapeHtml(statusLabel(organization))}</span></td>
+            <td><small>${escapeHtml(organization.servicios || 'Servicios sin detallar')}</small></td>
+            <td><small>—</small></td>
+            <td class="num">${organization.cuotaMensual ? money(organization.cuotaMensual) : '<small>Sin cuota</small>'}</td>
+            <td class="num ${organization.saldoVencido > 0 ? 'owes' : ''}">${organization.saldoPendiente ? money(organization.saldoPendiente) : '—'}${organization.saldoVencido > 0 ? '<br><small>vencido</small>' : ''}</td>
+            <td><small>—</small></td>
+            <td class="actions"><button class="secondary" type="button" data-action="ficha" data-id="${organization.id}">Ficha</button></td>
+        </tr>`;
 
 // Al dar de baja, los correos de los usuarios se renombran a baja-<id>-correo.
 const dadaDeBaja = (organization) => organization.status === 'cancelled' && Boolean(organization.admin?.email?.startsWith('baja-'));
@@ -195,10 +219,13 @@ async function deactivateOrganization(id, button) {
 async function deleteOrganization(id, button) {
     const organization = state.organizations.find(entry => String(entry.id) === String(id));
     if (!organization) return;
-    const answer = window.prompt(`ELIMINAR ${organization.name}: se borran para siempre la empresa, sus usuarios, ventas, artículos, clientes y todos sus datos. No se puede deshacer.\n\nEscribe el nombre de la empresa para confirmar:`);
+    const borra = sinErp(organization)
+        ? 'se borran para siempre el cliente, sus facturas pendientes y sus notas'
+        : 'se borran para siempre la empresa, sus usuarios, ventas, artículos, clientes y todos sus datos';
+    const answer = window.prompt(`ELIMINAR ${organization.name}: ${borra}. No se puede deshacer.\n\nEscribe el nombre para confirmar:`);
     if (answer === null) return;
     if (answer.trim().toLowerCase() !== organization.name.trim().toLowerCase()) {
-        showMessage('El nombre escrito no coincide; la empresa no se eliminó.', 'error');
+        showMessage(`El nombre escrito no coincide; ${organization.name} no se eliminó.`, 'error');
         return;
     }
     button.disabled = true;
@@ -308,6 +335,35 @@ const contractData = () => {
     };
 };
 
+const usaErpEnAlta = () => document.querySelector('input[name="companyKind"]:checked')?.value !== 'otros';
+
+// Con ERP se pide administrador, licencia y contrato; sin ERP, servicios y cuota.
+function toggleCompanyKind() {
+    const kind = usaErpEnAlta() ? 'erp' : 'otros';
+    document.querySelectorAll('#companyForm fieldset[data-kind]').forEach(fieldset => {
+        fieldset.disabled = fieldset.dataset.kind !== kind;
+        fieldset.hidden = fieldset.dataset.kind !== kind;
+    });
+    document.querySelectorAll('#companyForm [data-kind-only]').forEach(element => {
+        element.hidden = element.dataset.kindOnly !== kind;
+    });
+    document.getElementById('companyEmail').required = kind === 'erp';
+    document.getElementById('companySector').required = kind === 'erp';
+    const contrato = kind === 'erp' && document.getElementById('companyContract').checked;
+    document.getElementById('saveCompanyButton').textContent = contrato ? 'Revisar documentos' : (kind === 'erp' ? 'Guardar empresa' : 'Guardar cliente');
+}
+
+const clientData = () => ({
+    usaErp: false,
+    name: document.getElementById('companyName').value.trim(),
+    sector: document.getElementById('companySector').value.trim(),
+    email: document.getElementById('companyEmail').value.trim(),
+    nit: document.getElementById('companyNit').value.trim(),
+    telefono: document.getElementById('companyPhone').value.trim(),
+    servicios: document.getElementById('companyServices').value.trim(),
+    cuotaMensual: document.getElementById('companyFee').value
+});
+
 const companyData = () => ({
     name: document.getElementById('companyName').value.trim(),
     sector: document.getElementById('companySector').value.trim(),
@@ -394,21 +450,28 @@ function closePreview() {
 
 async function createCompany() {
     const sendButton = document.getElementById('previewSendButton');
+    const saveButton = document.getElementById('saveCompanyButton');
+    const erp = usaErpEnAlta();
     sendButton.disabled = true;
+    saveButton.disabled = true;
     try {
-        const data = await apiRequest('/organizations', { method: 'POST', body: JSON.stringify(companyData()) });
+        const data = await apiRequest('/organizations', { method: 'POST', body: JSON.stringify(erp ? companyData() : clientData()) });
         closePreview();
         releasePreviewUrls();
         closeCompanyModal();
         document.getElementById('companyForm').reset();
         document.getElementById('contractModules').innerHTML = '';
         toggleContractFields();
+        toggleCompanyKind();
         const fallo = data.correo?.enviado === false || data.documentos?.enviado === false;
-        showMessage(`${data.message} Licencia: ${data.organization.licenseKey}`, fallo ? 'error' : 'success');
+        showMessage(erp ? `${data.message} Licencia: ${data.organization.licenseKey}` : data.message, fallo ? 'error' : 'success');
+        saveButton.disabled = false;
         await refreshData();
     } catch (error) {
         showMessage(error.message, 'error');
         sendButton.disabled = false;
+        saveButton.disabled = false;
+        if (!erp) alert(error.message);
         // Si falló desde la vista previa, el mensaje de la página queda tapado.
         if (!document.getElementById('previewModal').classList.contains('hidden')) alert(error.message);
     }

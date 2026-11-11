@@ -28,6 +28,9 @@ router.post('/organizations/:id/modules', platformController.updateModules);
 router.post('/organizations/:id/correo', platformController.resendOnboardingEmail);
 router.post('/organizations/:id/baja', platformController.deactivateOrganization);
 router.post('/organizations/:id/eliminar', platformController.deleteOrganization);
+// Clientes que no usan el ERP (bots, web...): activarles el ERP o marcarlos activos/inactivos.
+router.post('/organizations/:id/activar-erp', platformController.activarErp);
+router.post('/organizations/:id/estado-cliente', platformController.estadoClienteSinErp);
 router.get('/website-analytics', platformController.getWebsiteAnalytics);
 
 // CRM: ficha de la empresa, usuarios, notas y entrada como cliente.

@@ -235,7 +235,7 @@ const generarMensualidades = async (req, res) => {
     client = await authPool.connect();
     await client.query('BEGIN');
     const { rows: empresas } = await client.query(
-      `SELECT o.id, o.nombre, o.cuota_mensual FROM organizations o
+      `SELECT o.id, o.nombre, o.cuota_mensual, o.usa_erp, o.servicios FROM organizations o
        WHERE o.subscription_status = 'active' AND o.cuota_mensual > 0
          AND NOT EXISTS (SELECT 1 FROM facturas_plataforma f
                          WHERE f.organization_id = o.id AND f.periodo = $1 AND f.estado <> 'anulada')
@@ -246,7 +246,12 @@ const generarMensualidades = async (req, res) => {
     for (const empresa of empresas) {
       ids.push(await insertarFactura(client, {
         organizationId: empresa.id,
-        items: [{ descripcion: `Licencia de uso BotEngine ERP · ${nombrePeriodo(periodo)}`, cantidad: 1, precio: Number(empresa.cuota_mensual) }],
+        // Sin ERP, el concepto son sus servicios (bot, página web...).
+        items: [{
+          descripcion: `${empresa.usa_erp ? 'Licencia de uso BotEngine ERP' : (empresa.servicios || 'Servicios BotEngine')} · ${nombrePeriodo(periodo)}`,
+          cantidad: 1,
+          precio: Number(empresa.cuota_mensual)
+        }],
         periodo,
         fechaEmision,
         fechaVencimiento,
@@ -348,10 +353,11 @@ const resumen = async (req, res) => {
   try {
     const { rows } = await authPool.query(
       `SELECT
-         (SELECT COUNT(*) FROM organizations WHERE subscription_status = 'active')::INTEGER AS activas,
+         (SELECT COUNT(*) FROM organizations WHERE subscription_status = 'active' AND usa_erp)::INTEGER AS activas,
+         (SELECT COUNT(*) FROM organizations WHERE subscription_status = 'active' AND NOT usa_erp)::INTEGER AS sin_erp,
          (SELECT COUNT(*) FROM organizations WHERE subscription_status = 'trial' AND trial_ends_at > NOW())::INTEGER AS en_prueba,
          (SELECT COUNT(*) FROM organizations
-          WHERE subscription_status IN ('trial', 'active')
+          WHERE subscription_status IN ('trial', 'active') AND usa_erp
             AND COALESCE(subscription_ends_at, trial_ends_at) BETWEEN NOW() AND NOW() + INTERVAL '15 days')::INTEGER AS por_vencer,
          (SELECT COUNT(*) FROM organizations WHERE subscription_status = 'suspended')::INTEGER AS suspendidas,
          (SELECT COALESCE(SUM(cuota_mensual), 0) FROM organizations WHERE subscription_status = 'active') AS ingreso_mensual,
@@ -374,6 +380,7 @@ const resumen = async (req, res) => {
         suspendidas: r.suspendidas,
         ingresoMensual: Number(r.ingreso_mensual),
         activasSinCuota: r.activas_sin_cuota,
+        sinErp: r.sin_erp,
         pendiente: Number(r.pendiente),
         facturasPendientes: r.facturas_pendientes,
         vencido: Number(r.vencido),

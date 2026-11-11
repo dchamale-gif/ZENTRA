@@ -29,12 +29,18 @@ const sendError = (res, error, fallback) => {
 
 const organizacionDe = async (db, id) => {
   const { rows } = await db.query(
-    `SELECT id, nombre, modulos_habilitados, subscription_status, trial_ends_at, subscription_ends_at
+    `SELECT id, nombre, modulos_habilitados, subscription_status, trial_ends_at, subscription_ends_at, usa_erp
      FROM organizations WHERE id = $1`,
     [id]
   );
   if (!rows[0]) throw httpError(404, 'Empresa no encontrada');
   return rows[0];
+};
+
+// Usuarios solo para quien usa el ERP; a los clientes de otros servicios se les activa primero.
+const exigirErp = (org) => {
+  if (!org.usa_erp) throw httpError(409, `${org.nombre} no usa BotEngine ERP; actívaselo desde su ficha para darle usuarios`);
+  return org;
 };
 
 // Módulos que se pueden asignar a los usuarios de la empresa (los habilitados por soporte).
@@ -55,7 +61,7 @@ const ficha = async (req, res) => {
       authPool.query(
         `SELECT id, nombre, sector_comercial, email, nit, telefono, direccion, cuota_mensual,
                 modulos_habilitados, subscription_status, license_plan, license_key, license_max_users,
-                trial_ends_at, subscription_ends_at, created_at
+                trial_ends_at, subscription_ends_at, created_at, usa_erp, servicios
          FROM organizations WHERE id = $1`,
         [id]
       ),
@@ -104,6 +110,8 @@ const ficha = async (req, res) => {
         telefono: o.telefono,
         direccion: o.direccion,
         cuotaMensual: o.cuota_mensual === null ? null : Number(o.cuota_mensual),
+        usaErp: o.usa_erp !== false,
+        servicios: o.servicios,
         estado: o.subscription_status,
         plan: o.license_plan,
         licencia: o.license_key,
@@ -155,10 +163,11 @@ const actualizarDatos = async (req, res) => {
     const { rowCount } = await authPool.query(
       `UPDATE organizations
        SET nombre = $1, sector_comercial = $2, email = $3, nit = $4, telefono = $5, direccion = $6,
-           cuota_mensual = $7, updated_at = NOW()
+           cuota_mensual = $7, servicios = $9, updated_at = NOW()
        WHERE id = $8`,
       [nombre, textoOpcional(req.body.sector, 150), email || null, textoOpcional(req.body.nit, 30),
-        textoOpcional(req.body.telefono, 30), textoOpcional(req.body.direccion, 255), cuota, req.params.id]
+        textoOpcional(req.body.telefono, 30), textoOpcional(req.body.direccion, 255), cuota, req.params.id,
+        textoOpcional(req.body.servicios, 255)]
     );
     if (!rowCount) throw httpError(404, 'Empresa no encontrada');
     res.json({ success: true, message: 'Datos de la empresa guardados' });
@@ -193,7 +202,7 @@ const crearUsuario = async (req, res) => {
 
     client = await authPool.connect();
     await client.query('BEGIN');
-    const org = await organizacionDe(client, organizationId);
+    const org = exigirErp(await organizacionDe(client, organizationId));
     const modules = normalizeModules(req.body.modulos, org.modulos_habilitados);
     if (rol === 'usuario' && modules.length === 0) throw httpError(400, 'Asigna al menos un módulo al usuario');
     const password = passwordTemporal();

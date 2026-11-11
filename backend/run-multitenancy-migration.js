@@ -63,6 +63,7 @@ const run = async () => {
       'permisos-modulos-separados.sql',
       'descuentos.sql',
       'notas-comprobante.sql',
+      'clientes-sin-erp.sql',
       'eliminar-empresa.sql'
     ];
     for (const file of featureMigrations) {

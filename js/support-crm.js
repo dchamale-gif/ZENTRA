@@ -50,6 +50,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     document.getElementById('invoiceCompany').addEventListener('change', fillInvoiceDefaults);
     document.getElementById('monthlyForm').addEventListener('submit', saveMonthly);
+    document.getElementById('erpForm').addEventListener('submit', saveActivarErp);
     document.getElementById('paymentForm').addEventListener('submit', savePayment);
 
     document.getElementById('drawerClose').addEventListener('click', closeDrawer);
@@ -152,7 +153,7 @@ async function loadSummary() {
             tile('Pendiente de cobro', money(resumen.pendiente), `${resumen.facturasPendientes} factura${resumen.facturasPendientes === 1 ? '' : 's'}`),
             tile('Vencido', money(resumen.vencido), `${resumen.facturasVencidas} factura${resumen.facturasVencidas === 1 ? '' : 's'}`, resumen.vencido > 0 ? 'is-danger' : ''),
             tile('Cobrado este mes', money(resumen.cobradoMes), '', 'is-good'),
-            tile('Empresas activas', resumen.activas, `${resumen.enPrueba} en prueba · ${resumen.suspendidas} suspendidas`),
+            tile('Empresas activas', resumen.activas, `${resumen.enPrueba} en prueba · ${resumen.suspendidas} suspendidas${resumen.sinErp ? ` · ${resumen.sinErp} cliente${resumen.sinErp === 1 ? '' : 's'} sin ERP` : ''}`),
             tile('Por vencer', resumen.porVencer, 'Licencias o pruebas en 15 días', resumen.porVencer > 0 ? 'is-danger' : '')
         ].join('');
 
@@ -165,7 +166,7 @@ async function loadSummary() {
         const expiring = state.organizations.filter(expiresSoon);
         document.getElementById('expiringList').innerHTML = expiring.length
             ? `<ul class="mini-list">${expiring.slice(0, 8).map(organization => `
-                <li><span><button class="row-link" type="button" data-ficha="${organization.id}">${escapeHtml(organization.name)}</button><small>${escapeHtml(statusLabels[organization.status])} · vence ${formatDate(organization.status === 'trial' ? organization.trialEndsAt : organization.subscriptionEndsAt)}</small></span>
+                <li><span><button class="row-link" type="button" data-ficha="${organization.id}">${escapeHtml(organization.name)}</button><small>${escapeHtml(statusLabel(organization))} · vence ${formatDate(organization.status === 'trial' ? organization.trialEndsAt : organization.subscriptionEndsAt)}</small></span>
                 <span>${organization.daysRemaining} días</span></li>`).join('')}</ul>`
             : '<p class="empty-note">Ninguna licencia vence en los próximos 15 días.</p>';
         document.querySelectorAll('#view-inicio [data-ficha]').forEach(button => {
@@ -463,23 +464,46 @@ async function loadFicha() {
 
 function renderDrawer() {
     const ficha = crm.ficha;
+    // Sin ERP no hay usuarios ni forma de entrar como el cliente.
+    const conErp = ficha?.empresa.usaErp !== false;
+    if (!conErp && crm.drawerTab === 'usuarios') crm.drawerTab = 'general';
     document.querySelectorAll('#drawerTabs button').forEach(button => {
         button.setAttribute('aria-selected', String(button.dataset.tab === crm.drawerTab));
+        if (button.dataset.tab === 'usuarios') button.hidden = !conErp;
     });
     if (!ficha) return;
     const empresa = ficha.empresa;
     const organization = organizationById(empresa.id) || {};
     document.getElementById('drawerTitle').textContent = empresa.nombre;
-    document.getElementById('drawerSub').innerHTML = `<span class="status ${empresa.estado}">${escapeHtml(statusLabels[empresa.estado] || empresa.estado)}</span> · ${escapeHtml(empresa.sector || 'Sin sector')} · cliente desde ${formatDate(empresa.creada)}`;
-    document.getElementById('drawerEnter').hidden = dadaDeBaja(organization);
+    document.getElementById('drawerSub').innerHTML = `<span class="status ${empresa.estado}">${escapeHtml(statusLabel({ status: empresa.estado, usaErp: empresa.usaErp }))}</span>${conErp ? '' : ' <span class="kind-tag">Sin ERP</span>'} · ${escapeHtml(empresa.sector || 'Sin sector')} · cliente desde ${formatDate(empresa.creada)}`;
+    document.getElementById('drawerEnter').hidden = !conErp || dadaDeBaja(organization);
     const body = document.getElementById('drawerBody');
     const render = { general: drawerGeneral, usuarios: drawerUsers, facturas: drawerInvoices, notas: drawerNotes, actividad: drawerActivity }[crm.drawerTab];
     body.innerHTML = render(ficha, organization);
     bindDrawer(body, ficha, organization);
 }
 
+// Cliente de otros servicios: lo que contrata, su cuota y lo que debe.
+function clientSummary(empresa, organization) {
+    const activo = empresa.estado === 'active';
+    return `
+        <h3>Servicios</h3>
+        <dl class="facts">
+            <div><dt>Contrata</dt><dd>${escapeHtml(empresa.servicios || 'Sin detallar')}</dd></div>
+            <div><dt>Cuota mensual</dt><dd>${empresa.cuotaMensual ? money(empresa.cuotaMensual) : 'Sin cuota'}</dd></div>
+            <div><dt>Saldo pendiente</dt><dd class="${organization.saldoVencido > 0 ? 'owes' : ''}">${money(organization.saldoPendiente)}</dd></div>
+        </dl>
+        <p class="modal-hint">No usa BotEngine ERP: aquí llevas sus facturas, cobros y notas.${activo ? '' : ' Está inactivo: no entra en las mensualidades.'}</p>
+        <div class="section-actions">
+            <button class="primary" type="button" data-drawer="activarerp">Activar BotEngine ERP</button>
+            <button class="secondary" type="button" data-drawer="${activo ? 'inactivar' : 'reactivar'}">${activo ? 'Marcar inactivo' : 'Marcar activo'}</button>
+            <button class="danger" type="button" data-drawer="eliminar">Eliminar cliente</button>
+        </div>`;
+}
+
 function drawerGeneral(ficha, organization) {
     const empresa = ficha.empresa;
+    if (empresa.usaErp === false) return clientSummary(empresa, organization) + companyDataForm(empresa);
     const vence = empresa.estado === 'trial' ? empresa.pruebaHasta : empresa.suscripcionHasta;
     const baja = dadaDeBaja(organization);
     return `
@@ -504,6 +528,12 @@ function drawerGeneral(ficha, organization) {
                    <button class="danger" type="button" data-drawer="eliminar">Eliminar empresa</button>`
                 : '<button class="danger" type="button" data-drawer="suspend">Suspender</button>'}
         </div>`}
+        ${companyDataForm(empresa)}`;
+}
+
+// Datos de contacto, servicios y cuota; igual para clientes con y sin ERP.
+function companyDataForm(empresa) {
+    return `
         <h3>Datos de la empresa y facturación</h3>
         <form id="companyDataForm">
             <div class="form-row">
@@ -518,9 +548,54 @@ function drawerGeneral(ficha, organization) {
                 <div class="form-group"><label for="dataNit">NIT</label><input id="dataNit" maxlength="30" value="${escapeHtml(empresa.nit || '')}"></div>
                 <div class="form-group"><label for="dataFee">Cuota mensual con IVA (Q)</label><input id="dataFee" type="number" min="0" step="0.01" value="${empresa.cuotaMensual ?? ''}"><small class="field-hint">Se usa al generar las mensualidades.</small></div>
             </div>
+            <div class="form-group"><label for="dataServices">Servicios que contrata</label><input id="dataServices" maxlength="255" placeholder="Ej.: Chatbot de WhatsApp y página web" value="${escapeHtml(empresa.servicios || '')}">${empresa.usaErp === false ? '<small class="field-hint">Es el concepto de su factura mensual.</small>' : ''}</div>
             <div class="form-group"><label for="dataAddress">Dirección</label><input id="dataAddress" maxlength="255" value="${escapeHtml(empresa.direccion || '')}"></div>
             <div class="modal-actions"><button class="primary" type="submit">Guardar datos</button></div>
         </form>`;
+}
+
+// ---------- Clientes sin ERP ----------
+
+function openActivarErp(empresa) {
+    document.getElementById('erpTitle').textContent = `Activar BotEngine ERP para ${empresa.nombre}`;
+    document.getElementById('erpForm').reset();
+    document.getElementById('erpEmail').value = empresa.email || '';
+    openModal('erpModal');
+}
+
+async function saveActivarErp(event) {
+    event.preventDefault();
+    await withButton(document.getElementById('erpSubmit'), async () => {
+        try {
+            const data = await apiRequest(`/organizations/${crm.drawerId}/activar-erp`, {
+                method: 'POST',
+                body: JSON.stringify({
+                    adminName: document.getElementById('erpAdminName').value.trim(),
+                    email: document.getElementById('erpEmail').value.trim(),
+                    plan: document.getElementById('erpPlan').value.trim(),
+                    maxUsers: Number(document.getElementById('erpMaxUsers').value),
+                    durationDays: Number(document.getElementById('erpDays').value)
+                })
+            });
+            closeModal('erpModal');
+            showMessage(data.message, data.correo?.enviado === false ? 'error' : 'success');
+            await refreshData();
+        } catch (error) {
+            alert(error.message);
+        }
+    });
+}
+
+async function setClientActive(id, activo, button) {
+    await withButton(button, async () => {
+        try {
+            const data = await apiRequest(`/organizations/${id}/estado-cliente`, { method: 'POST', body: JSON.stringify({ activo }) });
+            showMessage(data.message);
+            await refreshData();
+        } catch (error) {
+            alert(error.message);
+        }
+    });
 }
 
 function drawerUsers(ficha, organization) {
@@ -602,6 +677,8 @@ function bindDrawer(body, ficha) {
             if (action === 'suspend') return suspendOrganization(id, button);
             if (action === 'baja') return deactivateOrganization(id, button);
             if (action === 'eliminar') return deleteOrganization(id, button);
+            if (action === 'activarerp') return openActivarErp(ficha.empresa);
+            if (action === 'inactivar' || action === 'reactivar') return setClientActive(id, action === 'reactivar', button);
             if (action === 'newuser') return openUser();
             if (action === 'newinvoice') return openInvoice(id);
             return null;
@@ -638,7 +715,8 @@ async function saveCompanyData(event) {
                     telefono: document.getElementById('dataPhone').value.trim(),
                     nit: document.getElementById('dataNit').value.trim(),
                     cuotaMensual: document.getElementById('dataFee').value,
-                    direccion: document.getElementById('dataAddress').value.trim()
+                    direccion: document.getElementById('dataAddress').value.trim(),
+                    servicios: document.getElementById('dataServices').value.trim()
                 })
             });
             showMessage(data.message);

@@ -1,7 +1,7 @@
 -- Migración: eliminar una empresa con todos sus datos (empresas de ejemplo o de prueba).
 -- Solo la llama el panel de soporte (rol zentra_platform), que no puede borrar en las
 -- tablas de las empresas; la función corre con los permisos de su dueño. Por eso ella
--- misma exige que la empresa esté suspendida o dada de baja, el nombre escrito como
+-- misma exige que la empresa esté suspendida o dada de baja (salvo clientes sin ERP), el nombre escrito como
 -- confirmación y que no tenga facturas de BotEngine pagadas (historial que se conserva).
 --
 -- No lleva una lista fija de tablas: borra en toda tabla con organization_id o con
@@ -17,6 +17,7 @@ AS $$
 DECLARE
     v_nombre TEXT;
     v_estado TEXT;
+    v_usa_erp BOOLEAN;
     v_tabla TEXT;
     v_columna TEXT;
     v_sql TEXT;
@@ -24,12 +25,13 @@ DECLARE
     v_fallidas TEXT[];
     v_error TEXT;
 BEGIN
-    SELECT nombre, subscription_status INTO v_nombre, v_estado
+    SELECT nombre, subscription_status, usa_erp INTO v_nombre, v_estado, v_usa_erp
     FROM organizations WHERE id = p_organization_id FOR UPDATE;
     IF NOT FOUND THEN
         RAISE EXCEPTION 'Empresa no encontrada';
     END IF;
-    IF v_estado NOT IN ('suspended', 'cancelled') THEN
+    -- Un cliente sin ERP no tiene usuarios que bloquear antes.
+    IF v_usa_erp AND v_estado NOT IN ('suspended', 'cancelled') THEN
         RAISE EXCEPTION 'Suspende la empresa antes de eliminarla';
     END IF;
     IF lower(btrim(coalesce(p_confirmacion, ''))) <> lower(btrim(v_nombre)) THEN
