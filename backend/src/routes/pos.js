@@ -14,6 +14,9 @@ router.post('/cuentas', rolePermissionMiddleware(['pos_create']), posController.
 router.put('/cuentas/:id', rolePermissionMiddleware(['pos_create']), posController.renameCuenta);
 router.post('/cuentas/:id/items', rolePermissionMiddleware(['pos_create']), posController.addItem);
 router.put('/cuentas/:id/items/:itemId', rolePermissionMiddleware(['pos_create']), posController.changeItem);
+// Descuento de una línea: vender y además el módulo Descuentos.
+router.put('/cuentas/:id/items/:itemId/descuento', rolePermissionMiddleware(['pos_create']),
+  rolePermissionMiddleware(['descuentos_edit']), posController.descuentoItem);
 router.delete('/cuentas/:id/items/:itemId', rolePermissionMiddleware(['pos_create']), posController.removeItem);
 router.post('/cuentas/:id/cobrar', sincronizarTrasMovimiento, rolePermissionMiddleware(['pos_create']), posController.cobrarCuenta);
 router.delete('/cuentas/:id', sincronizarTrasMovimiento, rolePermissionMiddleware(['pos_delete']), posController.anularCuenta);

@@ -80,7 +80,7 @@ const PosModule = {
         if (split) {
             PagoDividido.montar(split, {
                 prefijo: 'posSplit',
-                getTotal: () => Number(this.state.cuenta?.total || 0),
+                getTotal: () => this.totalACobrar(),
                 onChange: () => this.renderChange()
             });
         }
@@ -432,10 +432,13 @@ const PosModule = {
                     const stock = stockById[item.articulo_id];
                     const overStock = stock !== undefined && unitsById[item.articulo_id] > stock;
                     const byOther = myId !== undefined && String(item.user_id) !== String(myId);
+                    const descuento = Number(item.descuento) || 0;
+                    const puedeDescontar = Descuento.puede();
                     return `<li class="pos-line">
                         <div class="pos-line-info">
                             <span class="pos-line-name">${this.escape(item.nombre)}</span>
                             <small>${formatQ(Number(item.precio_unitario))} c/u${byOther ? ` · agregó ${this.escape(item.usuario_nombre || 'otro usuario')}` : ''}${item.nota ? ` · ${this.escape(item.nota)}` : ''}</small>
+                            ${descuento > 0 ? `<small class="pos-line-desc">Descuento −${formatQ(descuento)}</small>` : ''}
                             ${overStock ? `<small class="pos-line-warning">Solo hay ${stock} en existencia</small>` : ''}
                         </div>
                         <div class="pos-line-qty pos-sell-only">
@@ -444,8 +447,11 @@ const PosModule = {
                             <button type="button" class="pos-qty-btn" data-line-action="plus" data-item="${this.escape(item.id)}" aria-label="Agregar una unidad de ${this.escape(item.nombre)}"><i class="fas fa-plus" aria-hidden="true"></i></button>
                         </div>
                         <span class="pos-line-qty-readonly">× ${qty}</span>
-                        <strong class="pos-line-total">${formatQ(qty * Number(item.precio_unitario))}</strong>
-                        <button type="button" class="pos-line-remove pos-sell-only" data-line-action="remove" data-item="${this.escape(item.id)}" aria-label="Quitar ${this.escape(item.nombre)} de la cuenta" title="Quitar"><i class="fas fa-xmark" aria-hidden="true"></i></button>
+                        <strong class="pos-line-total">${formatQ(qty * Number(item.precio_unitario) - descuento)}</strong>
+                        <div class="pos-line-acciones pos-sell-only">
+                            ${puedeDescontar ? `<button type="button" class="pos-line-remove pos-line-discount${descuento > 0 ? ' active' : ''}" data-line-action="discount" data-item="${this.escape(item.id)}" aria-label="Descuento para ${this.escape(item.nombre)}" title="Descuento"><i class="fas fa-percent" aria-hidden="true"></i></button>` : ''}
+                            <button type="button" class="pos-line-remove" data-line-action="remove" data-item="${this.escape(item.id)}" aria-label="Quitar ${this.escape(item.nombre)} de la cuenta" title="Quitar"><i class="fas fa-xmark" aria-hidden="true"></i></button>
+                        </div>
                     </li>`;
                 }).join('');
             }
@@ -454,7 +460,8 @@ const PosModule = {
         const totalEl = document.getElementById('posTotal');
         if (totalEl) totalEl.textContent = formatQ(total);
         const unitsEl = document.getElementById('posUnits');
-        if (unitsEl) unitsEl.textContent = `${units} ${units === 1 ? 'producto' : 'productos'}`;
+        const descuento = Number(cuenta?.descuento) || 0;
+        if (unitsEl) unitsEl.textContent = `${units} ${units === 1 ? 'producto' : 'productos'}${descuento > 0 ? ` · descuento −${formatQ(descuento)}` : ''}`;
         const chargeBtn = document.getElementById('posChargeBtn');
         if (chargeBtn) {
             chargeBtn.disabled = !cuenta || !cuenta.items.length;
@@ -592,7 +599,24 @@ const PosModule = {
     lineAction(action, itemId) {
         const base = `/api/pos/cuentas/${encodeURIComponent(this.state.cuentaId)}/items/${encodeURIComponent(itemId)}`;
         if (action === 'remove') return this.mutate(base, 'DELETE');
+        if (action === 'discount') return this.descontarLinea(itemId, base);
         return this.mutate(base, 'PUT', { delta: action === 'plus' ? 1 : -1 });
+    },
+
+    // Descuento de una línea en quetzales o porcentaje; vacío o 0 lo quita.
+    descontarLinea(itemId, base) {
+        const item = this.state.cuenta?.items?.find(entry => String(entry.id) === String(itemId));
+        if (!item) return;
+        const importe = Number(item.cantidad) * Number(item.precio_unitario);
+        const texto = prompt(`Descuento para «${item.nombre}» (importe ${formatQ(importe)}).\nEscribe quetzales (25) o porcentaje (10%). Vacío o 0 lo quita.`,
+            Descuento.texto(item.descuento));
+        if (texto === null) return;
+        const leido = Descuento.leer(texto, importe);
+        if (leido.error) {
+            this.notify(leido.error, 'warning');
+            return;
+        }
+        return this.mutate(`${base}/descuento`, 'PUT', { descuento: leido.monto });
     },
 
     async mutate(path, method, body) {
@@ -618,7 +642,8 @@ const PosModule = {
         if (!cuenta || !cuenta.items.length) return;
         document.getElementById('posChargeForm').reset();
         document.getElementById('posChargeTitle').textContent = `Cobrar «${cuenta.nombre}»`;
-        document.getElementById('posChargeTotal').textContent = formatQ(Number(cuenta.total));
+        // Descuento al total: solo con el módulo Descuentos.
+        document.getElementById('posDescuentoGroup').hidden = !Descuento.puede();
         document.getElementById('posChargeError').hidden = true;
         // Ticket o factura. Sin facturación electrónica activa, la factura queda pendiente con los
         // datos del cliente (se emite por fuera y su número se registra en Ventas).
@@ -640,9 +665,23 @@ const PosModule = {
         return document.querySelector('input[name="posComprobante"]:checked')?.value || 'ticket';
     },
 
+    // Descuento al total escrito en el cobro (en quetzales). { monto } o { error }.
+    descuentoGeneral() {
+        const input = document.getElementById('posDescuentoGeneral');
+        if (!input || document.getElementById('posDescuentoGroup').hidden) return { monto: 0 };
+        return Descuento.leer(input.value, Number(this.state.cuenta?.total || 0));
+    },
+
+    // Total de la cuenta (ya con los descuentos de las líneas) menos el descuento al total.
+    totalACobrar() {
+        const total = Number(this.state.cuenta?.total || 0);
+        const descuento = this.descuentoGeneral();
+        return Math.round((total - (descuento.error ? 0 : descuento.monto)) * 100) / 100;
+    },
+
     // Lo que se paga en efectivo: todo el total, la parte en efectivo del pago dividido o nada.
     efectivoACobrar(method) {
-        const total = Number(this.state.cuenta?.total || 0);
+        const total = this.totalACobrar();
         if (method === 'efectivo') return total;
         if (method === 'mixto') return PagoDividido.efectivo(document.getElementById('posSplit'));
         return 0;
@@ -652,7 +691,14 @@ const PosModule = {
         const method = document.querySelector('input[name="posPaymentMethod"]:checked')?.value || 'efectivo';
         const split = document.getElementById('posSplit');
         split.hidden = method !== 'mixto';
-        if (method === 'mixto') PagoDividido.render(split, Number(this.state.cuenta?.total || 0));
+        const descuento = this.descuentoGeneral();
+        const detalle = document.getElementById('posDescuentoDetalle');
+        detalle.textContent = descuento.error || (descuento.monto > 0
+            ? `Cuenta ${formatQ(Number(this.state.cuenta?.total || 0))} − descuento ${formatQ(descuento.monto)}`
+            : 'En quetzales o en porcentaje (10%).');
+        detalle.classList.toggle('pos-line-warning', Boolean(descuento.error));
+        document.getElementById('posChargeTotal').textContent = formatQ(this.totalACobrar());
+        if (method === 'mixto') PagoDividido.render(split, this.totalACobrar());
         // El cambio se calcula sobre lo que se paga en efectivo.
         const efectivo = this.efectivoACobrar(method);
         const cashGroup = document.getElementById('posCashGroup');
@@ -677,9 +723,16 @@ const PosModule = {
         const received = Number(document.getElementById('posChargeReceived').value);
         const error = document.getElementById('posChargeError');
         error.hidden = true;
+        const descuentoGeneral = this.descuentoGeneral();
+        if (descuentoGeneral.error) {
+            error.textContent = descuentoGeneral.error;
+            error.hidden = false;
+            document.getElementById('posDescuentoGeneral').focus();
+            return;
+        }
         let pagos;
         if (method === 'mixto') {
-            const dividido = PagoDividido.validar(document.getElementById('posSplit'), Number(cuenta.total));
+            const dividido = PagoDividido.validar(document.getElementById('posSplit'), this.totalACobrar());
             if (dividido.error) {
                 error.textContent = dividido.error;
                 error.hidden = false;
@@ -711,7 +764,7 @@ const PosModule = {
         try {
             const data = await this.apiRequest(`/api/pos/cuentas/${encodeURIComponent(cuenta.id)}/cobrar`, {
                 method: 'POST',
-                body: JSON.stringify({ metodo_pago: method, pagos, fecha: this.today(), comprobante, receptor })
+                body: JSON.stringify({ metodo_pago: method, pagos, descuento_general: descuentoGeneral.monto, fecha: this.today(), comprobante, receptor })
             });
             this.closeModal('posChargeModal');
             const factura = data.factura?.estado === 'certificado' ? data.factura : null;
@@ -723,7 +776,10 @@ const PosModule = {
                 fecha: this.formatNow(),
                 cuentaNombre: cuenta.nombre,
                 lineas: this.receiptLines(cuenta),
-                total: Number(data.venta?.total ?? cuenta.total),
+                total: Number(data.venta?.total ?? this.totalACobrar()),
+                subtotal: this.receiptLines(cuenta).reduce((sum, linea) => sum + linea.cantidad * linea.precio, 0),
+                descuento: Number(data.venta?.descuento ?? 0),
+                descuentoGeneral: descuentoGeneral.monto,
                 metodo,
                 pagos: metodo === 'mixto' ? pagos : null,
                 efectivo,
@@ -778,8 +834,9 @@ const PosModule = {
         const lineas = new Map();
         (cuenta.items || []).forEach(item => {
             const key = `${item.articulo_id}|${item.precio_unitario}`;
-            const linea = lineas.get(key) || { nombre: item.nombre, precio: Number(item.precio_unitario), cantidad: 0 };
+            const linea = lineas.get(key) || { nombre: item.nombre, codigo: item.codigo || '', precio: Number(item.precio_unitario), cantidad: 0, descuento: 0 };
             linea.cantidad += Number(item.cantidad);
+            linea.descuento += Number(item.descuento) || 0;
             lineas.set(key, linea);
         });
         return [...lineas.values()];
@@ -794,6 +851,8 @@ const PosModule = {
             cuentaNombre: cuenta.nombre,
             lineas: this.receiptLines(cuenta),
             total: Number(cuenta.total),
+            subtotal: this.receiptLines(cuenta).reduce((sum, linea) => sum + linea.cantidad * linea.precio, 0),
+            descuento: Number(cuenta.descuento) || 0,
             fecha: this.formatNow(),
             atendio: this.cajero()
         });

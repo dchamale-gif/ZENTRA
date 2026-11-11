@@ -67,9 +67,13 @@ const ComprobanteModule = {
                 nombre: item.concepto_nombre,
                 codigo: item.concepto_codigo || '',
                 cantidad: Number(item.cantidad) || 0,
-                precio: Number(item.precio_unitario) || 0
+                precio: Number(item.precio_unitario) || 0,
+                descuento: Number(item.descuento) || 0
             })),
             total,
+            subtotal: Number(venta.subtotal) || 0,
+            descuento: Number(venta.descuento) || 0,
+            descuentoGeneral: Number(venta.descuento_general) || 0,
             metodo: venta.metodo_pago,
             pagos: venta.metodo_pago === 'mixto' ? (venta.pagos_contado || []) : null,
             pagado: Number(venta.pagado) || 0,
@@ -122,6 +126,28 @@ const ComprobanteModule = {
     },
 
     // ---------- Contenido ----------
+
+    // Subtotal antes de descuentos: la suma de cantidad × precio.
+    subtotal(c) {
+        return c.lineas.reduce((sum, linea) => sum + linea.cantidad * linea.precio, 0);
+    },
+
+    ahorro(c) {
+        return Math.max(0, Math.round((this.subtotal(c) - c.total) * 100) / 100);
+    },
+
+    conDescuento(c) {
+        return this.ahorro(c) > 0.004;
+    },
+
+    // Subtotal − descuentos por producto − descuento al total = TOTAL.
+    filasDescuento(c, fila) {
+        if (!this.conDescuento(c)) return '';
+        const porProducto = c.lineas.reduce((sum, linea) => sum + (linea.descuento || 0), 0);
+        return fila('Subtotal', formatQ(this.subtotal(c))) +
+            (porProducto > 0 ? fila('Desc. por producto', `−${formatQ(porProducto)}`) : '') +
+            (c.descuentoGeneral > 0 ? fila('Descuento al total', `−${formatQ(c.descuentoGeneral)}`) : '');
+    },
 
     // El cambio es sobre lo que se pagó en efectivo (en un pago dividido, solo esa parte).
     cambio(c) {
@@ -232,8 +258,10 @@ const ComprobanteModule = {
             ${c.lineas.map(linea => `<div class="cpb-item">
                 <div class="cpb-ajustar">${e(linea.nombre)}</div>
                 ${fila(`${linea.cantidad} × ${formatQ(linea.precio)}`, formatQ(linea.cantidad * linea.precio))}
+                ${linea.descuento > 0 ? fila('&nbsp;&nbsp;Descuento', `−${formatQ(linea.descuento)}`) : ''}
             </div>`).join('')}
             <hr>
+            ${this.filasDescuento(c, fila)}
             ${fila('TOTAL', formatQ(c.total), 'cpb-total')}
             ${c.metodo ? fila('Pago', e(this.METODOS[c.metodo] || c.metodo)) : ''}
             ${(c.pagos || []).map(pago => fila(`&nbsp;&nbsp;${e(this.METODOS[pago.metodo] || pago.metodo)}`, formatQ(Number(pago.monto)))).join('')}
@@ -258,6 +286,7 @@ const ComprobanteModule = {
         const factura = c.factura;
         const cliente = c.cliente || { nombre: 'Consumidor final', id: 'CF', idTipo: 'NIT' };
         const conCodigo = c.lineas.some(linea => linea.codigo);
+        const conDescLinea = c.lineas.some(linea => linea.descuento > 0);
         const contacto = [empresa.telefono && `Tel. ${empresa.telefono}`, empresa.email].filter(Boolean).join(' · ');
 
         return `<div class="cpb cpb-hoja">
@@ -292,6 +321,7 @@ const ComprobanteModule = {
                     <th>Descripción</th>
                     <th class="cpb-num">Cant.</th>
                     <th class="cpb-num">Precio unit.</th>
+                    ${conDescLinea ? '<th class="cpb-num">Descuento</th>' : ''}
                     <th class="cpb-num">Subtotal</th>
                 </tr></thead>
                 <tbody>
@@ -300,11 +330,13 @@ const ComprobanteModule = {
                         <td class="cpb-ajustar">${e(linea.nombre)}</td>
                         <td class="cpb-num">${e(linea.cantidad)}</td>
                         <td class="cpb-num">${formatQ(linea.precio)}</td>
-                        <td class="cpb-num">${formatQ(linea.cantidad * linea.precio)}</td>
+                        ${conDescLinea ? `<td class="cpb-num">${linea.descuento > 0 ? `−${formatQ(linea.descuento)}` : '—'}</td>` : ''}
+                        <td class="cpb-num">${formatQ(linea.cantidad * linea.precio - (linea.descuento || 0))}</td>
                     </tr>`).join('')}
                 </tbody>
             </table>
             <div class="cpb-totales">
+                ${this.filasDescuento(c, fila)}
                 <div class="cpb-fila cpb-total"><span>TOTAL</span><span>${formatQ(c.total)}</span></div>
                 ${c.metodo === 'credito' ? fila('Pagado', formatQ(c.pagado)) + fila('Saldo pendiente', formatQ(c.pendiente)) : ''}
                 ${c.recibido ? fila('Efectivo recibido', formatQ(c.recibido)) + fila('Cambio', formatQ(this.cambio(c))) : ''}

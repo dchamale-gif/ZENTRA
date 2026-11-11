@@ -1630,3 +1630,34 @@ tr.is-inactive td { color: var(--text-gray); }
     .pago-dividido-fila { grid-template-columns: minmax(0, 1fr) 96px auto; }
     .pago-dividido-fila label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 }
+
+/* Descuentos: línea del punto de venta, cobro y formulario de Ventas */
+.pos-line-acciones { display: flex; align-items: center; gap: 2px; }
+.pos-line-discount:hover { color: var(--primary-color); }
+.pos-line-discount.active { color: var(--primary-color); }
+.pos-line-info .pos-line-desc { color: #166534; font-weight: 500; }
+.pos-descuento-general { margin: 0 0 16px; }
+.venta-totales { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 24px; margin-top: 12px; }
+.venta-totales .purchase-total { margin: 0; }
+.venta-descuento-general { flex: 0 1 260px; margin: 0; }
+.venta-descuento-general[hidden] { display: none; }
+.venta-totales-cifras { margin-left: auto; text-align: right; }
+.venta-totales-detalle { margin: 0 0 4px; color: var(--text-gray); font-size: 13px; }
+.venta-totales-detalle[hidden] { display: none; }
+@media (min-width: 641px) {
+    /* Los campos tienen un ancho natural que ensancha la tabla: se fija para que quepa sin desplazamiento. */
+    #saleModal .purchase-items-table td:nth-child(2) .form-input { width: 80px; min-width: 0; }
+    #saleModal .purchase-items-table td:nth-child(3) .form-input,
+    #saleModal .purchase-items-table td.sale-desc-col .form-input { width: 110px; min-width: 0; }
+}
+/* En el teléfono cada celda lleva su nombre; con la columna de descuento el subtotal se corre. */
+@media (max-width: 640px) {
+    .purchase-items-table td.sale-desc-col::before { content: 'Descuento'; }
+    .purchase-items-table td.sale-desc-col + td::before {
+        content: 'Subtotal';
+        display: block;
+        margin-bottom: 4px;
+        font-size: 12px;
+        color: var(--text-gray);
+    }
+}

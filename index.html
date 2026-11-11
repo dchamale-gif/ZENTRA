@@ -2045,6 +2045,11 @@
             <form id="posChargeForm" novalidate>
                 <div class="modal-body">
                     <p class="pos-charge-total">Total <strong id="posChargeTotal">Q0.00</strong></p>
+                    <div class="form-group pos-descuento-general" id="posDescuentoGroup" hidden>
+                        <label for="posDescuentoGeneral">Descuento al total (opcional)</label>
+                        <input id="posDescuentoGeneral" class="form-input" type="text" inputmode="decimal" autocomplete="off" placeholder="25 o 10%" aria-describedby="posDescuentoDetalle">
+                        <small id="posDescuentoDetalle" aria-live="polite">En quetzales o en porcentaje (10%).</small>
+                    </div>
                     <fieldset class="pos-payment-methods pos-payment-methods-4">
                         <legend>Forma de pago</legend>
                         <label><input type="radio" name="posPaymentMethod" value="efectivo" checked> <i class="fas fa-money-bill-wave" aria-hidden="true"></i> Efectivo</label>
@@ -2163,11 +2168,21 @@
                     </div>
                     <div class="table-responsive">
                         <table class="data-table purchase-items-table">
-                            <thead><tr><th>Artículo</th><th>Cantidad</th><th>Precio unitario</th><th>Subtotal</th><th></th></tr></thead>
+                            <thead><tr><th>Artículo</th><th>Cantidad</th><th>Precio unitario</th><th class="sale-desc-col" hidden>Descuento</th><th>Subtotal</th><th></th></tr></thead>
                             <tbody id="saleItemsBody"></tbody>
                         </table>
                     </div>
-                    <div class="purchase-total">Total: <strong id="saleCalculatedTotal">Q0.00</strong></div>
+                    <div class="venta-totales">
+                        <div class="form-group venta-descuento-general sale-desc-col" hidden>
+                            <label for="saleDescuentoGeneral">Descuento al total</label>
+                            <input id="saleDescuentoGeneral" class="form-input" type="text" inputmode="decimal" autocomplete="off" placeholder="25 o 10%" aria-describedby="saleDescuentoHint">
+                            <small id="saleDescuentoHint">En quetzales o en porcentaje (10%).</small>
+                        </div>
+                        <div class="venta-totales-cifras">
+                            <p class="venta-totales-detalle" id="saleTotalesDetalle" hidden></p>
+                            <div class="purchase-total">Total: <strong id="saleCalculatedTotal">Q0.00</strong></div>
+                        </div>
+                    </div>
                     <div class="form-group full-width">
                         <label>Observaciones</label>
                         <textarea id="saleObservations" class="form-input" rows="3"></textarea>
@@ -2690,6 +2705,7 @@
     <script src="js/clasificaciones.js"></script>
     <script src="js/caja-integrada.js"></script>
     <script src="js/compras.js"></script>
+    <script src="js/descuentos.js"></script>
     <script src="js/pago-dividido.js"></script>
     <script src="js/comprobantes.js"></script>
     <script src="js/ventas.js"></script>

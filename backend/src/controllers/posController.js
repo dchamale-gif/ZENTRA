@@ -15,7 +15,8 @@ const userName = (user) => [user.nombre, user.apellido].filter(Boolean).join(' '
 const CUENTA_SELECT = `
   SELECT c.id, c.nombre, c.estado, c.version, c.abierta_por_nombre, c.created_at, c.updated_at,
          COALESCE(SUM(i.cantidad), 0)::INTEGER AS unidades,
-         COALESCE(SUM(i.cantidad * i.precio_unitario), 0) AS total
+         COALESCE(SUM(i.descuento), 0) AS descuento,
+         COALESCE(SUM(i.cantidad * i.precio_unitario - i.descuento), 0) AS total
   FROM pos_cuentas c
   LEFT JOIN pos_cuenta_items i ON i.cuenta_id = c.id
 `;
@@ -41,7 +42,7 @@ const getCuentaDetalle = async (db, cuentaId) => {
   if (!cuenta.rows[0]) return null;
   const items = await db.query(
     `SELECT i.id, i.articulo_id, a.nombre_articulo AS nombre, a.codigo, i.cantidad,
-            i.precio_unitario, i.nota, i.user_id, i.usuario_nombre, i.created_at
+            i.precio_unitario, i.descuento, i.nota, i.user_id, i.usuario_nombre, i.created_at
      FROM pos_cuenta_items i
      JOIN codigos_articulos a ON a.id = i.articulo_id
      WHERE i.cuenta_id = $1
@@ -161,13 +162,34 @@ const changeItem = withCuenta('Error cambiando la cantidad', async (client, cuen
     throw httpError(400, 'Indica cuántas unidades sumar o quitar');
   }
   const result = await client.query(
-    `UPDATE pos_cuenta_items SET cantidad = LEAST(cantidad + $1, ${MAX_CANTIDAD}), updated_at = NOW()
+    // Si bajan las unidades, el descuento no puede quedar mayor que el importe de la línea.
+    `UPDATE pos_cuenta_items SET cantidad = LEAST(cantidad + $1, ${MAX_CANTIDAD}),
+            descuento = LEAST(descuento, LEAST(cantidad + $1, ${MAX_CANTIDAD}) * precio_unitario),
+            updated_at = NOW()
      WHERE id = $2 AND cuenta_id = $3 AND cantidad + $1 > 0
      RETURNING id`,
     [delta, req.params.itemId, cuenta.id]
   );
   if (!result.rows[0]) {
     await client.query('DELETE FROM pos_cuenta_items WHERE id = $1 AND cuenta_id = $2', [req.params.itemId, cuenta.id]);
+  }
+});
+
+// Descuento de una línea en quetzales (el punto de venta convierte el porcentaje). 0 lo quita.
+const descuentoItem = withCuenta('Error aplicando el descuento', async (client, cuenta, req) => {
+  const descuento = Number(req.body.descuento);
+  if (!Number.isFinite(descuento) || descuento < 0) throw httpError(400, 'Escribe un descuento válido, por ejemplo 10 o 10%');
+  const result = await client.query(
+    `UPDATE pos_cuenta_items SET descuento = $1, updated_at = NOW()
+     WHERE id = $2 AND cuenta_id = $3 AND $1 <= cantidad * precio_unitario
+     RETURNING id`,
+    [Math.round(descuento * 100) / 100, req.params.itemId, cuenta.id]
+  );
+  if (!result.rows[0]) {
+    const existe = await client.query('SELECT 1 FROM pos_cuenta_items WHERE id = $1 AND cuenta_id = $2', [req.params.itemId, cuenta.id]);
+    throw existe.rows[0]
+      ? httpError(400, 'El descuento no puede ser mayor que el importe de la línea')
+      : httpError(404, 'Ese producto ya no está en la cuenta');
   }
 });
 
@@ -191,6 +213,11 @@ const cobrarCuenta = async (req, res) => {
   try {
     const metodoPago = String(req.body.metodo_pago || 'efectivo').toLowerCase();
     if (!METODOS_COBRO.has(metodoPago)) throw httpError(400, 'Elige efectivo, tarjeta, transferencia o pago dividido');
+    // Los descuentos de las líneas se autorizaron al ponerlos; el descuento al total lo da quien cobra.
+    const descuentoGeneral = Number(req.body.descuento_general || 0);
+    if (descuentoGeneral > 0 && !(req.userPermissions || []).includes('descuentos_edit')) {
+      throw httpError(403, 'No tienes permiso para dar descuentos; pide al administrador el módulo «Descuentos al vender»');
+    }
     // Factura: el NIT (y la configuración, si hay FEL) se revisan antes de cobrar, para no
     // registrar la venta con datos malos. Sin facturación activa la factura queda pendiente.
     const conFactura = req.body.comprobante === 'factura';
@@ -203,7 +230,7 @@ const cobrarCuenta = async (req, res) => {
     const cuenta = await lockCuentaAbierta(client, req.params.id);
     // Las líneas de distintos usuarios se agrupan por producto y precio en la venta.
     const lineas = await client.query(
-      `SELECT articulo_id, precio_unitario, SUM(cantidad)::INTEGER AS cantidad
+      `SELECT articulo_id, precio_unitario, SUM(cantidad)::INTEGER AS cantidad, SUM(descuento) AS descuento
        FROM pos_cuenta_items WHERE cuenta_id = $1
        GROUP BY articulo_id, precio_unitario ORDER BY MIN(created_at)`,
       [cuenta.id]
@@ -217,13 +244,15 @@ const cobrarCuenta = async (req, res) => {
       pagos: req.body.pagos,
       cliente_id: req.body.cliente_id || null,
       observaciones: `Punto de venta · ${cuenta.nombre}`,
+      descuento_general: descuentoGeneral,
       items: lineas.rows.map((linea) => ({
         tipo: 'articulo',
         concepto_id: linea.articulo_id,
         cantidad: linea.cantidad,
-        precio_unitario: Number(linea.precio_unitario)
+        precio_unitario: Number(linea.precio_unitario),
+        descuento: Number(linea.descuento)
       }))
-    }, req.user.id);
+    }, req.user.id, { puedeDescontar: true });
 
     if (receptor) {
       await client.query(
@@ -288,6 +317,7 @@ module.exports = {
   addItem,
   changeItem,
   removeItem,
+  descuentoItem,
   renameCuenta,
   cobrarCuenta,
   anularCuenta

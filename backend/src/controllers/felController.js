@@ -203,6 +203,8 @@ const emitirFactura = async (ventaId, receptorInput, userId, felHabilitada) => {
   if (!venta.rows[0]) throw httpError(404, 'Venta no encontrada');
   const lineas = await pool.query(
     `SELECT vi.cantidad, vi.precio_unitario, COALESCE(a.nombre_articulo, m.nombre, 'Producto') AS descripcion,
+            -- Descuento de la línea más su parte del descuento al total.
+            COALESCE(vi.descuento, 0) + COALESCE(vi.descuento_general, 0) AS descuento,
             CASE WHEN lower(COALESCE(a.tipo, '')) LIKE 'servicio%' THEN 'S' ELSE 'B' END AS bien_o_servicio
      FROM venta_items vi
      LEFT JOIN codigos_articulos a ON a.id = vi.articulo_id
@@ -218,6 +220,7 @@ const emitirFactura = async (ventaId, receptorInput, userId, felHabilitada) => {
     items: lineas.rows.map((linea) => ({
       cantidad: Number(linea.cantidad),
       precioUnitario: Number(linea.precio_unitario),
+      descuento: Number(linea.descuento),
       descripcion: linea.descripcion,
       bienOServicio: linea.bien_o_servicio
     }))

@@ -30,6 +30,7 @@ const VentasModule = {
         document.getElementById('saveSaleBtn')?.addEventListener('click', () => this.saveSale());
         const split = document.getElementById('saleSplit');
         if (split) PagoDividido.montar(split, { prefijo: 'saleSplit', getTotal: () => this.totalVenta() });
+        document.getElementById('saleDescuentoGeneral')?.addEventListener('input', () => this.updateTotalsOnly());
         this.initFiltros();
         this.state.initialized = true;
         this.loadData();
@@ -380,8 +381,16 @@ const VentasModule = {
             concepto_id: String(item.concepto_id),
             cantidad: Number(item.cantidad),
             precio_unitario: Number(item.precio_unitario),
+            descuentoTexto: Descuento.texto(item.descuento),
             filtros: { seccion: '', familia: '', subfamilia: '' }
         })) : [{ tipo: 'articulo', concepto_id: '', cantidad: 1, precio_unitario: 0, filtros: { seccion: '', familia: '', subfamilia: '' } }];
+        // Los descuentos se ven si se pueden dar o si la venta ya los tiene (entonces, solo lectura).
+        this.state.puedeDescontar = Descuento.puede();
+        this.state.mostrarDescuentos = this.state.puedeDescontar || Number(venta?.descuento) > 0;
+        document.querySelectorAll('#saleModal .sale-desc-col').forEach(element => { element.hidden = !this.state.mostrarDescuentos; });
+        const general = document.getElementById('saleDescuentoGeneral');
+        general.value = Descuento.texto(venta?.descuento_general);
+        general.disabled = !this.state.puedeDescontar;
         const split = document.getElementById('saleSplit');
         if (split) PagoDividido.llenar(split, venta?.metodo_pago === 'mixto' ? venta.pagos_contado : []);
         this.renderItems();
@@ -501,6 +510,9 @@ const VentasModule = {
             item.concepto_id = '';
             item.precio_unitario = 0;
             item.filtros = { seccion: '', familia: '', subfamilia: '' };
+        } else if (field === 'descuento') {
+            // Se guarda lo escrito: «10%» se recalcula si cambian la cantidad o el precio.
+            item.descuentoTexto = String(value);
         } else {
             item[field] = CodigosArticulosModule.parseDecimal(value);
             item.texto ||= {};
@@ -593,10 +605,12 @@ const VentasModule = {
     renderItems() {
         const tbody = document.getElementById('saleItemsBody');
         if (!tbody) return;
+        const importes = this.importes();
         tbody.innerHTML = this.state.items.map((item, index) => {
             item.filtros ||= { seccion: '', familia: '', subfamilia: '' };
             const selected = this.getCatalog(item.tipo).find(entry => entry.id === String(item.concepto_id));
-            const subtotal = Math.max(0, Number(item.cantidad) || 0) * Math.max(0, Number(item.precio_unitario) || 0);
+            const linea = importes.lineas[index];
+            const subtotal = linea.error ? NaN : linea.bruto - linea.descuento;
             const sections = this.getFilterOptions(item, 'seccion');
             const families = this.getFilterOptions(item, 'familia');
             const subfamilies = this.getFilterOptions(item, 'subfamilia');
@@ -624,6 +638,9 @@ const VentasModule = {
                     <div id="saleConceptResults-${index}" class="concept-search-results" hidden></div></div></td>
                 <td><input class="form-input" type="text" inputmode="numeric" autocomplete="off" aria-label="Cantidad de la línea ${index + 1}" value="${this.escapeHtml(this.inputValue(item, 'cantidad'))}" onchange="VentasModule.updateItem(${index}, 'cantidad', this.value)"></td>
                 <td><input class="form-input" type="text" inputmode="decimal" autocomplete="off" aria-label="Precio unitario de la línea ${index + 1}" value="${this.escapeHtml(this.inputValue(item, 'precio_unitario'))}" onchange="VentasModule.updateItem(${index}, 'precio_unitario', this.value)"></td>
+                ${this.state.mostrarDescuentos ? `<td class="sale-desc-col"><input class="form-input" type="text" inputmode="decimal" autocomplete="off" placeholder="0"
+                    aria-label="Descuento de la línea ${index + 1} (en quetzales o 10%)" value="${this.escapeHtml(item.descuentoTexto || '')}"
+                    ${this.state.puedeDescontar ? '' : 'disabled'} onchange="VentasModule.updateItem(${index}, 'descuento', this.value)"></td>` : ''}
                 <td><strong>${Number.isFinite(subtotal) ? `${formatQ(subtotal)}` : '—'}</strong></td>
                 <td><button class="btn-icon btn-delete" type="button" title="Quitar artículo" aria-label="Quitar la línea ${index + 1}" onclick="VentasModule.removeItem(${index})" ${this.state.items.length === 1 ? 'disabled' : ''}><i class="fas fa-trash" aria-hidden="true"></i></button></td>
             </tr>`;
@@ -637,32 +654,75 @@ const VentasModule = {
         return item.texto?.[field] ?? item[field];
     },
 
+    // Importes en centavos para no arrastrar errores de redondeo: bruto, descuentos y total.
+    importes() {
+        let bruto = 0;
+        let descuentoLineas = 0;
+        const lineas = this.state.items.map(item => {
+            const importe = Math.round(Math.max(0, Number(item.cantidad) || 0) * Math.max(0, Number(item.precio_unitario) || 0) * 100);
+            const leido = Descuento.leer(item.descuentoTexto, importe / 100);
+            const descuento = leido.error ? 0 : Math.round(leido.monto * 100);
+            bruto += importe;
+            descuentoLineas += descuento;
+            return { bruto: importe / 100, descuento: descuento / 100, error: leido.error };
+        });
+        const neto = bruto - descuentoLineas;
+        const general = Descuento.leer(document.getElementById('saleDescuentoGeneral')?.value, neto / 100);
+        const generalCent = general.error ? 0 : Math.round(general.monto * 100);
+        return {
+            lineas,
+            bruto: bruto / 100,
+            descuentoLineas: descuentoLineas / 100,
+            general: generalCent / 100,
+            errorGeneral: general.error,
+            total: (neto - generalCent) / 100
+        };
+    },
+
     totalVenta() {
-        const centavos = this.state.items.reduce((sum, item) =>
-            sum + Math.round(Math.max(0, Number(item.cantidad) || 0) * Math.max(0, Number(item.precio_unitario) || 0) * 100), 0);
-        return centavos / 100;
+        return this.importes().total;
     },
 
     updateTotalsOnly() {
-        const total = this.totalVenta();
+        const importes = this.importes();
+        const total = importes.total;
         document.getElementById('saleCalculatedTotal').textContent = `${formatQ(total)}`;
+        const descuentos = importes.descuentoLineas + importes.general;
+        const detalle = document.getElementById('saleTotalesDetalle');
+        detalle.hidden = descuentos <= 0 && !importes.errorGeneral;
+        detalle.textContent = importes.errorGeneral
+            || `Subtotal ${formatQ(importes.bruto)} · Descuentos −${formatQ(descuentos)}`;
+        detalle.classList.toggle('form-error', Boolean(importes.errorGeneral));
         const split = document.getElementById('saleSplit');
         if (split && !split.hidden) PagoDividido.render(split, total);
     },
 
     async saveSale() {
         const id = document.getElementById('saleId').value;
+        const importes = this.importes();
         const payload = {
             fecha: document.getElementById('saleDate').value,
             metodo_pago: document.getElementById('salePaymentMethod').value,
             observaciones: document.getElementById('saleObservations').value.trim() || null,
-            items: this.state.items.map(item => ({
+            items: this.state.items.map((item, index) => ({
                 tipo: item.tipo,
                 concepto_id: item.concepto_id,
                 cantidad: Number(item.cantidad),
-                precio_unitario: Number(item.precio_unitario)
-            }))
+                precio_unitario: Number(item.precio_unitario),
+                descuento: importes.lineas[index].descuento
+            })),
+            descuento_general: importes.general
         };
+        const errorDescuento = importes.lineas.findIndex(linea => linea.error);
+        if (errorDescuento >= 0) {
+            this.notify(importes.lineas.length > 1 ? `Línea ${errorDescuento + 1}: ${importes.lineas[errorDescuento].error}` : importes.lineas[errorDescuento].error, 'warning');
+            return;
+        }
+        if (importes.errorGeneral) {
+            this.notify(importes.errorGeneral, 'warning');
+            document.getElementById('saleDescuentoGeneral').focus();
+            return;
+        }
         if (this.state.receptorId) payload[`${this.state.receptorTipo}_id`] = this.state.receptorId;
         const lineError = this.findLineError(payload.items);
         if (!payload.fecha) {
@@ -742,18 +802,25 @@ const VentasModule = {
         const venta = this.state.ventas.find(entry => String(entry.id) === String(id));
         if (!venta) return;
         const esc = (value) => this.escapeHtml(value);
-        const rows = venta.items.map(item => `
+        const conDescLinea = venta.items.some(item => Number(item.descuento) > 0);
+        const rows = venta.items.map(item => {
+            const importe = Number(item.cantidad) * Number(item.precio_unitario) - Number(item.descuento || 0);
+            return `
             <tr><td>${esc(item.concepto_nombre)}</td><td class="text-right">${esc(item.cantidad)}</td>
             <td class="text-right">${formatQ(Number(item.precio_unitario))}</td>
-            <td class="text-right">${formatQ((Number(item.cantidad) * Number(item.precio_unitario)))}</td></tr>`).join('');
+            ${conDescLinea ? `<td class="text-right">${Number(item.descuento) > 0 ? `−${formatQ(Number(item.descuento))}` : '—'}</td>` : ''}
+            <td class="text-right">${formatQ(importe)}</td></tr>`;
+        }).join('');
+        const descuento = Number(venta.descuento) || 0;
         CodigosArticulosModule.showDetailsModal(`Venta ${venta.numero_venta}`, `
             <p><strong>Cliente:</strong> ${esc(venta.receptor_nombre)}</p>
             <p><strong>Fecha:</strong> ${esc(this.formatDate(venta.fecha))}</p>
             <p><strong>Pago:</strong> ${this.paymentCell(venta)}</p>
             <div class="table-responsive"><table class="data-table" data-mobile-layout="grid">
-                <thead><tr><th>Artículo</th><th class="text-right">Cantidad</th><th class="text-right">Precio</th><th class="text-right">Subtotal</th></tr></thead>
+                <thead><tr><th>Artículo</th><th class="text-right">Cantidad</th><th class="text-right">Precio</th>${conDescLinea ? '<th class="text-right">Descuento</th>' : ''}<th class="text-right">Subtotal</th></tr></thead>
                 <tbody>${rows}</tbody>
             </table></div>
+            ${descuento > 0 ? `<p class="text-right">Subtotal ${formatQ(Number(venta.subtotal))}${Number(venta.descuento_general) > 0 ? ` · Descuento al total −${formatQ(Number(venta.descuento_general))}` : ''} · Descuentos −${formatQ(descuento)}</p>` : ''}
             <p class="text-right"><strong>Total: ${formatQ(Number(venta.total))}</strong></p>
             ${venta.observaciones ? `<p><strong>Observaciones:</strong> ${esc(venta.observaciones)}</p>` : ''}`);
     },
