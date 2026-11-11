@@ -334,7 +334,11 @@ const getXml = async (req, res) => {
   }
 };
 
+// Datos del emisor que se imprimen en los comprobantes (null si la empresa no configuró FEL).
+const datosEmisor = async (felHabilitada) =>
+  (felHabilitada ? estadoPublico(await loadConfig()).emisor : null);
+
 module.exports = {
   getConfig, saveConfig, getEstado, emitir, anular, getXml, prepararFactura, emitirFactura, requireHabilitada,
-  facturacionActiva
+  facturacionActiva, datosEmisor
 };

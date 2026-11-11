@@ -45,6 +45,7 @@ const VentasModule = {
 
     async loadData() {
         const felReady = typeof FelModule !== 'undefined' ? FelModule.loadEstado() : null;
+        ComprobanteModule.cargarEmpresa();
         const requests = await Promise.allSettled([
             this.apiRequest('/api/ventas'),
             this.apiRequest('/api/ventas/receptores'),
@@ -100,6 +101,9 @@ const VentasModule = {
                 <td>${this.paymentCell(venta)}</td>
                 <td>${typeof FelModule !== 'undefined' ? FelModule.comprobanteCell(venta) : ''}</td>
                 <td class="actions">
+                    <button class="btn-icon" type="button" title="Imprimir, PDF o WhatsApp" aria-label="Imprimir o enviar el comprobante de ${this.escapeHtml(venta.numero_venta)}" onclick="VentasModule.openComprobante('${this.escapeHtml(venta.id)}')">
+                        <i class="fas fa-print" aria-hidden="true"></i>
+                    </button>
                     ${this.facturaButton(venta)}
                     <button class="btn-icon" type="button" title="Ver detalle" aria-label="Ver detalle de ${this.escapeHtml(venta.numero_venta)}" onclick="VentasModule.viewSale('${this.escapeHtml(venta.id)}')">
                         <i class="fas fa-eye" aria-hidden="true"></i>
@@ -138,6 +142,11 @@ const VentasModule = {
         return `<button class="btn-icon" type="button" title="${label}" aria-label="${label} de ${this.escapeHtml(venta.numero_venta)}" onclick="VentasModule.openFactura('${this.escapeHtml(venta.id)}')">
                         <i class="fas fa-file-invoice" aria-hidden="true"></i>
                     </button>`;
+    },
+
+    openComprobante(id) {
+        const venta = this.state.ventas.find(entry => String(entry.id) === String(id));
+        if (venta) ComprobanteModule.abrir(ComprobanteModule.deVenta(venta));
     },
 
     openFactura(id) {

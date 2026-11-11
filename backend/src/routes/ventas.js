@@ -3,11 +3,14 @@ const express = require('express');
 const { sincronizarTrasMovimiento } = require('../controllers/integracionesController');
 const clientesController = require('../controllers/clientesController');
 const ventasController = require('../controllers/ventasController');
+const comprobantesController = require('../controllers/comprobantesController');
 const { authMiddleware, rolePermissionMiddleware } = require('../middleware/auth');
 
 const router = express.Router();
 router.use(authMiddleware);
 router.get('/', rolePermissionMiddleware(['ventas_view']), ventasController.getVentas);
+// Encabezado de los comprobantes: lo usan Ventas y el punto de venta.
+router.get('/empresa', rolePermissionMiddleware(['ventas_view', 'pos_view']), comprobantesController.getEmpresa);
 router.get('/receptores', rolePermissionMiddleware(['ventas_view']), ventasController.getReceptores);
 router.post('/receptores', rolePermissionMiddleware(['ventas_create']), clientesController.createCliente);
 router.post('/', sincronizarTrasMovimiento, rolePermissionMiddleware(['ventas_create']), ventasController.createVenta);

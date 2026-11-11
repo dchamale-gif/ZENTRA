@@ -1,4 +1,5 @@
 const pool = require('../db/connection');
+const authPool = require('../db/authConnection');
 const { dbInputErrorMessage } = require('../utils/inventory');
 const { registrarMovimientoCaja, anularMovimientosDeVenta } = require('../utils/cajaLedger');
 
@@ -12,9 +13,12 @@ const VENTA_SELECT = `
          v.factura_externa, v.factura_externa_at,
          COALESCE(c.nombre, 'Consumidor final') AS receptor_nombre,
          CASE WHEN v.cliente_id IS NOT NULL THEN 'cliente' ELSE 'consumidor' END AS receptor_tipo,
+         c.nit AS cliente_nit, c.dpi AS cliente_dpi, c.telefono AS cliente_telefono,
+         c.direccion AS cliente_direccion,
          COALESCE(pg.pagado, 0) AS pagado,
          (SELECT row_to_json(f) FROM (
-            SELECT id, estado, tipo_dte, serie, numero, uuid, receptor_id, receptor_nombre, error, ambiente
+            SELECT id, estado, tipo_dte, serie, numero, uuid, receptor_id, receptor_nombre, error, ambiente,
+                   fecha_certificacion
             FROM fel_documentos WHERE venta_id = v.id ORDER BY created_at DESC LIMIT 1) f) AS factura,
          GREATEST(v.total - COALESCE(pg.pagado, 0), 0) AS pendiente,
          COALESCE(
@@ -42,7 +46,29 @@ const VENTA_SELECT = `
   LEFT JOIN medicinas m ON m.id = vi.medicina_id
   LEFT JOIN codigos_articulos a ON a.id = vi.articulo_id
 `;
-const VENTA_GROUP_BY = 'GROUP BY v.id, c.nombre, pg.pagado';
+const VENTA_GROUP_BY = 'GROUP BY v.id, c.id, pg.pagado';
+
+// Los usuarios viven en la base de autenticación: el nombre de quien vendió se agrega aparte.
+const agregarVendedores = async (ventas, organizationId) => {
+  const ids = [...new Set(ventas.map((venta) => venta.user_id).filter(Boolean))];
+  if (!ids.length) return ventas;
+  try {
+    const result = await authPool.query(
+      'SELECT id, nombre, apellido, email FROM users WHERE id = ANY($1::int[]) AND organization_id = $2',
+      [ids, organizationId]
+    );
+    const nombres = new Map(result.rows.map((user) => [
+      user.id,
+      // Los usuarios dados de baja conservan su nombre; su correo se reemplazó por «baja-…».
+      [user.nombre, user.apellido].filter(Boolean).join(' ') || (user.email.startsWith('baja-') ? null : user.email)
+    ]));
+    return ventas.map((venta) => ({ ...venta, vendedor_nombre: nombres.get(venta.user_id) || null }));
+  } catch (error) {
+    // El nombre de quien vendió es un dato de cortesía: sin él la lista sigue sirviendo.
+    console.error('No se pudieron leer los vendedores:', error.message);
+    return ventas;
+  }
+};
 
 const httpError = (status, message) => Object.assign(new Error(message), { status });
 
@@ -256,7 +282,8 @@ const getVentas = async (req, res) => {
        ORDER BY v.fecha DESC, v.created_at DESC`,
       params
     );
-    res.status(200).json({ success: true, total: result.rows.length, ventas: result.rows });
+    const ventas = await agregarVendedores(result.rows, req.organization.id);
+    res.status(200).json({ success: true, total: ventas.length, ventas });
   } catch (error) {
     sendError(res, error, 'Error obteniendo ventas');
   }

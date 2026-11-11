@@ -1537,3 +1537,23 @@ tr.is-inactive td { color: var(--text-gray); }
 #userFormModal .check-row input { width: 18px; height: 18px; accent-color: var(--primary-color); }
 .user-credenciales { margin: 14px 0; padding: 14px 16px; border: 1px solid var(--border-color); border-radius: var(--radius); background: #f8fafc; }
 .user-credenciales code { font-size: 16px; letter-spacing: 0.04em; user-select: all; }
+
+/* Comprobante de venta: formato, vista previa, PDF y WhatsApp */
+#comprobanteModal .modal-content { max-width: 720px; width: calc(100% - 32px); }
+.comprobante-formatos { grid-template-columns: repeat(4, 1fr); }
+.comprobante-vista {
+    display: block;
+    width: 100%;
+    height: min(52vh, 460px);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    background: #e5e7eb;
+}
+.comprobante-whatsapp { margin: 16px 0 0; }
+.comprobante-acciones { flex-wrap: wrap; }
+
+@media (max-width: 560px) {
+    .comprobante-formatos { grid-template-columns: repeat(2, 1fr); }
+    .comprobante-vista { height: 40vh; }
+    .comprobante-acciones .btn { flex: 1 1 100%; }
+}

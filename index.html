@@ -1716,6 +1716,36 @@
         </div>
     </div>
 
+    <div id="comprobanteModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="comprobanteTitulo">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="comprobanteTitulo">Comprobante</h2>
+                <button class="close-btn" type="button" aria-label="Cerrar" onclick="ComprobanteModule.cerrar()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <fieldset class="pos-payment-methods comprobante-formatos" id="comprobanteFormatos">
+                    <legend>Formato</legend>
+                    <label><input type="radio" name="comprobanteFormato" value="80"> <i class="fas fa-receipt" aria-hidden="true"></i> Ticket 80 mm</label>
+                    <label><input type="radio" name="comprobanteFormato" value="58"> <i class="fas fa-receipt" aria-hidden="true"></i> Ticket 58 mm</label>
+                    <label><input type="radio" name="comprobanteFormato" value="carta"> <i class="fas fa-file-lines" aria-hidden="true"></i> Hoja carta</label>
+                    <label><input type="radio" name="comprobanteFormato" value="oficio"> <i class="fas fa-file-lines" aria-hidden="true"></i> Hoja oficio</label>
+                </fieldset>
+                <iframe id="comprobanteVista" class="comprobante-vista" title="Vista previa del comprobante"></iframe>
+                <div class="form-group comprobante-whatsapp">
+                    <label for="comprobanteTelefono">WhatsApp del cliente</label>
+                    <input id="comprobanteTelefono" class="form-input" type="tel" inputmode="tel" autocomplete="off" placeholder="5555 1234" aria-describedby="comprobanteTelefonoHint">
+                    <small id="comprobanteTelefonoHint">Con 8 dígitos se usa el código de Guatemala (502). Vacío: eliges el chat en WhatsApp.</small>
+                </div>
+                <p id="comprobanteError" class="form-error" role="alert" hidden></p>
+            </div>
+            <div class="modal-footer comprobante-acciones">
+                <button type="button" class="btn btn-secondary" id="comprobanteWhatsapp"><i class="fab fa-whatsapp" aria-hidden="true"></i> Enviar por WhatsApp</button>
+                <button type="button" class="btn btn-secondary" id="comprobantePdf"><i class="fas fa-file-pdf" aria-hidden="true"></i> Descargar PDF</button>
+                <button type="button" class="btn btn-primary" id="comprobanteImprimir"><i class="fas fa-print" aria-hidden="true"></i> Imprimir</button>
+            </div>
+        </div>
+    </div>
+
     <div id="posNewAccountModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="posNewAccountTitle">
         <div class="modal-content">
             <div class="modal-header">
@@ -2012,6 +2042,7 @@
                             <option value="80">Sí, papel de 80 mm</option>
                             <option value="58">Sí, papel de 58 mm</option>
                             <option value="carta">Sí, hoja carta</option>
+                            <option value="oficio">Sí, hoja oficio</option>
                             <option value="no">No imprimir</option>
                         </select>
                         <small id="posPrintPaperHint">Se recuerda en este equipo.</small>
@@ -2615,6 +2646,7 @@
     <script src="js/clasificaciones.js"></script>
     <script src="js/caja-integrada.js"></script>
     <script src="js/compras.js"></script>
+    <script src="js/comprobantes.js"></script>
     <script src="js/ventas.js"></script>
     <script src="js/punto-de-venta.js"></script>
     <script src="js/integraciones.js"></script>
