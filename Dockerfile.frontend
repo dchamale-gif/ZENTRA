@@ -8,4 +8,8 @@ COPY img/ /srv/img/
 COPY data/ /srv/data/
 COPY vendor/ /srv/vendor/
 
+# Cada imagen marca sus CSS y JS con una versión propia: el navegador los guarda una hora en
+# caché, y sin esto podría mezclar el HTML nuevo con scripts viejos tras un despliegue.
+RUN build="$(date +%s)" && sed -i "s/__BUILD__/${build}/g" /srv/index.html /srv/login.html /srv/support.html
+
 RUN chmod -R a-w /srv
