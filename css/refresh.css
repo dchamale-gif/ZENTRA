@@ -1042,6 +1042,8 @@ tr.is-inactive td { color: var(--text-gray); }
 .pos-products {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    /* Cada fila mide lo que su tarjeta necesita, aunque la lista tenga alto fijo y se desplace. */
+    grid-auto-rows: max-content;
     gap: 10px;
 }
 
@@ -1070,6 +1072,8 @@ tr.is-inactive td { color: var(--text-gray); }
 .pos-product:focus-visible { outline: none; box-shadow: var(--ring); }
 .pos-product:disabled { cursor: not-allowed; }
 .pos-product-out { opacity: 0.55; }
+/* Foto, nombre y precio nunca se encogen: la tarjeta crece para mostrarlos. */
+.pos-product > * { flex-shrink: 0; }
 
 .pos-product-photo { padding-top: 0; overflow: hidden; }
 /* Foto pequeña y completa (sin recortar): se reconoce el producto y caben más en pantalla. */
