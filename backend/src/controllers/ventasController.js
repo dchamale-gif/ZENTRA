@@ -1,6 +1,7 @@
 const pool = require('../db/connection');
 const authPool = require('../db/authConnection');
 const { dbInputErrorMessage } = require('../utils/inventory');
+const { limitarRango } = require('../utils/rangoConsulta');
 const { registrarMovimientoCaja, anularMovimientosDeVenta } = require('../utils/cajaLedger');
 
 const METODOS_CONTADO = ['efectivo', 'tarjeta', 'transferencia'];
@@ -14,6 +15,8 @@ const VENTA_SELECT = `
   SELECT v.id, v.numero_venta, v.cliente_id, v.user_id,
          v.fecha, v.hora, v.subtotal, v.descuento, v.descuento_general, v.impuesto, v.total,
          v.metodo_pago, v.estado, v.observaciones, v.created_at, v.updated_at,
+         -- Hora en que se registró la venta (al cobrar o generar el ticket), en hora de Guatemala.
+         to_char((v.created_at AT TIME ZONE current_setting('TimeZone')) AT TIME ZONE 'America/Guatemala', 'HH24:MI') AS hora_ticket,
          v.factura_solicitada, v.factura_receptor_id, v.factura_receptor_tipo, v.factura_receptor_nombre,
          v.factura_externa, v.factura_externa_at,
          COALESCE(c.nombre, 'Consumidor final') AS receptor_nombre,
@@ -459,14 +462,16 @@ const filtrosVentas = (query) => {
 
 const getVentas = async (req, res) => {
   try {
-    const { where, params } = filtrosVentas(req.query);
+    // Quien no es administrador solo ve la última semana (por defecto el frontend pide hoy).
+    const rango = limitarRango(req, { desde: req.query.desde, hasta: req.query.hasta });
+    const { where, params } = filtrosVentas({ ...req.query, desde: rango.desde, hasta: rango.hasta });
     const result = await pool.query(
       `${VENTA_SELECT} ${where} ${VENTA_GROUP_BY}
        ORDER BY v.fecha DESC, v.created_at DESC`,
       params
     );
     const ventas = await agregarVendedores(result.rows, req.organization.id);
-    res.status(200).json({ success: true, total: ventas.length, ventas });
+    res.status(200).json({ success: true, total: ventas.length, ventas, limite: rango.limite });
   } catch (error) {
     sendError(res, error, 'Error obteniendo ventas');
   }

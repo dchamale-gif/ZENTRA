@@ -1022,12 +1022,20 @@
                     </div>
                     <div class="compras-toolbar">
                         <div class="pos-filters" id="comprasEstados" role="group" aria-label="Filtrar por estado"></div>
+                        <label class="sr-only" for="comprasPeriodo">Período</label>
+                        <select id="comprasPeriodo" class="form-input compras-periodo">
+                            <option value="todo">Todo el historial</option>
+                            <option value="hoy">Hoy</option>
+                            <option value="ultimos7">Últimos 7 días</option>
+                            <option value="mes">Este mes</option>
+                        </select>
                         <label class="search-field compras-search">
                             <i class="fas fa-magnifying-glass" aria-hidden="true"></i>
                             <span class="sr-only">Buscar compras</span>
                             <input type="search" id="comprasBuscar" class="form-input" placeholder="Buscar por número o proveedor" autocomplete="off">
                         </label>
                     </div>
+                    <p class="ventas-limite" id="comprasLimite" hidden></p>
                     <div class="table-container">
                         <table id="comprasTable">
                             <thead>
@@ -1060,6 +1068,7 @@
                                 <option value="hoy">Hoy</option>
                                 <option value="ayer">Ayer</option>
                                 <option value="semana">Esta semana</option>
+                                <option value="ultimos7">Últimos 7 días</option>
                                 <option value="mes" selected>Este mes</option>
                                 <option value="mes_anterior">Mes anterior</option>
                                 <option value="personalizado">Elegir fechas</option>
@@ -1091,6 +1100,7 @@
                             <input id="ventasBuscar" class="form-input" type="search" autocomplete="off" placeholder="Venta, cliente, NIT o factura">
                         </div>
                     </div>
+                    <p class="ventas-limite" id="ventasLimite" hidden></p>
                     <div class="ventas-resumen" id="ventasResumen" role="group" aria-label="Total por forma de pago"></div>
                     <p class="ventas-resumen-ayuda" id="ventasResumenAyuda">Toca una forma de pago para ver solo esas ventas.</p>
                     <div class="table-container">
@@ -1098,7 +1108,7 @@
                             <thead>
                                 <tr>
                                     <th>Venta</th>
-                                    <th>Fecha</th>
+                                    <th>Fecha y hora</th>
                                     <th>Cliente</th>
                                     <th>Total</th>
                                     <th>Pago</th>

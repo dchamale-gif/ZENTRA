@@ -11,6 +11,7 @@ const ComprasModule = {
         initialized: false,
         filtroEstado: '',
         busqueda: '',
+        periodo: 'todo',
         recibiendo: null
     },
 
@@ -22,8 +23,59 @@ const ComprasModule = {
         cancelada: { label: 'Cancelada', plural: 'Canceladas', badge: 'badge-danger' }
     },
 
+    // Quien no es administrador ve solo hoy o los últimos 7 días (el servidor también lo aplica);
+    // las compras por pedir o por recibir se ven siempre.
+    DIAS_SIN_ADMIN: 7,
+
+    limitado() {
+        return typeof AccessControl !== 'undefined' && !AccessControl.isAdmin();
+    },
+
+    initPeriodo() {
+        const select = document.getElementById('comprasPeriodo');
+        if (!select) return;
+        if (this.limitado()) {
+            [...select.options].forEach(option => {
+                if (!['hoy', 'ultimos7'].includes(option.value)) option.remove();
+            });
+            this.state.periodo = 'hoy';
+            const aviso = document.getElementById('comprasLimite');
+            if (aviso) {
+                aviso.hidden = false;
+                aviso.textContent = `Puedes consultar las compras de los últimos ${this.DIAS_SIN_ADMIN} días. Las compras por pedir o por recibir se muestran siempre.`;
+            }
+        }
+        select.value = this.state.periodo;
+        select.addEventListener('change', async () => {
+            this.state.periodo = select.value;
+            try {
+                this.state.compras = (await this.apiRequest(this.comprasPath())).compras || [];
+                this.render();
+            } catch (error) {
+                this.notify(`No se pudieron cargar las compras: ${error.message}`, 'error');
+            }
+        });
+    },
+
+    ymd(date) {
+        return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    },
+
+    comprasPath() {
+        const hoy = new Date();
+        const rangos = {
+            hoy: [hoy, hoy],
+            ultimos7: [new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() - (this.DIAS_SIN_ADMIN - 1)), hoy],
+            mes: [new Date(hoy.getFullYear(), hoy.getMonth(), 1), hoy]
+        };
+        const rango = rangos[this.state.periodo];
+        if (!rango) return '/api/compras';
+        return `/api/compras?desde=${this.ymd(rango[0])}&hasta=${this.ymd(rango[1])}`;
+    },
+
     init() {
         if (this.state.initialized) return;
+        this.initPeriodo();
         this.setupEventListeners();
         this.state.initialized = true;
         this.loadData();
@@ -76,7 +128,7 @@ const ComprasModule = {
     async loadData() {
         try {
             const [comprasData, proveedoresData, articulosData] = await Promise.all([
-                this.apiRequest('/api/compras'),
+                this.apiRequest(this.comprasPath()),
                 this.apiRequest('/api/proveedores'),
                 this.apiRequest('/api/codigos-articulos')
             ]);

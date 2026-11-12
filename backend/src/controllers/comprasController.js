@@ -1,5 +1,6 @@
 const pool = require('../db/connection');
 const { dbInputErrorMessage } = require('../utils/inventory');
+const { limitarRango } = require('../utils/rangoConsulta');
 
 // Por pedir (pendiente) → Pedida (ordenada) → Recibida (suma al inventario); o Cancelada.
 const ESTADOS_COMPRA = new Set(['pendiente', 'ordenada', 'recibida', 'cancelada']);
@@ -197,19 +198,28 @@ const sendError = (res, error, fallback) => {
 const getCompras = async (req, res) => {
   try {
     const params = [];
-    let where = '';
-    if (req.query.proveedor_id) {
-      params.push(req.query.proveedor_id);
-      where = `WHERE c.proveedor_id = $${params.length}`;
+    const condiciones = [];
+    const param = (value) => { params.push(value); return `$${params.length}`; };
+    if (req.query.proveedor_id) condiciones.push(`c.proveedor_id = ${param(req.query.proveedor_id)}`);
+    // Quien no es administrador solo ve la última semana; las compras por pedir o por recibir se
+    // ven siempre, para poder recibirlas aunque se hayan pedido antes.
+    const rango = limitarRango(req, { desde: req.query.desde, hasta: req.query.hasta });
+    const fechas = [];
+    if (rango.desde) fechas.push(`c.fecha >= ${param(rango.desde)}::date`);
+    if (rango.hasta) fechas.push(`c.fecha <= ${param(rango.hasta)}::date`);
+    if (fechas.length) {
+      condiciones.push(rango.limite
+        ? `((${fechas.join(' AND ')}) OR c.estado IN ('pendiente', 'ordenada'))`
+        : fechas.join(' AND '));
     }
     const result = await pool.query(
       `${COMPRA_SELECT}
-       ${where}
+       ${condiciones.length ? `WHERE ${condiciones.join(' AND ')}` : ''}
        GROUP BY c.id, p.nombre
        ORDER BY c.fecha DESC, c.created_at DESC`,
       params
     );
-    res.status(200).json({ success: true, total: result.rows.length, compras: result.rows });
+    res.status(200).json({ success: true, total: result.rows.length, compras: result.rows, limite: rango.limite });
   } catch (error) {
     console.error('Error en getCompras:', error);
     res.status(500).json({ error: 'Error obteniendo compras' });

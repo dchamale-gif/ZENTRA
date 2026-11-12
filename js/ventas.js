@@ -31,9 +31,41 @@ const VentasModule = {
         const split = document.getElementById('saleSplit');
         if (split) PagoDividido.montar(split, { prefijo: 'saleSplit', getTotal: () => this.totalVenta() });
         document.getElementById('saleDescuentoGeneral')?.addEventListener('input', () => this.updateTotalsOnly());
+        this.initLimite();
         this.initFiltros();
         this.state.initialized = true;
         this.loadData();
+    },
+
+    // Quien no es administrador consulta solo hoy y hasta 7 días atrás (el servidor también lo aplica).
+    DIAS_SIN_ADMIN: 7,
+    PERIODOS_LIMITADOS: ['hoy', 'ayer', 'ultimos7', 'personalizado'],
+
+    limitado() {
+        return typeof AccessControl !== 'undefined' && !AccessControl.isAdmin();
+    },
+
+    initLimite() {
+        if (!this.limitado()) return;
+        this.state.filtros.periodo = 'hoy';
+        const periodo = document.getElementById('ventasPeriodo');
+        if (periodo) {
+            [...periodo.options].forEach(option => {
+                if (!this.PERIODOS_LIMITADOS.includes(option.value)) option.remove();
+            });
+            periodo.value = 'hoy';
+        }
+        const hoy = new Date();
+        const minimo = this.ymd(new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() - (this.DIAS_SIN_ADMIN - 1)));
+        ['ventasDesde', 'ventasHasta'].forEach(id => {
+            const input = document.getElementById(id);
+            if (input) { input.min = minimo; input.max = this.ymd(hoy); }
+        });
+        const aviso = document.getElementById('ventasLimite');
+        if (aviso) {
+            aviso.hidden = false;
+            aviso.textContent = `Puedes consultar las ventas de los últimos ${this.DIAS_SIN_ADMIN} días (desde el ${this.formatDate(minimo)}).`;
+        }
     },
 
     initFiltros() {
@@ -90,6 +122,7 @@ const VentasModule = {
             case 'ayer': return { desde: this.ymd(dia(-1)), hasta: this.ymd(dia(-1)) };
             // La semana empieza el lunes.
             case 'semana': return { desde: this.ymd(dia(-((hoy.getDay() + 6) % 7))), hasta: this.ymd(hoy) };
+            case 'ultimos7': return { desde: this.ymd(dia(-6)), hasta: this.ymd(hoy) };
             case 'mes': return { desde: this.ymd(new Date(hoy.getFullYear(), hoy.getMonth(), 1)), hasta: this.ymd(hoy) };
             case 'mes_anterior': return {
                 desde: this.ymd(new Date(hoy.getFullYear(), hoy.getMonth() - 1, 1)),
@@ -132,15 +165,21 @@ const VentasModule = {
         }
     },
 
+    // Sin límite, «todo el historial»; con límite, lo más amplio permitido es la última semana.
+    periodoAmplio() {
+        return this.limitado() ? 'ultimos7' : 'todo';
+    },
+
     hayFiltros() {
         const f = this.state.filtros;
-        return f.periodo !== 'todo' || Boolean(f.comprobante || f.q || f.metodo);
+        return f.periodo !== this.periodoAmplio() || Boolean(f.comprobante || f.q || f.metodo);
     },
 
     quitarFiltros() {
         clearTimeout(this.state.buscarTimer);
-        Object.assign(this.state.filtros, { periodo: 'todo', comprobante: '', q: '', metodo: '' });
-        document.getElementById('ventasPeriodo').value = 'todo';
+        const periodo = this.periodoAmplio();
+        Object.assign(this.state.filtros, { periodo, comprobante: '', q: '', metodo: '' });
+        document.getElementById('ventasPeriodo').value = periodo;
         document.getElementById('ventasComprobante').value = '';
         document.getElementById('ventasBuscar').value = '';
         this.renderFechas();
@@ -258,7 +297,7 @@ const VentasModule = {
             tbody.innerHTML = this.hayFiltros()
                 ? `<tr><td colspan="7" class="text-center">
                     <p class="ventas-vacio">No hay ventas con estos filtros.</p>
-                    <button type="button" class="btn btn-secondary btn-sm" onclick="VentasModule.quitarFiltros()">Ver todo el historial</button>
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="VentasModule.quitarFiltros()">${this.limitado() ? 'Ver los últimos 7 días' : 'Ver todo el historial'}</button>
                   </td></tr>`
                 : '<tr><td colspan="7" class="text-center">No hay ventas registradas</td></tr>';
             return;
@@ -266,7 +305,7 @@ const VentasModule = {
         tbody.innerHTML = ventas.map(venta => `
             <tr>
                 <td><strong>${this.escapeHtml(venta.numero_venta)}</strong></td>
-                <td>${this.formatDate(venta.fecha)}</td>
+                <td>${this.formatDate(venta.fecha)}${venta.hora_ticket ? `<small class="venta-hora">${this.escapeHtml(venta.hora_ticket)}</small>` : ''}</td>
                 <td>${this.escapeHtml(this.clienteNombre(venta))}</td>
                 <td>${formatQ(Number(venta.total || 0))}</td>
                 <td>${this.paymentCell(venta)}</td>
@@ -816,7 +855,7 @@ const VentasModule = {
         const descuento = Number(venta.descuento) || 0;
         CodigosArticulosModule.showDetailsModal(`Venta ${venta.numero_venta}`, `
             <p><strong>Cliente:</strong> ${esc(venta.receptor_nombre)}</p>
-            <p><strong>Fecha:</strong> ${esc(this.formatDate(venta.fecha))}</p>
+            <p><strong>Fecha:</strong> ${esc(this.formatDate(venta.fecha))}${venta.hora_ticket ? ` a las ${esc(venta.hora_ticket)}` : ''}</p>
             <p><strong>Pago:</strong> ${this.paymentCell(venta)}</p>
             <div class="table-responsive"><table class="data-table" data-mobile-layout="grid">
                 <thead><tr><th>Artículo</th><th class="text-right">Cantidad</th><th class="text-right">Precio</th>${conDescLinea ? '<th class="text-right">Descuento</th>' : ''}<th class="text-right">Subtotal</th></tr></thead>
