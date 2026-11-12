@@ -434,23 +434,26 @@ const PosModule = {
                     const byOther = myId !== undefined && String(item.user_id) !== String(myId);
                     const descuento = Number(item.descuento) || 0;
                     const puedeDescontar = Descuento.puede();
+                    // Dos renglones: nombre y total arriba; precio, cantidad y acciones abajo.
                     return `<li class="pos-line">
+                        <span class="pos-line-name">${this.escape(item.nombre)}</span>
+                        <strong class="pos-line-total">${formatQ(qty * Number(item.precio_unitario) - descuento)}</strong>
                         <div class="pos-line-info">
-                            <span class="pos-line-name">${this.escape(item.nombre)}</span>
                             <small>${formatQ(Number(item.precio_unitario))} c/u${byOther ? ` · agregó ${this.escape(item.usuario_nombre || 'otro usuario')}` : ''}${item.nota ? ` · ${this.escape(item.nota)}` : ''}</small>
                             ${descuento > 0 ? `<small class="pos-line-desc">Descuento −${formatQ(descuento)}</small>` : ''}
                             ${overStock ? `<small class="pos-line-warning">Solo hay ${stock} en existencia</small>` : ''}
                         </div>
-                        <div class="pos-line-qty pos-sell-only">
-                            <button type="button" class="pos-qty-btn" data-line-action="minus" data-item="${this.escape(item.id)}" aria-label="Quitar una unidad de ${this.escape(item.nombre)}"><i class="fas fa-minus" aria-hidden="true"></i></button>
-                            <span aria-live="polite">${qty}</span>
-                            <button type="button" class="pos-qty-btn" data-line-action="plus" data-item="${this.escape(item.id)}" aria-label="Agregar una unidad de ${this.escape(item.nombre)}"><i class="fas fa-plus" aria-hidden="true"></i></button>
-                        </div>
-                        <span class="pos-line-qty-readonly">× ${qty}</span>
-                        <strong class="pos-line-total">${formatQ(qty * Number(item.precio_unitario) - descuento)}</strong>
-                        <div class="pos-line-acciones pos-sell-only">
-                            ${puedeDescontar ? `<button type="button" class="pos-line-remove pos-line-discount${descuento > 0 ? ' active' : ''}" data-line-action="discount" data-item="${this.escape(item.id)}" aria-label="Descuento para ${this.escape(item.nombre)}" title="Descuento"><i class="fas fa-percent" aria-hidden="true"></i></button>` : ''}
-                            <button type="button" class="pos-line-remove" data-line-action="remove" data-item="${this.escape(item.id)}" aria-label="Quitar ${this.escape(item.nombre)} de la cuenta" title="Quitar"><i class="fas fa-xmark" aria-hidden="true"></i></button>
+                        <div class="pos-line-controls">
+                            <div class="pos-line-qty pos-sell-only">
+                                <button type="button" class="pos-qty-btn" data-line-action="minus" data-item="${this.escape(item.id)}" aria-label="Quitar una unidad de ${this.escape(item.nombre)}"><i class="fas fa-minus" aria-hidden="true"></i></button>
+                                <span aria-live="polite">${qty}</span>
+                                <button type="button" class="pos-qty-btn" data-line-action="plus" data-item="${this.escape(item.id)}" aria-label="Agregar una unidad de ${this.escape(item.nombre)}"><i class="fas fa-plus" aria-hidden="true"></i></button>
+                            </div>
+                            <span class="pos-line-qty-readonly">× ${qty}</span>
+                            <div class="pos-line-acciones pos-sell-only">
+                                ${puedeDescontar ? `<button type="button" class="pos-line-remove pos-line-discount${descuento > 0 ? ' active' : ''}" data-line-action="discount" data-item="${this.escape(item.id)}" aria-label="Descuento para ${this.escape(item.nombre)}" title="Descuento"><i class="fas fa-percent" aria-hidden="true"></i></button>` : ''}
+                                <button type="button" class="pos-line-remove" data-line-action="remove" data-item="${this.escape(item.id)}" aria-label="Quitar ${this.escape(item.nombre)} de la cuenta" title="Quitar"><i class="fas fa-xmark" aria-hidden="true"></i></button>
+                            </div>
                         </div>
                     </li>`;
                 }).join('');

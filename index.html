@@ -1124,13 +1124,14 @@
                         </section>
 
                         <aside class="pos-ticket" id="posTicket" aria-label="Cuenta">
-                            <div class="pos-accounts-header">
-                                <h2>Cuentas abiertas</h2>
-                                <button type="button" class="btn btn-secondary btn-sm pos-sell-only" id="posNewAccountBtn">
-                                    <i class="fas fa-plus" aria-hidden="true"></i> Nueva cuenta
+                            <!-- Pestañas de las cuentas abiertas y «Nueva cuenta» en un solo renglón. -->
+                            <div class="pos-accounts-bar">
+                                <h2 class="sr-only">Cuentas abiertas</h2>
+                                <div class="pos-accounts" id="posCuentas" role="tablist" aria-label="Cuentas abiertas"></div>
+                                <button type="button" class="pos-account-new pos-sell-only" id="posNewAccountBtn" title="Nueva cuenta">
+                                    <i class="fas fa-plus" aria-hidden="true"></i><span>Nueva</span>
                                 </button>
                             </div>
-                            <div class="pos-accounts" id="posCuentas" role="tablist" aria-label="Cuentas abiertas"></div>
 
                             <div class="pos-ticket-header">
                                 <div>
@@ -1159,10 +1160,12 @@
                                 <button type="button" class="btn btn-primary pos-charge-btn pos-sell-only" id="posChargeBtn" disabled>
                                     <i class="fas fa-cash-register" aria-hidden="true"></i> Cobrar
                                 </button>
-                                <button type="button" class="pos-reprint" id="posReprintBtn" hidden>
-                                    <i class="fas fa-print" aria-hidden="true"></i> <span id="posReprintText">Reimprimir último ticket</span>
-                                </button>
-                                <small class="pos-sync" id="posSyncStatus" role="status">Sincronizado</small>
+                                <div class="pos-footer-meta">
+                                    <button type="button" class="pos-reprint" id="posReprintBtn" hidden>
+                                        <i class="fas fa-print" aria-hidden="true"></i> <span id="posReprintText">Reimprimir último ticket</span>
+                                    </button>
+                                    <small class="pos-sync" id="posSyncStatus" role="status">Sincronizado</small>
+                                </div>
                             </div>
                         </aside>
                     </div>

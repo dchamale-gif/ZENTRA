@@ -986,7 +986,8 @@ tr.is-inactive td { color: var(--text-gray); }
 /* ---------- Punto de venta ---------- */
 .pos-layout {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 380px;
+    /* La cuenta crece en monitores grandes y no baja de 340px en los pequeños. */
+    grid-template-columns: minmax(0, 1fr) clamp(340px, 30vw, 440px);
     gap: 20px;
     align-items: start;
 }
@@ -999,6 +1000,7 @@ tr.is-inactive td { color: var(--text-gray); }
 }
 
 .pos-search { flex: 0 0 auto; }
+.pos-catalog > .pos-filters { flex-shrink: 0; }
 .pos-search .form-input { width: 100%; height: 44px; padding-left: 34px; font-size: 15px; }
 
 .pos-filters {
@@ -1140,31 +1142,56 @@ tr.is-inactive td { color: var(--text-gray); }
     overflow: hidden;
 }
 
-.pos-accounts-header {
+/* Nunca se aplasta: lo que se acorta cuando falta alto es la lista de productos. */
+.pos-accounts-bar {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    padding: 14px 16px 8px;
+    flex-shrink: 0;
+    align-items: stretch;
+    gap: 6px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border-color);
 }
-
-.pos-accounts-header h2 { margin: 0; font-size: 14px; }
 
 .pos-accounts {
     display: flex;
-    gap: 8px;
-    padding: 0 16px 12px;
+    flex: 1 1 auto;
+    min-width: 0;
+    gap: 6px;
     overflow-x: auto;
-    border-bottom: 1px solid var(--border-color);
+    overflow-y: hidden;
+    scrollbar-width: thin;
 }
+.pos-accounts .pos-muted { align-self: center; padding: 0; }
+
+.pos-account-new {
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    min-width: 58px;
+    padding: 4px 8px;
+    border: 1px dashed var(--border-strong);
+    border-radius: var(--radius);
+    background: var(--bg-white);
+    color: var(--primary-color);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: var(--transition);
+}
+.pos-account-new:hover { border-color: var(--primary-color); background: var(--primary-soft); }
+.pos-account-new:focus-visible { outline: none; box-shadow: var(--ring); }
 
 .pos-account {
     flex: 0 0 auto;
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-    min-width: 92px;
-    padding: 8px 12px;
+    min-width: 84px;
+    padding: 6px 10px;
     border: 1px solid var(--border-color);
     border-radius: var(--radius);
     background: var(--bg-light);
@@ -1185,48 +1212,54 @@ tr.is-inactive td { color: var(--text-gray); }
 
 .pos-ticket-header {
     display: flex;
+    flex-shrink: 0;
     align-items: flex-start;
     justify-content: space-between;
     gap: 8px;
-    padding: 14px 16px 8px;
+    padding: 10px 14px 6px;
 }
 
-.pos-ticket-header h3 { margin: 0; font-size: 18px; }
+.pos-ticket-header h3 { margin: 0; font-size: 16px; }
 .pos-ticket-header small { color: var(--text-gray); font-size: 12px; }
 .pos-ticket-actions { display: flex; gap: 4px; }
 
 .pos-lines {
     flex: 1 1 auto;
-    min-height: 120px;
+    min-height: 96px;
     margin: 0;
-    padding: 0 16px;
+    padding: 0 14px;
     list-style: none;
     overflow-y: auto;
+    overscroll-behavior: contain;
 }
 
+/* Cada producto en dos renglones: nombre y total; precio, cantidad y acciones. */
 .pos-line {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto auto auto;
+    /* El nombre usa todo el renglón menos el total; los controles no le quitan ancho. */
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-areas: "name name total" "info controls controls";
     align-items: center;
-    gap: 8px;
-    padding: 10px 0;
+    gap: 2px 10px;
+    padding: 8px 0;
     border-bottom: 1px solid var(--border-color);
 }
 
 .pos-line:last-child { border-bottom: 0; }
-.pos-line-info { display: flex; flex-direction: column; min-width: 0; }
-.pos-line-name { font-weight: 600; color: var(--text-dark); overflow-wrap: anywhere; }
+.pos-line-name { grid-area: name; font-weight: 600; line-height: 1.3; color: var(--text-dark); overflow-wrap: anywhere; }
+.pos-line-total { grid-area: total; text-align: right; color: var(--text-dark); font-variant-numeric: tabular-nums; }
+.pos-line-info { grid-area: info; display: flex; flex-direction: column; min-width: 0; }
 .pos-line-info small { color: var(--text-gray); font-size: 12px; }
 .pos-line-warning { color: var(--warning-color) !important; }
-.pos-line-total { min-width: 72px; text-align: right; color: var(--text-dark); }
+.pos-line-controls { grid-area: controls; display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
 
 .pos-line-qty {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 4px;
 }
 
-.pos-line-qty span { min-width: 20px; text-align: center; font-weight: 600; }
+.pos-line-qty span { min-width: 22px; text-align: center; font-weight: 600; }
 .pos-line-qty-readonly { display: none; color: var(--text-gray); }
 
 .pos-qty-btn,
@@ -1234,14 +1267,17 @@ tr.is-inactive td { color: var(--text-gray); }
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 32px;
-    height: 32px;
+    width: 30px;
+    height: 30px;
     border: 1px solid var(--border-color);
     border-radius: var(--radius);
     background: var(--bg-white);
     color: var(--text-body);
     cursor: pointer;
     transition: var(--transition);
+}
+@media (pointer: coarse) {
+    .pos-qty-btn, .pos-line-remove { width: 36px; height: 36px; }
 }
 
 .pos-qty-btn:hover { border-color: var(--primary-color); color: var(--primary-color); }
@@ -1252,9 +1288,10 @@ tr.is-inactive td { color: var(--text-gray); }
 
 .pos-ticket-footer {
     display: flex;
+    flex-shrink: 0;
     flex-direction: column;
-    gap: 10px;
-    padding: 14px 16px 16px;
+    gap: 8px;
+    padding: 10px 14px 12px;
     border-top: 1px solid var(--border-color);
     background: var(--bg-white);
 }
@@ -1266,15 +1303,17 @@ tr.is-inactive td { color: var(--text-gray); }
     color: var(--text-gray);
 }
 
-.pos-total-row strong { font-size: 24px; color: var(--text-dark); }
-.pos-charge-btn { width: 100%; min-height: 48px; justify-content: center; font-size: 16px; }
+.pos-total-row strong { font-size: 22px; color: var(--text-dark); }
+.pos-charge-btn { width: 100%; min-height: 46px; justify-content: center; font-size: 16px; }
+.pos-footer-meta { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 2px 12px; }
 .pos-sync { color: var(--text-gray); font-size: 12px; text-align: center; }
 .pos-reprint {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     gap: 6px;
-    min-height: 36px;
+    min-height: 30px;
+    padding: 0 8px;
     border: 0;
     border-radius: var(--radius);
     background: transparent;
@@ -1302,7 +1341,6 @@ tr.is-inactive td { color: var(--text-gray); }
 /* Usuarios con acceso de solo lectura: ven las cuentas pero no venden. */
 .pos-readonly .pos-sell-only { display: none !important; }
 .pos-readonly .pos-line-qty-readonly { display: inline; }
-.pos-readonly .pos-line { grid-template-columns: minmax(0, 1fr) auto auto; }
 
 .pos-charge-total {
     display: flex;
@@ -1349,6 +1387,36 @@ tr.is-inactive td { color: var(--text-gray); }
 .pos-payment-methods label:has(input:focus-visible) { box-shadow: var(--ring); }
 
 .pos-ticket-jump { display: none; }
+
+/* Computadora y tableta: el punto de venta ocupa el alto de la pantalla. Los productos y la
+   cuenta se desplazan cada uno por su lado y la página no se mueve. */
+@media (min-width: 769px) {
+    #page-punto-de-venta.active {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        min-height: 460px;
+        /* Todo el ancho del monitor: más productos a la vista. */
+        max-width: none;
+    }
+    #page-punto-de-venta .pos-layout {
+        flex: 1 1 auto;
+        min-height: 0;
+        grid-template-rows: minmax(0, 1fr);
+        align-items: stretch;
+    }
+    #page-punto-de-venta .pos-catalog { min-height: 0; }
+    #page-punto-de-venta .pos-products {
+        flex: 1 1 auto;
+        min-height: 0;
+        align-content: start;
+        margin: -4px;
+        padding: 4px;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+    }
+    #page-punto-de-venta .pos-ticket { position: static; max-height: none; min-height: 0; }
+}
 
 @media (max-width: 1024px) {
     .pos-layout { grid-template-columns: minmax(0, 1fr) 320px; }
@@ -1662,3 +1730,13 @@ tr.is-inactive td { color: var(--text-gray); }
     }
 }
 .venta-notas { white-space: pre-wrap; }
+
+/* Pantallas bajas (laptops): menos espacio para encabezados y pie, más para los productos de la cuenta. */
+@media (min-width: 769px) and (max-height: 760px) {
+    .pos-ticket-header { padding-top: 8px; }
+    .pos-ticket-header h3 { font-size: 15px; }
+    .pos-total-row strong { font-size: 20px; }
+    .pos-charge-btn { min-height: 42px; }
+    .pos-ticket-footer { gap: 6px; padding: 8px 14px 10px; }
+    .pages-container:has(> #page-punto-de-venta.active) { padding-top: 16px; padding-bottom: 16px; }
+}
