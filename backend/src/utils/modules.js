@@ -1,6 +1,6 @@
 // Catálogo de módulos que se pueden habilitar por empresa y asignar por usuario.
 // `permisos` son los prefijos de permiso del backend que pertenecen al módulo.
-// Punto de venta, Precios, Descuentos, Ajustes de inventario y Cierre de caja son módulos aparte (nov. 2026):
+// Punto de venta, Precios, Descuentos, Ajustes de inventario, Cierre de caja y Aprobar cierres son módulos aparte (nov. 2026):
 // una cajera cobra sin poder editar ventas, y bodega maneja artículos sin cambiar precios ni dar
 // de baja inventario.
 const MODULES = [
@@ -16,7 +16,9 @@ const MODULES = [
   { key: 'compras', label: 'Compras', permisos: ['compras'] },
   { key: 'proveedores', label: 'Proveedores', permisos: ['proveedores'] },
   { key: 'caja', label: 'Caja', permisos: ['caja'] },
-  { key: 'cierres', label: 'Cierre de caja y confirmar depósitos', permisos: ['cierres'] },
+  // Cierres en dos pasos (nov. 2026): uno cuenta y registra, otro aprueba.
+  { key: 'cierres', label: 'Cierre de caja (contar y registrar cierres)', permisos: ['cierres'] },
+  { key: 'aprobaciones', label: 'Aprobar cierres de caja y depósitos', permisos: ['aprobaciones'] },
   { key: 'gastos', label: 'Gastos y servicios', permisos: ['gastos'] },
   { key: 'finanzas', label: 'Dashboard ejecutivo y transacciones', permisos: ['finanzas'] },
   { key: 'reportes', label: 'Reportes', permisos: ['reportes'] }

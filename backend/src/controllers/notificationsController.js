@@ -18,7 +18,9 @@ const safe = async (query, params = []) => {
  */
 const getNotifications = async (req, res) => {
   try {
-    const [lowStock, overdue, purchases, organization, depositosPendientes, depositosRechazados] = await Promise.all([
+    const access = await resolveUserAccess(pool, req.user.id, req.organization?.modules).catch(() => null);
+    const aprueba = Boolean(access?.permissions.some((permiso) => ['admin_config', 'aprobaciones_edit'].includes(permiso)));
+    const [lowStock, overdue, purchases, organization, depositosPendientes, depositosRechazados, cierresPendientes, cierresRechazados] = await Promise.all([
       safe(
         `SELECT COUNT(*)::int AS total,
                 COUNT(*) FILTER (WHERE cantidad_disponible <= 0)::int AS agotados
@@ -41,16 +43,20 @@ const getNotifications = async (req, res) => {
         `SELECT subscription_status, trial_ends_at FROM organizations
          WHERE id = app_current_organization_id()`
       ),
-      // Depósitos al banco: el administrador los confirma; quien registró ve los rechazados.
-      resolveUserAccess(pool, req.user.id, req.organization?.modules)
-        .then((access) => (access.roles.includes('admin')
-          ? safe(`SELECT COUNT(*)::int AS total, COALESCE(SUM(monto), 0)::float AS monto
-                  FROM depositos_caja WHERE estado = 'pendiente'`)
-          : []))
-        .catch(() => []),
+      // Depósitos y cierres: quien aprueba ve los pendientes; quien los registró, los rechazados.
+      aprueba
+        ? safe(`SELECT COUNT(*)::int AS total, COALESCE(SUM(monto), 0)::float AS monto
+                FROM depositos_caja WHERE estado = 'pendiente'`)
+        : [],
       safe(
         `SELECT COUNT(*)::int AS total FROM depositos_caja
          WHERE estado = 'rechazado' AND registrado_por = $1 AND revisado_at > NOW() - INTERVAL '7 days'`,
+        [req.user.id]
+      ),
+      aprueba ? safe(`SELECT COUNT(*)::int AS total FROM cierres_caja WHERE estado = 'pendiente'`) : [],
+      safe(
+        `SELECT COUNT(*)::int AS total FROM cierres_caja
+         WHERE estado = 'rechazado' AND registrado_por = $1 AND rechazado_at > NOW() - INTERVAL '7 days'`,
         [req.user.id]
       )
     ]);
@@ -107,6 +113,30 @@ const getNotifications = async (req, res) => {
         icon: 'fa-building-columns',
         title: 'Depósitos por confirmar',
         message: `${total} depósito${total === 1 ? '' : 's'} por Q${monto.toFixed(2)}: revisa que estén en el banco`,
+        page: 'caja'
+      });
+    }
+
+    if (cierresPendientes[0]?.total > 0) {
+      const { total } = cierresPendientes[0];
+      notifications.push({
+        id: 'pending-closings',
+        type: 'warning',
+        icon: 'fa-lock',
+        title: 'Cierres de caja por aprobar',
+        message: `${total} cierre${total === 1 ? '' : 's'} de caja ${total === 1 ? 'espera' : 'esperan'} tu aprobación`,
+        page: 'caja'
+      });
+    }
+
+    if (cierresRechazados[0]?.total > 0) {
+      const { total } = cierresRechazados[0];
+      notifications.push({
+        id: 'rejected-closings',
+        type: 'danger',
+        icon: 'fa-lock',
+        title: total === 1 ? 'Cierre de caja rechazado' : 'Cierres de caja rechazados',
+        message: `${total} cierre${total === 1 ? '' : 's'} que registraste ${total === 1 ? 'fue rechazado' : 'fueron rechazados'}; mira el motivo en Caja y vuelve a cerrar`,
         page: 'caja'
       });
     }

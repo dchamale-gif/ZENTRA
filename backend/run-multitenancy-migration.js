@@ -65,7 +65,8 @@ const run = async () => {
       'notas-comprobante.sql',
       'clientes-sin-erp.sql',
       'eliminar-empresa.sql',
-      'borrar-movimientos.sql'
+      'borrar-movimientos.sql',
+      'cierres-aprobacion.sql'
     ];
     for (const file of featureMigrations) {
       console.log(`Aplicando ${file}...`);

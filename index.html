@@ -1191,15 +1191,17 @@
 
                     <div id="cashStatus" class="cash-status-container"></div>
 
-                    <!-- Cierre de caja: solo el administrador -->
-                    <section class="table-card depositos-card cierres-card" aria-labelledby="cierresTitle" data-module="cierres" hidden>
+                    <!-- Cierre de caja: lo registra quien tiene «Cierre de caja» y lo aprueba el administrador
+                         o quien tenga «Aprobar cierres y depósitos». -->
+                    <section class="table-card depositos-card cierres-card" aria-labelledby="cierresTitle" data-module="cierres aprobaciones" hidden>
                         <div class="depositos-header">
                             <div>
                                 <h2 id="cierresTitle">Cierre de caja</h2>
-                                <small>Compara lo que cobró cada cajera con el efectivo que te entregó, los vouchers de tarjeta y las transferencias que ves en la cuenta.</small>
+                                <small id="cierresAyuda">Compara lo que cobró cada cajera con el efectivo que te entregó, los vouchers de tarjeta y las transferencias que ves en la cuenta.</small>
                             </div>
                             <button class="btn btn-secondary btn-sm" type="button" id="cierresActualizar"><i class="fas fa-rotate" aria-hidden="true"></i> Actualizar</button>
                         </div>
+                        <div id="cierresPorAprobar" class="table-responsive cierres-por-aprobar" hidden></div>
                         <div id="cierresPendientes" class="table-responsive"></div>
                         <details class="cierres-historial">
                             <summary>Cierres anteriores</summary>

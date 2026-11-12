@@ -1583,6 +1583,11 @@ tr.is-inactive td { color: var(--text-gray); }
 .mi-caja-entrega:empty, .mi-caja-ultimo:empty { display: none; }
 .cierres-card .depositos-header .btn { flex-shrink: 0; }
 .cierres-vacio { margin: 0; padding: 14px 16px; color: var(--text-gray); font-size: 13.5px; }
+.cierres-por-aprobar { border-bottom: 1px solid var(--border-color); background: #fffbeb; }
+.cierres-subtitulo { margin: 0; padding: 12px 16px 4px; font-size: 14px; color: #92400e; }
+.cierres-subtitulo-neutro { color: var(--text-dark); }
+.cierre-acciones { white-space: nowrap; }
+.cierre-acciones .btn + .btn { margin-left: 4px; }
 .cierre-sub { display: block; color: var(--text-gray); font-size: 12px; font-weight: 400; }
 .cierres-historial { border-top: 1px solid var(--border-color); }
 .cierres-historial summary { padding: 12px 16px; color: var(--primary-color); font-weight: 600; cursor: pointer; }

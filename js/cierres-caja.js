@@ -1,8 +1,9 @@
 // ============================================
 // CIERRE DE CAJA
 // Cajera: en el inicio ve solo lo que lleva cobrado (efectivo, tarjeta, transferencia) desde su
-// último cierre. Administrador: en Caja compara lo cobrado por cada cajera con lo que recibió y
-// aprueba el cierre.
+// último cierre. Quien tiene «Cierre de caja»: en Caja compara lo cobrado por cada cajera con lo
+// que recibió y registra el cierre. El administrador (o quien tenga «Aprobar cierres y
+// depósitos») lo aprueba o lo rechaza; si él mismo lo registra, queda aprobado de una vez.
 // ============================================
 
 const CierresCajaModule = {
@@ -12,7 +13,7 @@ const CierresCajaModule = {
         { key: 'transferencia', label: 'Transferencia', icon: 'fa-building-columns', recibido: 'Confirmado en la cuenta' },
         { key: 'otros', label: 'Otros', icon: 'fa-receipt', recibido: 'Comprobado' }
     ],
-    state: { initialized: false, pendientes: [], cierre: null },
+    state: { initialized: false, pendientes: [], cierres: [], cierre: null },
 
     // Inicio de cajera: no es administrador, cobra (punto de venta o ventas) y no tiene el panel financiero.
     esCajera() {
@@ -40,7 +41,11 @@ const CierresCajaModule = {
         });
         document.getElementById('cierreForm')?.addEventListener('submit', (event) => {
             event.preventDefault();
-            this.aprobar();
+            this.registrar();
+        });
+        document.getElementById('cierresPorAprobar')?.addEventListener('click', (event) => {
+            const button = event.target.closest('[data-revisar]');
+            if (button) this.revisar(button.dataset.id, button.dataset.revisar);
         });
     },
 
@@ -62,7 +67,7 @@ const CierresCajaModule = {
         const seccion = document.getElementById('miCaja');
         seccion.hidden = false;
         try {
-            const { pendiente, ultimoCierre } = await this.request('/mi-caja');
+            const { pendiente, ultimoCierre, enRevision } = await this.request('/mi-caja');
             const periodo = document.getElementById('miCajaPeriodo');
             periodo.textContent = pendiente.cobros
                 ? `Cobrado desde ${ultimoCierre ? `tu último cierre (${this.fechaHora(ultimoCierre.aprobadoAt)})` : `el ${this.fecha(pendiente.desde)}`}: ${pendiente.ventas} ${pendiente.ventas === 1 ? 'venta' : 'ventas'}${pendiente.abonos ? ` y ${pendiente.abonos} ${pendiente.abonos === 1 ? 'abono' : 'abonos'}` : ''}.`
@@ -80,39 +85,119 @@ const CierresCajaModule = {
             document.getElementById('miCajaEntrega').textContent = pendiente.cobros
                 ? `Al cerrar, entrega ${formatQ(pendiente.efectivo)} en efectivo${pendiente.tarjeta ? ` y los vouchers de tarjeta por ${formatQ(pendiente.tarjeta)}` : ''}. El administrador revisa las transferencias en la cuenta.`
                 : '';
-            document.getElementById('miCajaUltimo').innerHTML = ultimoCierre
-                ? `Último cierre: <strong>${this.escape(ultimoCierre.numero)}</strong>, aprobado por ${this.escape(ultimoCierre.aprobadoPor || 'el administrador')} el ${this.fechaHora(ultimoCierre.aprobadoAt)} · ${this.resultadoBadge(ultimoCierre.diferencia.total, ultimoCierre)}`
-                : '';
+            document.getElementById('miCajaUltimo').innerHTML = [
+                enRevision ? `Cierre <strong>${this.escape(enRevision.numero)}</strong> por ${formatQ(enRevision.sistema.total)}: en revisión del administrador.` : '',
+                ultimoCierre ? `Último cierre aprobado: <strong>${this.escape(ultimoCierre.numero)}</strong>, por ${this.escape(ultimoCierre.aprobadoPor || 'el administrador')} el ${this.fechaHora(ultimoCierre.aprobadoAt)} · ${this.resultadoBadge(ultimoCierre.diferencia.total, ultimoCierre)}` : ''
+            ].filter(Boolean).join('<br>');
         } catch (error) {
             document.getElementById('miCajaPeriodo').textContent = error.message;
             document.getElementById('miCajaMetodos').innerHTML = '';
         }
     },
 
-    // ---------- Administrador (página Caja) ----------
+    // ---------- Página Caja: registrar y aprobar cierres ----------
+
+    // El administrador o quien tenga «Aprobar cierres y depósitos».
+    puedeAprobar() {
+        return AccessControl.isAdmin() || AccessControl.canEdit('aprobaciones');
+    },
+
+    puedeCerrar() {
+        return AccessControl.isAdmin() || AccessControl.canEdit('cierres');
+    },
 
     async load() {
         this.init();
-        if (!AccessControl.hasModule('cierres')) return;
+        if (!AccessControl.hasModule('cierres') && !AccessControl.hasModule('aprobaciones')) return;
         const pendientesEl = document.getElementById('cierresPendientes');
+        const ayuda = document.getElementById('cierresAyuda');
+        if (ayuda) {
+            ayuda.textContent = this.puedeAprobar()
+                ? 'Compara lo que cobró cada cajera con lo que se entregó y aprueba los cierres que registró el encargado.'
+                : 'Compara lo que cobró cada cajera con el efectivo que te entregó, los vouchers de tarjeta y las transferencias. El cierre queda pendiente hasta que el administrador lo apruebe.';
+        }
         try {
             const [{ pendientes }, { cierres }] = await Promise.all([this.request('/pendientes'), this.request('')]);
             this.state.pendientes = pendientes;
+            this.state.cierres = cierres;
+            this.renderPorAprobar(cierres.filter((cierre) => cierre.estado === 'pendiente'));
             this.renderPendientes();
-            this.renderHistorial(cierres);
+            this.renderHistorial(cierres.filter((cierre) => cierre.estado !== 'pendiente'));
         } catch (error) {
             pendientesEl.innerHTML = `<p class="cierres-vacio">${this.escape(error.message)}</p>`;
         }
     },
 
+    // Cierres registrados que esperan aprobación.
+    renderPorAprobar(cierres) {
+        const contenedor = document.getElementById('cierresPorAprobar');
+        if (!contenedor) return;
+        contenedor.hidden = !cierres.length;
+        if (!cierres.length) { contenedor.innerHTML = ''; return; }
+        const aprueba = this.puedeAprobar();
+        contenedor.innerHTML = `<h3 class="cierres-subtitulo">${aprueba ? 'Por aprobar' : 'En revisión del administrador'} (${cierres.length})</h3>
+        <table class="data-table">
+            <thead><tr><th scope="col">Cierre</th><th scope="col">Cajera</th><th scope="col">Cobros del</th><th scope="col" class="text-right">Sistema</th><th scope="col" class="text-right">Recibido</th><th scope="col">Resultado</th><th scope="col">Registró</th><th scope="col"><span class="sr-only">Acciones</span></th></tr></thead>
+            <tbody>${cierres.map((cierre) => `<tr>
+                <td><strong>${this.escape(cierre.numero)}</strong></td>
+                <td>${this.escape(cierre.cajeroNombre || '—')}</td>
+                <td>${this.fecha(cierre.desde)}${cierre.hasta && cierre.hasta !== cierre.desde ? ` al ${this.fecha(cierre.hasta)}` : ''}</td>
+                <td class="text-right">${formatQ(cierre.sistema.total)}</td>
+                <td class="text-right">${formatQ(cierre.recibido.total)}</td>
+                <td>${this.resultadoBadge(cierre.diferencia.total, cierre)}${this.detalleDiferencias(cierre)}${cierre.nota ? `<small class="cierre-sub">${this.escape(cierre.nota)}</small>` : ''}</td>
+                <td>${this.escape(cierre.registradoPor || '—')}<small class="cierre-sub">${this.fechaHora(cierre.registradoAt)}</small></td>
+                <td class="text-right cierre-acciones">${aprueba
+                    ? `<button class="btn btn-primary btn-sm" type="button" data-revisar="aprobar" data-id="${this.escape(cierre.id)}"><i class="fas fa-check" aria-hidden="true"></i> Aprobar</button>
+                       <button class="btn btn-secondary btn-sm" type="button" data-revisar="rechazar" data-id="${this.escape(cierre.id)}">Rechazar</button>`
+                    : '<span class="badge badge-warning">En revisión</span>'}</td>
+            </tr>`).join('')}</tbody>
+        </table>`;
+    },
+
+    // Por método, solo lo que no cuadró: así quien aprueba ve dónde está la diferencia.
+    detalleDiferencias(cierre) {
+        const partes = this.METODOS
+            .filter((metodo) => cierre.diferencia[metodo.key])
+            .map((metodo) => `${metodo.label}: ${cierre.diferencia[metodo.key] < 0 ? 'falta' : 'sobra'} ${formatQ(Math.abs(cierre.diferencia[metodo.key]))}`);
+        return partes.length ? `<small class="cierre-sub">${partes.join(' · ')}</small>` : '';
+    },
+
+    async revisar(id, accion) {
+        const cierre = (this.state.cierres || []).find((entry) => entry.id === id);
+        if (!cierre) return;
+        const detalle = `${cierre.numero} de ${cierre.cajeroNombre} (${formatQ(cierre.recibido.total)} recibido)`;
+        let body = {};
+        if (accion === 'aprobar') {
+            const diferencia = cierre.diferencia.efectivo;
+            const aviso = diferencia ? ` El ${diferencia < 0 ? 'faltante' : 'sobrante'} de efectivo de ${formatQ(Math.abs(diferencia))} se registrará en Caja.` : '';
+            if (!confirm(`¿Aprobar el cierre ${detalle}?${aviso}`)) return;
+        } else {
+            const motivo = prompt(`¿Por qué rechazas el cierre ${detalle}? Sus cobros volverán a quedar por cerrar para que se cuenten de nuevo.`, '');
+            if (motivo === null) return;
+            if (!motivo.trim()) return showNotification('Escribe el motivo del rechazo.', 'error');
+            body = { motivo: motivo.trim() };
+        }
+        try {
+            const data = await this.request(`/${encodeURIComponent(id)}/${accion}`, { method: 'POST', body: JSON.stringify(body) });
+            showNotification(data.message, 'success');
+            await this.load();
+            if (typeof CajaModule !== 'undefined') CajaModule.loadData();
+            if (typeof NotificationsModule !== 'undefined') NotificationsModule.refresh();
+        } catch (error) {
+            showNotification(`No se pudo ${accion} el cierre: ${error.message}`, 'error');
+            this.load();
+        }
+    },
+
     renderPendientes() {
-        const puedeCerrar = AccessControl.canEdit('cierres');
+        const puedeCerrar = this.puedeCerrar();
         const contenedor = document.getElementById('cierresPendientes');
         if (!this.state.pendientes.length) {
             contenedor.innerHTML = '<p class="cierres-vacio">No hay cobros por cerrar: todas las cajas están cerradas.</p>';
             return;
         }
-        contenedor.innerHTML = `<table class="data-table">
+        contenedor.innerHTML = `<h3 class="cierres-subtitulo cierres-subtitulo-neutro">Cajas por cerrar</h3>
+        <table class="data-table">
             <thead><tr><th scope="col">Cajera</th><th scope="col">Desde</th><th scope="col" class="text-right">Efectivo</th><th scope="col" class="text-right">Tarjeta</th><th scope="col" class="text-right">Transferencia</th><th scope="col" class="text-right">Total</th><th scope="col"><span class="sr-only">Cerrar</span></th></tr></thead>
             <tbody>${this.state.pendientes.map((caja, indice) => `<tr>
                 <td><strong>${this.escape(caja.cajeroNombre)}</strong><small class="cierre-sub">${caja.ventas} ${caja.ventas === 1 ? 'venta' : 'ventas'}${caja.abonos ? ` · ${caja.abonos} ${caja.abonos === 1 ? 'abono' : 'abonos'}` : ''}${caja.otros ? ` · otros ${formatQ(caja.otros)}` : ''}</small></td>
@@ -133,15 +218,20 @@ const CierresCajaModule = {
             return;
         }
         contenedor.innerHTML = `<table class="data-table">
-            <thead><tr><th scope="col">Cierre</th><th scope="col">Cajera</th><th scope="col">Cobros del</th><th scope="col" class="text-right">Sistema</th><th scope="col" class="text-right">Recibido</th><th scope="col">Resultado</th><th scope="col">Aprobó</th></tr></thead>
+            <thead><tr><th scope="col">Cierre</th><th scope="col">Cajera</th><th scope="col">Cobros del</th><th scope="col" class="text-right">Sistema</th><th scope="col" class="text-right">Recibido</th><th scope="col">Resultado</th><th scope="col">Registró</th><th scope="col">Aprobó o rechazó</th></tr></thead>
             <tbody>${cierres.map((cierre) => `<tr>
                 <td><strong>${this.escape(cierre.numero)}</strong></td>
                 <td>${this.escape(cierre.cajeroNombre || '—')}</td>
                 <td>${this.fecha(cierre.desde)}${cierre.hasta && cierre.hasta !== cierre.desde ? ` al ${this.fecha(cierre.hasta)}` : ''}</td>
                 <td class="text-right">${formatQ(cierre.sistema.total)}</td>
                 <td class="text-right">${formatQ(cierre.recibido.total)}</td>
-                <td>${cierre.estado === 'inicial' ? '<span class="badge">Inicial, sin revisar</span>' : this.resultadoBadge(cierre.diferencia.total, cierre)}${cierre.nota && cierre.estado !== 'inicial' ? `<small class="cierre-sub">${this.escape(cierre.nota)}</small>` : ''}</td>
-                <td>${cierre.aprobadoPor ? `${this.escape(cierre.aprobadoPor)}<small class="cierre-sub">${this.fechaHora(cierre.aprobadoAt)}</small>` : '—'}</td>
+                <td>${cierre.estado === 'inicial' ? '<span class="badge">Inicial, sin revisar</span>'
+                    : cierre.estado === 'rechazado' ? `<span class="badge badge-danger">Rechazado</span><small class="cierre-sub">${this.escape(cierre.motivoRechazo || '')}</small>`
+                    : this.resultadoBadge(cierre.diferencia.total, cierre)}${cierre.nota && cierre.estado !== 'inicial' ? `<small class="cierre-sub">${this.escape(cierre.nota)}</small>` : ''}</td>
+                <td>${cierre.registradoPor && cierre.estado !== 'inicial' ? this.escape(cierre.registradoPor) : '—'}</td>
+                <td>${cierre.estado === 'rechazado'
+                    ? `${this.escape(cierre.rechazadoPor || '—')}<small class="cierre-sub">${this.fechaHora(cierre.rechazadoAt)}</small>`
+                    : cierre.aprobadoPor ? `${this.escape(cierre.aprobadoPor)}<small class="cierre-sub">${this.fechaHora(cierre.aprobadoAt)}</small>` : '—'}</td>
             </tr>`).join('')}</tbody>
         </table>`;
     },
@@ -169,6 +259,9 @@ const CierresCajaModule = {
         </tr>`).join('');
         this.mostrarError('');
         this.renderDiferencias();
+        document.getElementById('cierreAprobar').innerHTML = this.puedeAprobar()
+            ? '<i class="fas fa-check" aria-hidden="true"></i> Aprobar cierre'
+            : '<i class="fas fa-paper-plane" aria-hidden="true"></i> Enviar a aprobación';
         document.getElementById('cierreModal').style.display = 'flex';
         document.body.style.overflow = 'hidden';
         document.getElementById('cierreRecibido-efectivo').focus();
@@ -209,7 +302,7 @@ const CierresCajaModule = {
                 : `Diferencia total: ${total < 0 ? 'faltan' : total > 0 ? 'sobran' : ''} ${formatQ(Math.abs(total))}. Explícala en la nota.`;
     },
 
-    async aprobar() {
+    async registrar() {
         const caja = this.state.cierre;
         const recibido = this.leerRecibidos();
         const faltante = this.METODOS.find((metodo) => metodo.key in recibido && (recibido[metodo.key] === null || !Number.isFinite(recibido[metodo.key]) || recibido[metodo.key] < 0));
@@ -235,6 +328,7 @@ const CierresCajaModule = {
             showNotification(data.message, hayDiferencia ? 'warning' : 'success');
             await this.load();
             if (typeof CajaModule !== 'undefined') CajaModule.loadData();
+            if (typeof NotificationsModule !== 'undefined') NotificationsModule.refresh();
         } catch (error) {
             this.mostrarError(error.message);
         } finally {

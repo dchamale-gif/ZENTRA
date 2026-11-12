@@ -48,8 +48,9 @@ const AccessControl = {
     },
 
     apply() {
+        // data-module puede llevar varios módulos separados por espacio: basta con tener uno.
         document.querySelectorAll('[data-module]').forEach((element) => {
-            element.hidden = !this.hasModule(element.dataset.module);
+            element.hidden = !element.dataset.module.split(/\s+/).some((key) => this.hasModule(key));
         });
         document.querySelectorAll('[data-nav-section]').forEach((section) => {
             section.hidden = !section.querySelector('.nav-item:not([hidden])');

@@ -3,10 +3,11 @@ const pool = require('../db/connection');
 const { registrarMovimientoCaja } = require('../utils/cajaLedger');
 
 // Cierre de caja. Cada cobro (venta de contado o abono) queda en pagos_factura con su método y
-// quien cobró. La cajera ve lo que lleva cobrado desde su último cierre; el administrador compara
-// eso con lo que recibió (efectivo entregado, vouchers de tarjeta, transferencias vistas en la
-// cuenta) y aprueba el cierre. Los cobros incluidos quedan marcados y sus ventas ya no se pueden
-// modificar. Un faltante o sobrante de efectivo se registra en Caja.
+// quien cobró. La cajera ve lo que lleva cobrado desde su último cierre. Quien tiene «Cierre de
+// caja» compara eso con lo que recibió (efectivo entregado, vouchers de tarjeta, transferencias
+// vistas en la cuenta) y registra el cierre; el administrador o quien tenga «Aprobar cierres y
+// depósitos» lo aprueba o lo rechaza. Los cobros incluidos quedan marcados y sus ventas ya no se
+// pueden modificar (si se rechaza, se liberan). El faltante o sobrante de efectivo entra a Caja al aprobar.
 
 const METODOS = ['efectivo', 'tarjeta', 'transferencia', 'otros'];
 const MAX_MONTO = 99999999.99;
@@ -70,25 +71,36 @@ const mapCierre = (row) => {
     recibido: { ...recibido, total: suma(recibido) },
     diferencia: { ...diferencia, total: suma(diferencia) },
     nota: row.nota,
-    aprobadoPor: row.aprobado_por_nombre,
-    aprobadoAt: row.created_at
+    registradoPor: row.registrado_por_nombre || row.aprobado_por_nombre,
+    registradoAt: row.created_at,
+    aprobadoPor: row.estado === 'aprobado' || row.estado === 'inicial' ? row.aprobado_por_nombre : null,
+    aprobadoAt: row.aprobado_at || (row.estado === 'pendiente' || row.estado === 'rechazado' ? null : row.created_at),
+    rechazadoPor: row.rechazado_por_nombre,
+    rechazadoAt: row.rechazado_at,
+    motivoRechazo: row.motivo_rechazo
   };
 };
 
 /** GET /api/cierres-caja/mi-caja — lo que la cajera lleva cobrado desde su último cierre. */
 const miCaja = async (req, res) => {
   try {
-    const [pendiente, ultimo] = await Promise.all([
+    const [pendiente, ultimo, revision] = await Promise.all([
       pool.query(`SELECT ${TOTALES} FROM pagos_factura p WHERE p.cierre_id IS NULL AND p.usuario_id = $1`, [req.user.id]),
       pool.query(
-        `SELECT * FROM cierres_caja WHERE cajero_id = $1 AND estado = 'aprobado' ORDER BY created_at DESC LIMIT 1`,
+        `SELECT * FROM cierres_caja WHERE cajero_id = $1 AND estado = 'aprobado' ORDER BY COALESCE(aprobado_at, created_at) DESC LIMIT 1`,
+        [req.user.id]
+      ),
+      pool.query(
+        `SELECT * FROM cierres_caja WHERE cajero_id = $1 AND estado = 'pendiente' ORDER BY created_at DESC LIMIT 1`,
         [req.user.id]
       )
     ]);
     res.json({
       success: true,
       pendiente: mapTotales(pendiente.rows[0]),
-      ultimoCierre: ultimo.rows[0] ? mapCierre(ultimo.rows[0]) : null
+      ultimoCierre: ultimo.rows[0] ? mapCierre(ultimo.rows[0]) : null,
+      // Cierre ya contado que espera la aprobación del administrador.
+      enRevision: revision.rows[0] ? mapCierre(revision.rows[0]) : null
     });
   } catch (error) {
     sendError(res, error, 'Error obteniendo lo cobrado');
@@ -119,10 +131,12 @@ const pendientes = async (req, res) => {
   }
 };
 
-/** GET /api/cierres-caja — cierres aprobados, del más reciente al más antiguo (administrador). */
+/** GET /api/cierres-caja — por aprobar primero, luego los demás del más reciente al más antiguo. */
 const listar = async (req, res) => {
   try {
-    const { rows } = await pool.query('SELECT * FROM cierres_caja ORDER BY created_at DESC LIMIT 100');
+    const { rows } = await pool.query(
+      `SELECT * FROM cierres_caja ORDER BY estado = 'pendiente' DESC, created_at DESC LIMIT 100`
+    );
     res.json({ success: true, cierres: rows.map(mapCierre) });
   } catch (error) {
     sendError(res, error, 'Error obteniendo los cierres de caja');
@@ -136,13 +150,33 @@ const leerMonto = (valor, etiqueta) => {
   return centavos(monto);
 };
 
+// El administrador o quien tenga el módulo «Aprobar cierres y depósitos».
+const puedeAprobar = (req) => (req.userPermissions || []).some((permiso) => ['admin_config', 'aprobaciones_edit'].includes(permiso));
+
+// El efectivo que faltó o sobró cambia lo que de verdad hay en la caja; se registra al aprobar.
+const registrarDiferenciaEfectivo = async (client, cierre, userId) => {
+  const diferencia = centavos(Number(cierre.recibido_efectivo) - Number(cierre.sistema_efectivo));
+  if (diferencia === 0) return;
+  await registrarMovimientoCaja(client, {
+    direccion: diferencia < 0 ? 'salida' : 'entrada',
+    tipoMovimiento: diferencia < 0 ? 'Egreso' : 'Sobrante de caja',
+    monto: Math.abs(diferencia),
+    descripcion: `${diferencia < 0 ? 'Faltante' : 'Sobrante'} en cierre de caja ${cierre.numero} (${cierre.cajero_nombre})`,
+    // Fecha del último cobro del cierre; si faltara, la de hoy en Guatemala.
+    fecha: fechaTexto(cierre.hasta) || new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Guatemala' }).format(new Date()),
+    referencia: cierre.numero,
+    userId
+  });
+};
+
 /**
  * POST /api/cierres-caja
  * { cajeroId, hasta, recibido: { efectivo, tarjeta, transferencia, otros }, nota }
- * Cierra los cobros pendientes de esa cajera registrados hasta «hasta» (el último que vio el
- * administrador): los que entren mientras tanto quedan para el siguiente cierre.
+ * Registra el cierre de los cobros pendientes de esa cajera hasta «hasta» (el último que vio quien
+ * cierra): los que entren mientras tanto quedan para el siguiente. Los cobros quedan apartados y
+ * el cierre espera aprobación, salvo que quien lo registra también pueda aprobar.
  */
-const aprobar = async (req, res) => {
+const registrar = async (req, res) => {
   let client;
   try {
     const cajeroId = req.body.cajeroId === null || req.body.cajeroId === undefined || req.body.cajeroId === ''
@@ -170,9 +204,13 @@ const aprobar = async (req, res) => {
     const cajero = cajeroId === null ? null
       : (await client.query('SELECT nombre, apellido, email FROM users WHERE id = $1', [cajeroId])).rows[0];
     const cajeroNombre = cajeroId === null ? 'Sin usuario' : nombreDe(cajero) || `Usuario ${cajeroId}`;
+    const aprobado = puedeAprobar(req);
     await client.query(
-      'INSERT INTO cierres_caja (id, numero, cajero_id, cajero_nombre, aprobado_por, aprobado_por_nombre, nota) VALUES ($1, $2, $3, $4, $5, $6, $7)',
-      [id, numero, cajeroId, cajeroNombre, req.user.id, nombreDe(req.user), nota]
+      `INSERT INTO cierres_caja (id, numero, estado, cajero_id, cajero_nombre, registrado_por, registrado_por_nombre,
+         aprobado_por, aprobado_por_nombre, aprobado_at, nota)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+      [id, numero, aprobado ? 'aprobado' : 'pendiente', cajeroId, cajeroNombre, req.user.id, nombreDe(req.user),
+        aprobado ? req.user.id : null, aprobado ? nombreDe(req.user) : null, aprobado ? new Date() : null, nota]
     );
 
     // Marcar los cobros dentro de la misma transacción: si otro administrador ya los cerró, no quedan.
@@ -182,7 +220,7 @@ const aprobar = async (req, res) => {
        RETURNING id`,
       [id, cajeroId, hasta]
     );
-    if (!marcados.rows.length) throw httpError(409, 'Esa caja ya no tiene cobros por cerrar; quizá otro administrador la cerró. Actualiza la lista.');
+    if (!marcados.rows.length) throw httpError(409, 'Esa caja ya no tiene cobros por cerrar; quizá alguien más la cerró. Actualiza la lista.');
     const totales = mapTotales((await client.query(`SELECT ${TOTALES} FROM pagos_factura p WHERE p.cierre_id = $1`, [id])).rows[0]);
     if (recibido.otros === null) recibido.otros = totales.otros;
 
@@ -201,27 +239,51 @@ const aprobar = async (req, res) => {
         recibido.efectivo, recibido.tarjeta, recibido.transferencia, recibido.otros]
     );
 
-    // El efectivo que faltó o sobró cambia lo que de verdad hay en la caja.
-    const diferenciaEfectivo = diferencias[0];
-    if (diferenciaEfectivo !== 0) {
-      await registrarMovimientoCaja(client, {
-        direccion: diferenciaEfectivo < 0 ? 'salida' : 'entrada',
-        tipoMovimiento: diferenciaEfectivo < 0 ? 'Egreso' : 'Sobrante de caja',
-        monto: Math.abs(diferenciaEfectivo),
-        descripcion: `${diferenciaEfectivo < 0 ? 'Faltante' : 'Sobrante'} en cierre de caja ${numero} (${cajeroNombre})`,
-        fecha: totales.hastaFecha,
-        referencia: numero,
-        userId: req.user.id
-      });
-    }
+    const registrado = (await client.query('SELECT * FROM cierres_caja WHERE id = $1', [id])).rows[0];
+    if (aprobado) await registrarDiferenciaEfectivo(client, registrado, req.user.id);
     await client.query('COMMIT');
 
-    const cierre = (await pool.query('SELECT * FROM cierres_caja WHERE id = $1', [id])).rows[0];
+    const cuadro = diferencias.some(Boolean) ? ' con diferencias' : ': todo cuadró';
     res.status(201).json({
       success: true,
-      cierre: mapCierre(cierre),
-      message: `Cierre ${numero} de ${cajeroNombre} aprobado${diferencias.some(Boolean) ? ' con diferencias' : ': todo cuadró'}`
+      cierre: mapCierre(registrado),
+      message: aprobado
+        ? `Cierre ${numero} de ${cajeroNombre} aprobado${cuadro}`
+        : `Cierre ${numero} de ${cajeroNombre} registrado${cuadro}. Queda pendiente de que el administrador lo apruebe.`
     });
+  } catch (error) {
+    if (client) await client.query('ROLLBACK');
+    sendError(res, error, 'Error registrando el cierre de caja');
+  } finally {
+    if (client) client.release();
+  }
+};
+
+// Cierre pendiente bloqueado dentro de la transacción; error si no existe o ya se revisó.
+const cierrePendiente = async (client, id) => {
+  const { rows } = await client.query('SELECT * FROM cierres_caja WHERE id = $1 FOR UPDATE', [id]);
+  if (!rows[0]) throw httpError(404, 'Cierre no encontrado');
+  if (rows[0].estado !== 'pendiente') {
+    throw httpError(409, `El cierre ${rows[0].numero} ya está ${rows[0].estado === 'rechazado' ? 'rechazado' : 'aprobado'}; actualiza la lista`);
+  }
+  return rows[0];
+};
+
+/** POST /api/cierres-caja/:id/aprobar — el faltante o sobrante de efectivo entra a la caja. */
+const aprobar = async (req, res) => {
+  let client;
+  try {
+    client = await pool.connect();
+    await client.query('BEGIN');
+    const cierre = await cierrePendiente(client, req.params.id);
+    const { rows } = await client.query(
+      `UPDATE cierres_caja SET estado = 'aprobado', aprobado_por = $2, aprobado_por_nombre = $3, aprobado_at = NOW()
+       WHERE id = $1 RETURNING *`,
+      [cierre.id, req.user.id, nombreDe(req.user)]
+    );
+    await registrarDiferenciaEfectivo(client, rows[0], req.user.id);
+    await client.query('COMMIT');
+    res.json({ success: true, cierre: mapCierre(rows[0]), message: `Cierre ${cierre.numero} de ${cierre.cajero_nombre} aprobado` });
   } catch (error) {
     if (client) await client.query('ROLLBACK');
     sendError(res, error, 'Error aprobando el cierre de caja');
@@ -230,4 +292,34 @@ const aprobar = async (req, res) => {
   }
 };
 
-module.exports = { miCaja, pendientes, listar, aprobar };
+/** POST /api/cierres-caja/:id/rechazar { motivo } — los cobros vuelven a quedar por cerrar. */
+const rechazar = async (req, res) => {
+  let client;
+  try {
+    const motivo = String(req.body.motivo || '').trim().slice(0, 500);
+    if (!motivo) throw httpError(400, 'Escribe por qué se rechaza, por ejemplo «el efectivo no coincide al recontarlo»');
+    client = await pool.connect();
+    await client.query('BEGIN');
+    const cierre = await cierrePendiente(client, req.params.id);
+    await client.query('UPDATE pagos_factura SET cierre_id = NULL WHERE cierre_id = $1', [cierre.id]);
+    const { rows } = await client.query(
+      `UPDATE cierres_caja SET estado = 'rechazado', rechazado_por = $2, rechazado_por_nombre = $3,
+         rechazado_at = NOW(), motivo_rechazo = $4
+       WHERE id = $1 RETURNING *`,
+      [cierre.id, req.user.id, nombreDe(req.user), motivo]
+    );
+    await client.query('COMMIT');
+    res.json({
+      success: true,
+      cierre: mapCierre(rows[0]),
+      message: `Cierre ${cierre.numero} rechazado; los cobros de ${cierre.cajero_nombre} vuelven a quedar por cerrar`
+    });
+  } catch (error) {
+    if (client) await client.query('ROLLBACK');
+    sendError(res, error, 'Error rechazando el cierre de caja');
+  } finally {
+    if (client) client.release();
+  }
+};
+
+module.exports = { miCaja, pendientes, listar, registrar, aprobar, rechazar };

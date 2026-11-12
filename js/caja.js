@@ -300,9 +300,9 @@ const CajaModule = {
 
     // ---------- Depósitos al banco ----------
 
-    // Revisar depósitos: módulo «Cierre de caja» con edición (administradores y encargados).
+    // Confirmar o rechazar depósitos: el administrador o quien tenga «Aprobar cierres y depósitos».
     puedeRevisar() {
-        return AccessControl.canEdit('cierres');
+        return AccessControl.isAdmin() || AccessControl.canEdit('aprobaciones');
     },
 
     async loadDepositos() {
