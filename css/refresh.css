@@ -1571,6 +1571,9 @@ tr.is-inactive td { color: var(--text-gray); }
 .mi-caja[hidden] { display: none; }
 .mi-caja-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
 .mi-caja-head h2 { margin: 0; color: var(--text-dark); font-size: 18px; }
+.mi-caja-acciones { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.mi-caja-acciones .btn[hidden] { display: none; }
+.mi-caja-rechazo { color: var(--danger-color); }
 .mi-caja-periodo { margin: 4px 0 0; color: var(--text-gray); font-size: 13.5px; }
 .mi-caja-metodos { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
 .mi-caja-metodo { display: flex; flex-direction: column; gap: 6px; padding: 14px 16px; border: 1px solid var(--border-color); border-radius: var(--radius); }

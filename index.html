@@ -188,7 +188,10 @@
                                 <h2 id="miCajaTitle">Mi caja</h2>
                                 <p id="miCajaPeriodo" class="mi-caja-periodo">Cargando…</p>
                             </div>
-                            <button class="btn btn-secondary btn-sm" type="button" id="miCajaActualizar"><i class="fas fa-rotate" aria-hidden="true"></i> Actualizar</button>
+                            <div class="mi-caja-acciones">
+                                <button class="btn btn-secondary btn-sm" type="button" id="miCajaActualizar"><i class="fas fa-rotate" aria-hidden="true"></i> Actualizar</button>
+                                <button class="btn btn-primary btn-sm" type="button" id="miCajaCerrar" hidden><i class="fas fa-lock" aria-hidden="true"></i> Cerrar mi caja</button>
+                            </div>
                         </div>
                         <div class="mi-caja-metodos" id="miCajaMetodos"></div>
                         <p class="mi-caja-entrega" id="miCajaEntrega"></p>
@@ -1880,7 +1883,7 @@
                                 <tr>
                                     <th scope="col">Método</th>
                                     <th scope="col" class="text-right">Según el sistema</th>
-                                    <th scope="col" class="text-right">Lo que recibiste</th>
+                                    <th scope="col" class="text-right" id="cierreRecibidoTh">Lo que recibiste</th>
                                     <th scope="col" class="text-right">Diferencia</th>
                                 </tr>
                             </thead>

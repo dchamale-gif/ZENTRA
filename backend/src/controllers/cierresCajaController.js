@@ -91,16 +91,20 @@ const miCaja = async (req, res) => {
         [req.user.id]
       ),
       pool.query(
-        `SELECT * FROM cierres_caja WHERE cajero_id = $1 AND estado = 'pendiente' ORDER BY created_at DESC LIMIT 1`,
+        `SELECT * FROM cierres_caja WHERE cajero_id = $1 AND estado IN ('pendiente', 'rechazado')
+         ORDER BY created_at DESC LIMIT 1`,
         [req.user.id]
       )
     ]);
+    const revisado = revision.rows[0] ? mapCierre(revision.rows[0]) : null;
     res.json({
       success: true,
       pendiente: mapTotales(pendiente.rows[0]),
       ultimoCierre: ultimo.rows[0] ? mapCierre(ultimo.rows[0]) : null,
       // Cierre ya contado que espera la aprobación del administrador.
-      enRevision: revision.rows[0] ? mapCierre(revision.rows[0]) : null
+      enRevision: revisado?.estado === 'pendiente' ? revisado : null,
+      // Su último cierre fue rechazado: vuelve a contar y cerrar.
+      rechazado: revisado?.estado === 'rechazado' ? revisado : null
     });
   } catch (error) {
     sendError(res, error, 'Error obteniendo lo cobrado');
@@ -259,6 +263,16 @@ const registrar = async (req, res) => {
   }
 };
 
+/**
+ * POST /api/cierres-caja/mi-cierre { hasta, recibido, nota }
+ * La cajera cierra su propia caja (solo sus cobros); queda pendiente hasta que el administrador
+ * lo apruebe. No puede cerrar la caja de otra persona.
+ */
+const registrarMiCierre = (req, res) => {
+  req.body = { ...req.body, cajeroId: req.user.id };
+  return registrar(req, res);
+};
+
 // Cierre pendiente bloqueado dentro de la transacción; error si no existe o ya se revisó.
 const cierrePendiente = async (client, id) => {
   const { rows } = await client.query('SELECT * FROM cierres_caja WHERE id = $1 FOR UPDATE', [id]);
@@ -322,4 +336,4 @@ const rechazar = async (req, res) => {
   }
 };
 
-module.exports = { miCaja, pendientes, listar, registrar, aprobar, rechazar };
+module.exports = { miCaja, pendientes, listar, registrar, registrarMiCierre, aprobar, rechazar };
