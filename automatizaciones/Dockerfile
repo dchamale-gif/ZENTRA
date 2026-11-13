@@ -20,6 +20,9 @@ ADD ${BOTENGINE_REPO}#${BOTENGINE_REF} /src
 WORKDIR /src
 COPY ajustar-ruta-base.sh /tmp/ajustar-ruta-base.sh
 RUN sh /tmp/ajustar-ruta-base.sh src/main/resources/templates "$RUTA_BASE"
+# Sin video en modo ligero: que no espere 45 s ni avise por un .mp4 que no se graba.
+COPY sin-video-en-modo-local.sh /tmp/sin-video-en-modo-local.sh
+RUN sh /tmp/sin-video-en-modo-local.sh /src
 RUN --mount=type=cache,target=/root/.m2 \
     sh ./mvnw -B -q -DskipTests package \
     && cp target/automatizacion-botengine-*.jar /app.jar
