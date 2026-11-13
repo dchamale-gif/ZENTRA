@@ -85,6 +85,14 @@
         [hidden] { display: none !important; }
         .kind-tag { background: #f1f5f9; border-radius: 999px; color: var(--muted); display: inline-block; font-size: 11.5px; font-weight: 600; padding: 1px 8px; }
         .form-row { display: grid; gap: 12px; grid-template-columns: 1fr 1fr; }
+        .billing-fieldset { border: 1px solid var(--border); border-radius: 10px; margin: 4px 0 14px; padding: 12px 14px 4px; }
+        .billing-fieldset legend { color: var(--text); font-size: 13px; font-weight: 600; padding: 0 6px; }
+        .voucher-list { display: grid; gap: 10px; margin: 0 0 14px; padding: 0; list-style: none; }
+        .voucher-list li { border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
+        .voucher-list .voucher-head { align-items: center; display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; }
+        .voucher-list p { color: var(--muted); font-size: 13px; margin: 6px 0 0; }
+        .voucher-list .section-actions { margin-top: 10px; }
+        .status.revisar { background: #fef3c7; color: #92400e; }
         @media (max-width: 480px) { .form-row { grid-template-columns: 1fr; } }
         .field-hint { color: #64748b; display: block; font-size: 12px; margin-top: 4px; }
         .mail-state { display: inline-block; font-size: 12px; margin-top: 4px; }
@@ -290,7 +298,7 @@
                         <button type="button" data-estado="" aria-pressed="false">Todas</button>
                     </div>
                 </div>
-                <button id="monthlyButton" class="secondary" type="button"><i class="fas fa-calendar-plus" aria-hidden="true"></i> Generar mensualidades</button>
+                <button id="monthlyButton" class="secondary" type="button"><i class="fas fa-calendar-plus" aria-hidden="true"></i> Generar cobros del mes</button>
                 <button id="newInvoiceButton" class="primary" type="button"><i class="fas fa-plus" aria-hidden="true"></i> Nueva factura</button>
             </section>
             <section class="card table-wrap">
@@ -473,8 +481,8 @@
     <!-- Mensualidades del mes -->
     <div id="monthlyModal" class="modal hidden">
         <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="monthlyTitle">
-            <h2 id="monthlyTitle">Generar mensualidades</h2>
-            <p class="modal-hint" id="monthlyHint">Crea una factura por la cuota mensual de cada empresa activa que aún no tenga la de ese mes.</p>
+            <h2 id="monthlyTitle">Generar cobros del mes</h2>
+            <p class="modal-hint" id="monthlyHint">Crea la factura de cada empresa activa con cobro ese mes: las mensuales y las anuales cuyo mes de cobro sea ese.</p>
             <form id="monthlyForm">
                 <div class="form-row">
                     <div class="form-group"><label for="monthlyPeriod">Mes</label><input id="monthlyPeriod" type="month" required></div>
@@ -514,6 +522,15 @@
                 <div class="form-group"><label for="movimientosConfirm">Escribe el nombre de la empresa para confirmar</label><input id="movimientosConfirm" required autocomplete="off"></div>
                 <div class="modal-actions"><button class="secondary" type="button" data-close>Cancelar</button><button class="danger" type="submit" id="movimientosSubmit" disabled>Borrar movimientos</button></div>
             </form>
+        </div>
+    </div>
+
+    <div id="vouchersModal" class="modal hidden">
+        <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="vouchersTitle">
+            <h2 id="vouchersTitle">Comprobantes</h2>
+            <p class="modal-hint" id="vouchersHint">Revisa que la transferencia esté en la cuenta. Al aceptar, la factura queda pagada; al rechazar, el cliente ve el motivo y puede subir otro.</p>
+            <ul class="voucher-list" id="vouchersList"></ul>
+            <div class="modal-actions"><button class="secondary" type="button" data-close>Cerrar</button></div>
         </div>
     </div>
 
@@ -568,7 +585,7 @@
                 <fieldset class="plain-fieldset" data-kind="otros" disabled hidden>
                     <div class="form-group"><label for="companyPhone">Teléfono (opcional)</label><input id="companyPhone" type="tel" maxlength="30"></div>
                     <div class="form-group"><label for="companyServices">Servicios que contrata</label><input id="companyServices" maxlength="255" placeholder="Ej.: Chatbot de WhatsApp y página web"><small class="field-hint">También es el concepto de su factura mensual.</small></div>
-                    <div class="form-group"><label for="companyFee">Cuota mensual con IVA (Q, opcional)</label><input id="companyFee" type="number" min="0" step="0.01"><small class="field-hint">Con cuota, entra en «Generar mensualidades».</small></div>
+                    <div class="form-group"><label for="companyFee">Cuota mensual con IVA (Q, opcional)</label><input id="companyFee" type="number" min="0" step="0.01"><small class="field-hint">Con cuota, entra en «Generar cobros del mes». En su ficha puedes cambiarlo a cobro anual.</small></div>
                 </fieldset>
                 <fieldset class="plain-fieldset" data-kind="erp">
                 <div class="form-group"><label for="companyPlan">Plan</label><input id="companyPlan" value="Demo" maxlength="50"></div>

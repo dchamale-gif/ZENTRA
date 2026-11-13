@@ -20,7 +20,7 @@ BEGIN
               'permissions', 'role_permissions', 'platform_admins',
               'login_attempts', 'password_reset_tokens', 'user_sessions',
               'user_module_access', 'email_verification_tokens', 'contratos',
-              'facturas_plataforma', 'organizacion_notas', 'soporte_accesos',
+              'facturas_plataforma', 'facturas_plataforma_comprobantes', 'organizacion_notas', 'soporte_accesos',
               'schema_migraciones'
           )
         ORDER BY t.table_name

@@ -159,6 +159,7 @@ async function initializeApp() {
     try { if (typeof ClientesModule !== 'undefined' && AccessControl.hasModule('clientes')) ClientesModule.init(); } catch(e) { console.warn('ClientesModule error:', e); }
     try { if (typeof ProveedoresModule !== 'undefined' && AccessControl.hasModule('proveedores')) ProveedoresModule.init(); } catch(e) { console.warn('ProveedoresModule error:', e); }
     try { if (typeof NotificationsModule !== 'undefined') NotificationsModule.init(); } catch(e) { console.warn('NotificationsModule error:', e); }
+    try { if (typeof SuscripcionModule !== 'undefined') SuscripcionModule.init(); } catch(e) { console.warn('SuscripcionModule error:', e); }
     try { if (typeof CodigosArticulosModule !== 'undefined' && AccessControl.hasModule('articulos')) CodigosArticulosModule.init(); } catch(e) { console.warn('CodigosArticulosModule error:', e); }
     try { if (typeof CajaIntegradaModule !== 'undefined' && AccessControl.hasModule('caja')) CajaIntegradaModule.init(); } catch(e) { console.warn('CajaIntegradaModule error:', e); }
     try { if (typeof ComprasModule !== 'undefined' && AccessControl.hasModule('compras')) ComprasModule.init(); } catch(e) { console.warn('ComprasModule error:', e); }
@@ -385,6 +386,7 @@ function navigateToPage(pageId, { fromHistory = false } = {}) {
         ClasificacionesConfig.load();
         if (typeof IntegracionModule !== 'undefined') IntegracionModule.load();
         if (typeof FelModule !== 'undefined') FelModule.loadConfig();
+        if (typeof SuscripcionModule !== 'undefined' && SuscripcionModule.puedeVer()) SuscripcionModule.load();
     }
     if (pageId === 'transactions') {
         loadTransactions();

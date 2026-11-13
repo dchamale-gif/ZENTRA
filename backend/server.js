@@ -27,6 +27,7 @@ const clientesRoutes = require('./src/routes/clientes');
 const notificationsRoutes = require('./src/routes/notifications');
 const dashboardRoutes = require('./src/routes/dashboard');
 const usersRoutes = require('./src/routes/users');
+const suscripcionRoutes = require('./src/routes/suscripcion');
 
 // Importar middleware
 const { auditMiddleware } = require('./src/middleware/audit');
@@ -149,6 +150,8 @@ app.use('/api/clientes', clientesRoutes);
 app.use('/api/notifications', notificationsRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/users', usersRoutes);
+// Suscripción a BotEngine: forma de pago, facturas y comprobantes (administrador de la empresa).
+app.use('/api/suscripcion', suscripcionRoutes);
 
 
 // Lugar de Trabajo

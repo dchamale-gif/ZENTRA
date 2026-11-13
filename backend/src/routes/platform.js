@@ -54,5 +54,9 @@ router.get('/facturas/:id/pdf', facturas.descargarPdf);
 router.post('/facturas/:id/enviar', facturas.reenviarFactura);
 router.post('/facturas/:id/pago', facturas.registrarPago);
 router.post('/facturas/:id/anular', facturas.anularFactura);
+// Comprobantes de transferencia que suben los clientes desde el ERP.
+router.get('/comprobantes/:id/archivo', facturas.verComprobante);
+router.post('/comprobantes/:id/aceptar', facturas.aceptarComprobante);
+router.post('/comprobantes/:id/rechazar', facturas.rechazarComprobante);
 
 module.exports = router;

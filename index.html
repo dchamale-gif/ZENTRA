@@ -170,6 +170,8 @@
                 <button type="button" id="supportBannerExit"><i class="fas fa-arrow-left" aria-hidden="true"></i> Volver al panel de soporte</button>
             </div>
             <div id="trialBanner" class="trial-banner" style="display:none"></div>
+            <!-- Factura de BotEngine pendiente: solo el administrador de la empresa la ve. -->
+            <div id="suscripcionBanner" class="suscripcion-banner" role="status" hidden></div>
 
             <!-- Pages Container -->
             <div class="pages-container">
@@ -552,6 +554,27 @@
                                 </div>
                             </div>
                             <dl class="info-grid" id="companyInfo"></dl>
+                        </section>
+
+                        <section class="panel" id="settingsSuscripcion" data-admin-only hidden>
+                            <div class="panel-header">
+                                <div>
+                                    <h2>Pago de tu suscripción</h2>
+                                    <p class="panel-subtitle" id="suscripcionPlan">Cargando…</p>
+                                </div>
+                            </div>
+                            <fieldset class="suscripcion-formas" id="suscripcionFormas">
+                                <legend>Forma de pago</legend>
+                                <label><input type="radio" name="suscripcionForma" value="transferencia"> <i class="fas fa-building-columns" aria-hidden="true"></i> Transferencia<small>Transfieres a nuestra cuenta y adjuntas aquí el comprobante.</small></label>
+                                <label><input type="radio" name="suscripcionForma" value="tarjeta"> <i class="fas fa-credit-card" aria-hidden="true"></i> Tarjeta<small>Pagas con el enlace que aparece en cada factura.</small></label>
+                            </fieldset>
+                            <p class="suscripcion-cuenta" id="suscripcionCuenta" hidden></p>
+                            <div class="table-responsive">
+                                <table class="data-table">
+                                    <thead><tr><th scope="col">Factura</th><th scope="col">Concepto</th><th scope="col" class="text-right">Total</th><th scope="col">Vence</th><th scope="col">Estado</th><th scope="col"><span class="sr-only">Acciones</span></th></tr></thead>
+                                    <tbody id="suscripcionFacturas"><tr><td colspan="6">Cargando…</td></tr></tbody>
+                                </table>
+                            </div>
                         </section>
 
                         <section class="panel" id="settingsFel" data-admin-only data-requires-fel hidden>
@@ -1878,6 +1901,67 @@
     </div>
 
     <!-- Aprobar un cierre de caja -->
+    <!-- Primera vez del administrador: elegir cómo pagará la suscripción (no se puede cerrar sin elegir). -->
+    <div id="formaPagoModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="formaPagoTitle">
+        <div class="modal-content">
+            <div class="modal-header"><h2 id="formaPagoTitle">¿Cómo pagarás tu suscripción?</h2></div>
+            <div class="modal-body">
+                <p class="forma-pago-intro" id="formaPagoIntro">Elige una forma de pago. Puedes cambiarla después en Configuración.</p>
+                <div class="forma-pago-opciones">
+                    <button type="button" class="forma-pago-opcion" data-forma="transferencia">
+                        <i class="fas fa-building-columns" aria-hidden="true"></i>
+                        <strong>Transferencia</strong>
+                        <span>Transfieres a nuestra cuenta y adjuntas el comprobante aquí mismo, en el sistema.</span>
+                    </button>
+                    <button type="button" class="forma-pago-opcion" data-forma="tarjeta">
+                        <i class="fas fa-credit-card" aria-hidden="true"></i>
+                        <strong>Tarjeta</strong>
+                        <span>Te aparece un enlace de pago en cada factura, cuando toca pagar.</span>
+                    </button>
+                </div>
+                <p id="formaPagoError" class="form-error" role="alert" hidden></p>
+            </div>
+        </div>
+    </div>
+
+    <div id="comprobanteSubirModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="comprobanteSubirTitle">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="comprobanteSubirTitle">Adjuntar comprobante</h2>
+                <button class="close-btn" type="button" aria-label="Cerrar" onclick="SuscripcionModule.cerrarSubir()">&times;</button>
+            </div>
+            <form id="comprobanteSubirForm" novalidate>
+                <div class="modal-body">
+                    <p class="cierre-periodo" id="comprobanteSubirFactura"></p>
+                    <div class="form-group">
+                        <label for="comprobanteArchivo">Foto o PDF del comprobante <span class="required">*</span></label>
+                        <input id="comprobanteArchivo" class="form-input" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" required>
+                        <small>Máximo 5 MB.</small>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="comprobanteReferencia">Número de referencia</label>
+                            <input id="comprobanteReferencia" class="form-input" maxlength="100" autocomplete="off">
+                        </div>
+                        <div class="form-group">
+                            <label for="comprobanteFecha">Fecha de la transferencia</label>
+                            <input id="comprobanteFecha" class="form-input" type="date">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="comprobanteNota">Nota (opcional)</label>
+                        <input id="comprobanteNota" class="form-input" maxlength="500" autocomplete="off">
+                    </div>
+                    <p id="comprobanteError" class="form-error" role="alert" hidden></p>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" type="button" onclick="SuscripcionModule.cerrarSubir()">Cancelar</button>
+                    <button class="btn btn-primary" type="submit" id="comprobanteEnviar"><i class="fas fa-paper-plane" aria-hidden="true"></i> Enviar comprobante</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <div id="cierreModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="cierreModalTitle">
         <div class="modal-content modal-content-lg">
             <div class="modal-header">
@@ -2740,6 +2824,7 @@
     <script src="js/fel.js?v=__BUILD__"></script>
     <script src="js/caja.js?v=__BUILD__"></script>
     <script src="js/cierres-caja.js?v=__BUILD__"></script>
+    <script src="js/suscripcion.js?v=__BUILD__"></script>
     <script src="js/cuentas-por-cobrar.js?v=__BUILD__"></script>
     <script src="js/estados-de-cuenta.js?v=__BUILD__"></script>
     <script src="js/dashboard-financiero.js?v=__BUILD__"></script>

@@ -135,7 +135,7 @@ function renderOrganizations() {
             <td><span class="status ${organization.status}">${escapeHtml(statusLabel(organization))}</span><br><small>${organization.daysRemaining} días</small></td>
             <td><span class="key">${escapeHtml(organization.licenseKey || 'Sin licencia')}</span><br><small>${escapeHtml(organization.plan || '')} · ${modulesSummary(organization)}</small></td>
             <td class="${organization.activeUsers >= organization.maxUsers ? 'users-full' : ''}">${organization.activeUsers} / ${organization.maxUsers}</td>
-            <td class="num">${organization.cuotaMensual ? money(organization.cuotaMensual) : '<small>Sin cuota</small>'}</td>
+            <td class="num">${organization.cuotaMensual ? `${money(organization.cuotaMensual)}${organization.periodicidad === 'anual' ? '<br><small>al año</small>' : ''}` : '<small>Sin cuota</small>'}</td>
             <td class="num ${organization.saldoVencido > 0 ? 'owes' : ''}">${organization.saldoPendiente ? money(organization.saldoPendiente) : '—'}${organization.saldoVencido > 0 ? '<br><small>vencido</small>' : ''}</td>
             <td>${formatDate(organization.status === 'trial' ? organization.trialEndsAt : organization.subscriptionEndsAt)}</td>
             <td class="actions">
@@ -158,7 +158,7 @@ const clientRow = (organization) => `
             <td><span class="status ${organization.status}">${escapeHtml(statusLabel(organization))}</span></td>
             <td><small>${escapeHtml(organization.servicios || 'Servicios sin detallar')}</small></td>
             <td><small>—</small></td>
-            <td class="num">${organization.cuotaMensual ? money(organization.cuotaMensual) : '<small>Sin cuota</small>'}</td>
+            <td class="num">${organization.cuotaMensual ? `${money(organization.cuotaMensual)}${organization.periodicidad === 'anual' ? '<br><small>al año</small>' : ''}` : '<small>Sin cuota</small>'}</td>
             <td class="num ${organization.saldoVencido > 0 ? 'owes' : ''}">${organization.saldoPendiente ? money(organization.saldoPendiente) : '—'}${organization.saldoVencido > 0 ? '<br><small>vencido</small>' : ''}</td>
             <td><small>—</small></td>
             <td class="actions"><button class="secondary" type="button" data-action="ficha" data-id="${organization.id}">Ficha</button></td>

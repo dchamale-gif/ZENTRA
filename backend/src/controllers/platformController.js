@@ -47,6 +47,8 @@ const mapOrganization = (row) => ({
   // false = cliente de otros servicios (bot, web...): sin usuarios ni licencia del ERP.
   usaErp: row.usa_erp !== false,
   servicios: row.servicios ?? null,
+  periodicidad: row.periodicidad || 'mensual',
+  formaPago: row.forma_pago || null,
   cuotaMensual: row.cuota_mensual === undefined || row.cuota_mensual === null ? null : Number(row.cuota_mensual),
   saldoPendiente: Number(row.saldo?.pendiente || 0),
   saldoVencido: Number(row.saldo?.vencido || 0),
@@ -61,6 +63,7 @@ const listOrganizations = async (req, res) => {
       `SELECT id, nombre, sector_comercial, email, nit, telefono, subscription_status,
               license_plan, license_key, license_issued_at, license_max_users, modulos_habilitados, fel_habilitada, trial_ends_at,
               subscription_started_at, subscription_ends_at, created_at, cuota_mensual, usa_erp, servicios,
+              periodicidad, forma_pago,
               ${ACTIVE_USERS_SQL},
               (SELECT json_build_object('email', u.email, 'verificado', u.email_verificado_en IS NOT NULL,
                                         'pendienteCambio', u.debe_cambiar_password)

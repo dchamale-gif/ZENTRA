@@ -41,6 +41,13 @@ const leerPeriodo = (value) => {
   return `${match[1]}-${match[2]}-01`;
 };
 
+// Primer día del mes que está «meses» después de periodo (AAAA-MM-01).
+const sumarMeses = (periodo, meses) => {
+  const [anio, mes] = periodo.split('-').map(Number);
+  const fecha = new Date(Date.UTC(anio, mes - 1 + meses, 1));
+  return fecha.toISOString().slice(0, 10);
+};
+
 const leerItems = (items) => {
   if (!Array.isArray(items) || items.length === 0 || items.length > 20) {
     throw httpError(400, 'Agrega entre 1 y 20 conceptos a la factura');
@@ -60,8 +67,16 @@ const totalDe = (items) => Math.round(items.reduce((suma, item) => suma + item.c
 
 const FACTURA_SELECT = `
   SELECT f.*, o.nombre AS empresa_nombre, o.nit AS empresa_nit, o.email AS empresa_email,
-         o.direccion AS empresa_direccion,
-         (f.estado = 'pendiente' AND f.fecha_vencimiento < (NOW() AT TIME ZONE 'America/Guatemala')::DATE) AS vencida
+         o.direccion AS empresa_direccion, o.forma_pago AS empresa_forma_pago,
+         COALESCE(f.enlace_pago, o.enlace_pago) AS enlace_pago_efectivo,
+         (f.estado = 'pendiente' AND f.fecha_vencimiento < (NOW() AT TIME ZONE 'America/Guatemala')::DATE) AS vencida,
+         -- Comprobantes de transferencia que subió el cliente (sin el archivo).
+         (SELECT COALESCE(json_agg(json_build_object(
+                   'id', c.id, 'estado', c.estado, 'referencia', c.referencia, 'fechaPago', c.fecha_pago,
+                   'nota', c.nota, 'motivoRechazo', c.motivo_rechazo, 'mime', c.mime, 'nombreArchivo', c.nombre_archivo,
+                   'subidoPor', c.subido_por_nombre, 'subidoAt', c.created_at, 'revisadoAt', c.revisado_at
+                 ) ORDER BY c.created_at DESC), '[]'::json)
+          FROM facturas_plataforma_comprobantes c WHERE c.factura_id = f.id) AS comprobantes
   FROM facturas_plataforma f
   JOIN organizations o ON o.id = f.organization_id`;
 
@@ -83,7 +98,11 @@ const mapFactura = (row) => ({
   metodoPago: row.metodo_pago,
   referenciaPago: row.referencia_pago,
   enviadaEn: row.enviada_en,
-  enviadaA: row.enviada_a
+  enviadaA: row.enviada_a,
+  formaPago: row.empresa_forma_pago || null,
+  enlacePago: row.enlace_pago_efectivo || null,
+  comprobantes: row.comprobantes || [],
+  comprobantesPorRevisar: (row.comprobantes || []).filter((c) => c.estado === 'pendiente').length
 });
 
 /**
@@ -234,9 +253,14 @@ const generarMensualidades = async (req, res) => {
 
     client = await authPool.connect();
     await client.query('BEGIN');
+    // Mensuales: todas las activas con cuota. Anuales: solo las que se cobran en este mes (si no
+    // se eligió el mes, el del inicio de la suscripción).
     const { rows: empresas } = await client.query(
-      `SELECT o.id, o.nombre, o.cuota_mensual, o.usa_erp, o.servicios FROM organizations o
+      `SELECT o.id, o.nombre, o.cuota_mensual, o.usa_erp, o.servicios, o.periodicidad FROM organizations o
        WHERE o.subscription_status = 'active' AND o.cuota_mensual > 0
+         AND (o.periodicidad = 'mensual'
+              OR COALESCE(o.mes_cobro_anual, EXTRACT(MONTH FROM COALESCE(o.subscription_started_at, o.created_at))::INTEGER)
+                 = EXTRACT(MONTH FROM $1::DATE)::INTEGER)
          AND NOT EXISTS (SELECT 1 FROM facturas_plataforma f
                          WHERE f.organization_id = o.id AND f.periodo = $1 AND f.estado <> 'anulada')
        ORDER BY o.nombre`,
@@ -248,7 +272,10 @@ const generarMensualidades = async (req, res) => {
         organizationId: empresa.id,
         // Sin ERP, el concepto son sus servicios (bot, página web...).
         items: [{
-          descripcion: `${empresa.usa_erp ? 'Licencia de uso BotEngine ERP' : (empresa.servicios || 'Servicios BotEngine')} · ${nombrePeriodo(periodo)}`,
+          descripcion: `${empresa.usa_erp ? 'Licencia de uso BotEngine ERP' : (empresa.servicios || 'Servicios BotEngine')}${
+            empresa.periodicidad === 'anual'
+              ? ` · anual, de ${nombrePeriodo(periodo)} a ${nombrePeriodo(sumarMeses(periodo, 11))}`
+              : ` · ${nombrePeriodo(periodo)}`}`,
           cantidad: 1,
           precio: Number(empresa.cuota_mensual)
         }],
@@ -279,7 +306,7 @@ const generarMensualidades = async (req, res) => {
       success: true,
       creadas: ids.length,
       message: ids.length === 0
-        ? `Todas las empresas activas con cuota ya tienen su factura de ${mes}.`
+        ? `Todas las empresas activas con cobro en ${mes} ya tienen su factura.`
         : `${ids.length} ${ids.length === 1 ? 'factura creada' : 'facturas creadas'} para ${mes}.` +
           (req.body.enviar === true ? (fallidas.length ? ` No se enviaron: ${fallidas.join('; ')}.` : ' Todas se enviaron por correo.') : ''),
       fallidas
@@ -348,6 +375,76 @@ const anularFactura = async (req, res) => {
   }
 };
 
+/** GET /api/platform/comprobantes/:id/archivo — la foto o el PDF que subió el cliente. */
+const verComprobante = async (req, res) => {
+  try {
+    const { rows } = await authPool.query('SELECT mime, archivo FROM facturas_plataforma_comprobantes WHERE id = $1', [req.params.id]);
+    if (!rows[0]) throw httpError(404, 'Comprobante no encontrado');
+    res.set({ 'Content-Type': rows[0].mime, 'Cache-Control': 'private, no-cache', 'Content-Disposition': 'inline' });
+    res.send(rows[0].archivo);
+  } catch (error) {
+    sendError(res, error, 'Error obteniendo el comprobante');
+  }
+};
+
+/**
+ * POST /api/platform/comprobantes/:id/aceptar { fecha? }
+ * El dinero llegó: el comprobante queda aceptado y su factura pagada por transferencia.
+ */
+const aceptarComprobante = async (req, res) => {
+  let client;
+  try {
+    client = await authPool.connect();
+    await client.query('BEGIN');
+    const { rows } = await client.query(
+      `SELECT c.id, c.factura_id, c.referencia, c.fecha_pago, c.estado, f.numero, f.estado AS factura_estado
+       FROM facturas_plataforma_comprobantes c JOIN facturas_plataforma f ON f.id = c.factura_id
+       WHERE c.id = $1 FOR UPDATE OF c, f`,
+      [req.params.id]
+    );
+    const comprobante = rows[0];
+    if (!comprobante) throw httpError(404, 'Comprobante no encontrado');
+    if (comprobante.estado !== 'pendiente') throw httpError(409, `Este comprobante ya está ${comprobante.estado}`);
+    if (comprobante.factura_estado !== 'pendiente') throw httpError(409, `La factura ${comprobante.numero} ya no está pendiente`);
+    const fechaPago = esFecha(req.body.fecha) ? req.body.fecha : (fecha(comprobante.fecha_pago) || hoy());
+    await client.query(
+      `UPDATE facturas_plataforma_comprobantes SET estado = 'aceptado', revisado_por = $2, revisado_at = NOW() WHERE id = $1`,
+      [comprobante.id, req.platformAdmin.id]
+    );
+    await client.query(
+      `UPDATE facturas_plataforma
+       SET estado = 'pagada', pagada_en = $2, metodo_pago = 'transferencia', referencia_pago = $3, updated_at = NOW()
+       WHERE id = $1`,
+      [comprobante.factura_id, fechaPago, comprobante.referencia || `Comprobante ${comprobante.id}`]
+    );
+    await client.query('COMMIT');
+    res.json({ success: true, message: `Comprobante aceptado: la factura ${comprobante.numero} quedó pagada` });
+  } catch (error) {
+    if (client) await client.query('ROLLBACK').catch(() => {});
+    sendError(res, error, 'Error aceptando el comprobante');
+  } finally {
+    if (client) client.release();
+  }
+};
+
+/** POST /api/platform/comprobantes/:id/rechazar { motivo } — el cliente ve el motivo y sube otro. */
+const rechazarComprobante = async (req, res) => {
+  try {
+    const motivo = String(req.body.motivo || '').trim().slice(0, 500);
+    if (!motivo) throw httpError(400, 'Escribe por qué se rechaza, por ejemplo «no aparece en la cuenta»');
+    const { rows } = await authPool.query(
+      `UPDATE facturas_plataforma_comprobantes
+       SET estado = 'rechazado', motivo_rechazo = $2, revisado_por = $3, revisado_at = NOW()
+       WHERE id = $1 AND estado = 'pendiente' RETURNING id`,
+      [req.params.id, motivo, req.platformAdmin.id]
+    );
+    if (!rows[0]) throw httpError(409, 'El comprobante no existe o ya se revisó');
+    res.json({ success: true, message: 'Comprobante rechazado; el cliente verá el motivo y podrá subir otro' });
+  } catch (error) {
+    sendError(res, error, 'Error rechazando el comprobante');
+  }
+};
+
 // Indicadores de la cartera para el inicio del panel.
 const resumen = async (req, res) => {
   try {
@@ -360,7 +457,10 @@ const resumen = async (req, res) => {
           WHERE subscription_status IN ('trial', 'active') AND usa_erp
             AND COALESCE(subscription_ends_at, trial_ends_at) BETWEEN NOW() AND NOW() + INTERVAL '15 days')::INTEGER AS por_vencer,
          (SELECT COUNT(*) FROM organizations WHERE subscription_status = 'suspended')::INTEGER AS suspendidas,
-         (SELECT COALESCE(SUM(cuota_mensual), 0) FROM organizations WHERE subscription_status = 'active') AS ingreso_mensual,
+         -- Las anuales cuentan su doceava parte.
+         (SELECT COALESCE(SUM(CASE WHEN periodicidad = 'anual' THEN cuota_mensual / 12 ELSE cuota_mensual END), 0)
+          FROM organizations WHERE subscription_status = 'active') AS ingreso_mensual,
+         (SELECT COUNT(*) FROM facturas_plataforma_comprobantes WHERE estado = 'pendiente')::INTEGER AS comprobantes_por_revisar,
          (SELECT COUNT(*) FROM organizations WHERE subscription_status = 'active' AND COALESCE(cuota_mensual, 0) = 0)::INTEGER AS activas_sin_cuota,
          COALESCE(SUM(total) FILTER (WHERE estado = 'pendiente'), 0) AS pendiente,
          (COUNT(*) FILTER (WHERE estado = 'pendiente'))::INTEGER AS facturas_pendientes,
@@ -385,7 +485,8 @@ const resumen = async (req, res) => {
         facturasPendientes: r.facturas_pendientes,
         vencido: Number(r.vencido),
         facturasVencidas: r.facturas_vencidas,
-        cobradoMes: Number(r.cobrado_mes)
+        cobradoMes: Number(r.cobrado_mes),
+        comprobantesPorRevisar: r.comprobantes_por_revisar
       }
     });
   } catch (error) {
@@ -402,6 +503,9 @@ module.exports = {
   registrarPago,
   anularFactura,
   resumen,
+  verComprobante,
+  aceptarComprobante,
+  rechazarComprobante,
   mapFactura,
   FACTURA_SELECT
 };

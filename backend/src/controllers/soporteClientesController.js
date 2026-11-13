@@ -61,7 +61,8 @@ const ficha = async (req, res) => {
       authPool.query(
         `SELECT id, nombre, sector_comercial, email, nit, telefono, direccion, cuota_mensual,
                 modulos_habilitados, subscription_status, license_plan, license_key, license_max_users,
-                trial_ends_at, subscription_ends_at, created_at, usa_erp, servicios
+                trial_ends_at, subscription_ends_at, created_at, usa_erp, servicios,
+                forma_pago, forma_pago_elegida_en, periodicidad, mes_cobro_anual, enlace_pago
          FROM organizations WHERE id = $1`,
         [id]
       ),
@@ -112,6 +113,11 @@ const ficha = async (req, res) => {
         cuotaMensual: o.cuota_mensual === null ? null : Number(o.cuota_mensual),
         usaErp: o.usa_erp !== false,
         servicios: o.servicios,
+        formaPago: o.forma_pago,
+        formaPagoElegidaEn: o.forma_pago_elegida_en,
+        periodicidad: o.periodicidad,
+        mesCobroAnual: o.mes_cobro_anual,
+        enlacePago: o.enlace_pago,
         estado: o.subscription_status,
         plan: o.license_plan,
         licencia: o.license_key,
@@ -160,14 +166,24 @@ const actualizarDatos = async (req, res) => {
       cuota = Math.round(Number(req.body.cuotaMensual) * 100) / 100;
       if (!Number.isFinite(cuota) || cuota < 0 || cuota > 1000000) throw httpError(400, 'La cuota mensual no es válida');
     }
+    // Cobro: mensual o anual (en qué mes), enlace de pago con tarjeta y forma de pago del cliente.
+    const periodicidad = req.body.periodicidad === 'anual' ? 'anual' : 'mensual';
+    const mesCobro = periodicidad === 'anual' && req.body.mesCobroAnual ? Number(req.body.mesCobroAnual) : null;
+    if (mesCobro !== null && (!Number.isInteger(mesCobro) || mesCobro < 1 || mesCobro > 12)) throw httpError(400, 'Elige el mes del cobro anual');
+    const enlace = textoOpcional(req.body.enlacePago, 500);
+    if (enlace && !/^https:\/\/[^\s]+$/i.test(enlace)) throw httpError(400, 'El enlace de pago debe empezar con https://');
+    const formaPago = ['transferencia', 'tarjeta'].includes(req.body.formaPago) ? req.body.formaPago : null;
     const { rowCount } = await authPool.query(
       `UPDATE organizations
        SET nombre = $1, sector_comercial = $2, email = $3, nit = $4, telefono = $5, direccion = $6,
-           cuota_mensual = $7, servicios = $9, updated_at = NOW()
+           cuota_mensual = $7, servicios = $9, periodicidad = $10, mes_cobro_anual = $11, enlace_pago = $12,
+           forma_pago = $13,
+           forma_pago_elegida_en = CASE WHEN forma_pago IS DISTINCT FROM $13 THEN NOW() ELSE forma_pago_elegida_en END,
+           updated_at = NOW()
        WHERE id = $8`,
       [nombre, textoOpcional(req.body.sector, 150), email || null, textoOpcional(req.body.nit, 30),
         textoOpcional(req.body.telefono, 30), textoOpcional(req.body.direccion, 255), cuota, req.params.id,
-        textoOpcional(req.body.servicios, 255)]
+        textoOpcional(req.body.servicios, 255), periodicidad, mesCobro, enlace, formaPago]
     );
     if (!rowCount) throw httpError(404, 'Empresa no encontrada');
     res.json({ success: true, message: 'Datos de la empresa guardados' });

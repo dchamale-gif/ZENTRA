@@ -1756,3 +1756,53 @@ tr.is-inactive td { color: var(--text-gray); }
     .pos-ticket-footer { gap: 6px; padding: 8px 14px 10px; }
     .pages-container:has(> #page-punto-de-venta.active) { padding-top: 16px; padding-bottom: 16px; }
 }
+
+/* Suscripción a BotEngine: aviso de factura, elección de forma de pago y facturas en Configuración */
+.suscripcion-banner {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px 16px;
+    padding: 10px 24px;
+    border-bottom: 1px solid #fde68a;
+    background: #fffbeb;
+    color: #78350f;
+    font-size: 13.5px;
+}
+.suscripcion-banner[hidden] { display: none; }
+.suscripcion-banner i { margin-right: 4px; }
+.suscripcion-banner.is-vencida { border-color: #fecaca; background: #fef2f2; color: #991b1b; }
+.suscripcion-banner-acciones { display: flex; flex-wrap: wrap; gap: 6px; }
+.forma-pago-intro { margin: 0 0 14px; color: var(--text-gray); }
+.forma-pago-opciones { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; }
+.forma-pago-opcion {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+    padding: 16px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    background: var(--bg-white);
+    color: var(--text-body);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: var(--transition);
+}
+.forma-pago-opcion i { color: var(--primary-color); font-size: 22px; }
+.forma-pago-opcion strong { color: var(--text-dark); font-size: 15px; }
+.forma-pago-opcion span { color: var(--text-gray); font-size: 13px; line-height: 1.4; }
+.forma-pago-opcion:hover { border-color: var(--primary-color); background: var(--primary-soft); }
+.forma-pago-opcion:focus-visible { outline: none; box-shadow: var(--ring); }
+.suscripcion-formas { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin: 0 0 12px; padding: 0; border: 0; }
+.suscripcion-formas legend { margin-bottom: 8px; color: var(--text-dark); font-weight: 600; }
+.suscripcion-formas label { display: grid; grid-template-columns: auto auto 1fr; align-items: center; gap: 2px 8px; margin: 0; padding: 10px 12px; border: 1px solid var(--border-color); border-radius: var(--radius); font-weight: 600; cursor: pointer; }
+.suscripcion-formas label i { color: var(--primary-color); }
+.suscripcion-formas label small { grid-column: 1 / -1; color: var(--text-gray); font-size: 12.5px; font-weight: 400; }
+.suscripcion-formas label:has(input:checked) { border-color: var(--primary-color); background: var(--primary-soft); }
+.suscripcion-cuenta { margin: 0 0 12px; padding: 10px 12px; border-radius: var(--radius); background: var(--bg-light); font-size: 13.5px; }
+.suscripcion-cuenta[hidden] { display: none; }
+.suscripcion-acciones { white-space: nowrap; }
+@media (max-width: 700px) { .suscripcion-banner { padding: 10px 16px; } }

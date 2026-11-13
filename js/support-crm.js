@@ -152,7 +152,7 @@ async function loadSummary() {
         document.getElementById('kpis').innerHTML = [
             tile('Ingreso mensual', money(resumen.ingresoMensual), resumen.activasSinCuota
                 ? `${resumen.activasSinCuota} activa${resumen.activasSinCuota === 1 ? '' : 's'} sin cuota` : 'Cuotas de empresas activas'),
-            tile('Pendiente de cobro', money(resumen.pendiente), `${resumen.facturasPendientes} factura${resumen.facturasPendientes === 1 ? '' : 's'}`),
+            tile('Pendiente de cobro', money(resumen.pendiente), `${resumen.facturasPendientes} factura${resumen.facturasPendientes === 1 ? '' : 's'}${resumen.comprobantesPorRevisar ? ` · ${resumen.comprobantesPorRevisar} comprobante${resumen.comprobantesPorRevisar === 1 ? '' : 's'} por revisar` : ''}`, resumen.comprobantesPorRevisar ? 'is-danger' : ''),
             tile('Vencido', money(resumen.vencido), `${resumen.facturasVencidas} factura${resumen.facturasVencidas === 1 ? '' : 's'}`, resumen.vencido > 0 ? 'is-danger' : ''),
             tile('Cobrado este mes', money(resumen.cobradoMes), '', 'is-good'),
             tile('Empresas activas', resumen.activas, `${resumen.enPrueba} en prueba · ${resumen.suspendidas} suspendidas${resumen.sinErp ? ` · ${resumen.sinErp} cliente${resumen.sinErp === 1 ? '' : 's'} sin ERP` : ''}`),
@@ -191,13 +191,21 @@ function setInvoiceFilter(estado) {
 const conceptOf = (factura) => factura.items.map(item => item.descripcion).join(' · ');
 
 const invoiceActions = (factura) => [
+    factura.comprobantes?.length ? `<button class="${factura.comprobantesPorRevisar ? 'primary' : 'secondary'}" type="button" data-invoice="comprobantes" data-id="${factura.id}"><i class="fas fa-receipt" aria-hidden="true"></i> ${factura.comprobantesPorRevisar ? 'Revisar comprobante' : `Comprobantes (${factura.comprobantes.length})`}</button>` : '',
     `<button class="secondary" type="button" data-invoice="pdf" data-id="${factura.id}" title="Ver PDF"><i class="fas fa-file-pdf" aria-hidden="true"></i> PDF</button>`,
     factura.estado !== 'anulada' ? `<button class="secondary" type="button" data-invoice="enviar" data-id="${factura.id}">${factura.estado === 'vencida' ? 'Recordar pago' : (factura.enviadaEn ? 'Reenviar' : 'Enviar')}</button>` : '',
     ['pendiente', 'vencida'].includes(factura.estado) ? `<button class="primary" type="button" data-invoice="pago" data-id="${factura.id}">Registrar pago</button>` : '',
     ['pendiente', 'vencida'].includes(factura.estado) ? `<button class="danger" type="button" data-invoice="anular" data-id="${factura.id}">Anular</button>` : ''
 ].join('');
 
-const invoiceStatus = (factura) => `<span class="status ${factura.estado}">${invoiceLabels[factura.estado]}</span>${
+// Comprobante de transferencia que subió el cliente y espera revisión.
+const voucherBadge = (factura) => {
+    if (factura.comprobantesPorRevisar) return `<br><span class="status revisar">Comprobante por revisar</span>`;
+    const ultimo = factura.comprobantes?.[0];
+    return ultimo?.estado === 'rechazado' && factura.estado !== 'pagada' ? '<br><small>Comprobante rechazado</small>' : '';
+};
+
+const invoiceStatus = (factura) => `<span class="status ${factura.estado}">${invoiceLabels[factura.estado]}</span>${voucherBadge(factura)}${
     factura.estado === 'pagada' ? `<br><small>${formatDueDate(factura.pagadaEn)}${factura.referenciaPago ? ` · ${escapeHtml(factura.referenciaPago)}` : ''}</small>`
         : factura.enviadaEn ? `<br><small>Enviada ${formatDateTime(factura.enviadaEn)}</small>` : '<br><small>Sin enviar</small>'}`;
 
@@ -205,6 +213,7 @@ async function loadInvoices() {
     const body = document.getElementById('invoicesBody');
     try {
         const { facturas } = await apiRequest(`/facturas${crm.invoiceFilter ? `?estado=${crm.invoiceFilter}` : ''}`);
+        recordarFacturas(facturas);
         if (!facturas.length) {
             body.innerHTML = `<tr><td colspan="8">${crm.invoiceFilter ? `No hay facturas ${invoiceLabels[crm.invoiceFilter].toLowerCase()}s.` : 'Aún no hay facturas. Crea una o genera las mensualidades del mes.'}</td></tr>`;
             return;
@@ -234,8 +243,84 @@ function bindInvoiceButtons(container) {
             if (button.dataset.invoice === 'pdf') return openInvoicePdf(id, button);
             if (button.dataset.invoice === 'enviar') return sendInvoice(id, button);
             if (button.dataset.invoice === 'pago') return openPayment(id);
+            if (button.dataset.invoice === 'comprobantes') return openVouchers(id);
             return voidInvoice(id, button);
         });
+    });
+}
+
+// Facturas vistas por última vez (lista o ficha), para abrir sus comprobantes.
+const facturasPorId = new Map();
+const recordarFacturas = (facturas) => facturas.forEach((factura) => facturasPorId.set(String(factura.id), factura));
+
+const voucherLabels = { pendiente: 'Por revisar', aceptado: 'Aceptado', rechazado: 'Rechazado' };
+
+function openVouchers(id) {
+    const factura = facturasPorId.get(String(id));
+    if (!factura) return;
+    crm.voucherInvoiceId = String(id);
+    document.getElementById('vouchersTitle').textContent = `Comprobantes de ${factura.numero} · ${money(factura.total)}`;
+    const revisable = ['pendiente', 'vencida'].includes(factura.estado);
+    document.getElementById('vouchersList').innerHTML = factura.comprobantes.map((c) => `
+        <li>
+            <div class="voucher-head">
+                <strong>${c.referencia ? `Referencia ${escapeHtml(c.referencia)}` : 'Sin referencia'}</strong>
+                <span class="status ${c.estado === 'pendiente' ? 'revisar' : c.estado === 'aceptado' ? 'pagada' : 'anulada'}">${voucherLabels[c.estado]}</span>
+            </div>
+            <p>${c.fechaPago ? `Pagó el ${formatDueDate(c.fechaPago)} · ` : ''}Subido por ${escapeHtml(c.subidoPor || 'el cliente')} el ${formatDateTime(c.subidoAt)}${c.nota ? ` · ${escapeHtml(c.nota)}` : ''}</p>
+            ${c.motivoRechazo ? `<p>Motivo del rechazo: ${escapeHtml(c.motivoRechazo)}</p>` : ''}
+            <div class="section-actions">
+                <button class="secondary" type="button" data-voucher="ver" data-id="${c.id}"><i class="fas fa-eye" aria-hidden="true"></i> Ver ${c.mime === 'application/pdf' ? 'PDF' : 'foto'}</button>
+                ${c.estado === 'pendiente' && revisable ? `
+                <button class="primary" type="button" data-voucher="aceptar" data-id="${c.id}"><i class="fas fa-check" aria-hidden="true"></i> Aceptar: factura pagada</button>
+                <button class="danger" type="button" data-voucher="rechazar" data-id="${c.id}">Rechazar</button>` : ''}
+            </div>
+        </li>`).join('');
+    document.querySelectorAll('#vouchersList button[data-voucher]').forEach((button) => {
+        button.addEventListener('click', () => voucherAction(button.dataset.voucher, button.dataset.id, button));
+    });
+    openModal('vouchersModal');
+}
+
+async function voucherAction(accion, id, button) {
+    if (accion === 'ver') return openBlob(`${platformApi}/comprobantes/${id}/archivo`, button, 'No se pudo abrir el comprobante');
+    let body = {};
+    if (accion === 'aceptar') {
+        if (!confirm('¿Confirmas que la transferencia está en la cuenta? La factura quedará pagada.')) return null;
+    } else {
+        const motivo = prompt('¿Por qué rechazas el comprobante? El cliente verá este motivo.', 'No aparece en la cuenta');
+        if (motivo === null) return null;
+        if (!motivo.trim()) return alert('Escribe el motivo del rechazo.');
+        body = { motivo: motivo.trim() };
+    }
+    return withButton(button, async () => {
+        try {
+            const data = await apiRequest(`/comprobantes/${id}/${accion}`, { method: 'POST', body: JSON.stringify(body) });
+            closeModal('vouchersModal');
+            showMessage(data.message);
+            await refreshData();
+        } catch (error) {
+            alert(error.message);
+        }
+    });
+}
+
+// Archivo pedido con la sesión y abierto en otra pestaña (PDF de factura o comprobante).
+async function openBlob(url, button, errorMessage) {
+    const tab = window.open('', '_blank');
+    await withButton(button, async () => {
+        const response = await authManager.fetchWithAuth(url);
+        if (!response) return;
+        if (!response.ok) {
+            tab?.close();
+            const data = await response.json().catch(() => ({}));
+            showMessage(data.error || errorMessage, 'error');
+            return;
+        }
+        const blobUrl = URL.createObjectURL(await response.blob());
+        if (tab) tab.location.href = blobUrl;
+        else window.location.href = blobUrl;
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
     });
 }
 
@@ -402,7 +487,7 @@ async function saveInvoice(event) {
 
 function openMonthly() {
     const pending = state.organizations.filter(organization => organization.status === 'active' && !organization.cuotaMensual);
-    document.getElementById('monthlyHint').textContent = 'Crea una factura por la cuota mensual de cada empresa activa que aún no tenga la de ese mes.' +
+    document.getElementById('monthlyHint').textContent = 'Crea la factura de cada empresa activa con cobro ese mes: las mensuales y las anuales cuyo mes de cobro sea ese.' +
         (pending.length ? ` ${pending.length} empresa${pending.length === 1 ? '' : 's'} activa${pending.length === 1 ? '' : 's'} sin cuota quedará${pending.length === 1 ? '' : 'n'} fuera (${pending.map(organization => organization.name).join(', ')}); ponle la cuota en su ficha.` : '');
     document.getElementById('monthlyPeriod').value = nextMonthInput();
     openModal('monthlyModal');
@@ -492,7 +577,7 @@ function clientSummary(empresa, organization) {
         <h3>Servicios</h3>
         <dl class="facts">
             <div><dt>Contrata</dt><dd>${escapeHtml(empresa.servicios || 'Sin detallar')}</dd></div>
-            <div><dt>Cuota mensual</dt><dd>${empresa.cuotaMensual ? money(empresa.cuotaMensual) : 'Sin cuota'}</dd></div>
+            <div><dt>${empresa.periodicidad === 'anual' ? 'Cuota anual' : 'Cuota mensual'}</dt><dd>${empresa.cuotaMensual ? money(empresa.cuotaMensual) : 'Sin cuota'}</dd></div>
             <div><dt>Saldo pendiente</dt><dd class="${organization.saldoVencido > 0 ? 'owes' : ''}">${money(organization.saldoPendiente)}</dd></div>
         </dl>
         <p class="modal-hint">No usa BotEngine ERP: aquí llevas sus facturas, cobros y notas.${activo ? '' : ' Está inactivo: no entra en las mensualidades.'}</p>
@@ -535,6 +620,8 @@ function drawerGeneral(ficha, organization) {
 }
 
 // Datos de contacto, servicios y cuota; igual para clientes con y sin ERP.
+const MESES_COBRO = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+
 function companyDataForm(empresa) {
     return `
         <h3>Datos de la empresa y facturación</h3>
@@ -549,8 +636,29 @@ function companyDataForm(empresa) {
             </div>
             <div class="form-row">
                 <div class="form-group"><label for="dataNit">NIT</label><input id="dataNit" maxlength="30" value="${escapeHtml(empresa.nit || '')}"></div>
-                <div class="form-group"><label for="dataFee">Cuota mensual con IVA (Q)</label><input id="dataFee" type="number" min="0" step="0.01" value="${empresa.cuotaMensual ?? ''}"><small class="field-hint">Se usa al generar las mensualidades.</small></div>
             </div>
+            <fieldset class="billing-fieldset">
+                <legend>Cobro de la suscripción</legend>
+                <div class="form-row">
+                    <div class="form-group"><label for="dataPeriodicity">Se cobra</label>
+                        <select id="dataPeriodicity">
+                            <option value="mensual" ${empresa.periodicidad !== 'anual' ? 'selected' : ''}>Cada mes</option>
+                            <option value="anual" ${empresa.periodicidad === 'anual' ? 'selected' : ''}>Una vez al año</option>
+                        </select></div>
+                    <div class="form-group" id="dataYearMonthGroup" ${empresa.periodicidad === 'anual' ? '' : 'hidden'}><label for="dataYearMonth">Mes del cobro anual</label>
+                        <select id="dataYearMonth"><option value="">El del inicio de la suscripción</option>${MESES_COBRO.map((mes, indice) => `<option value="${indice + 1}" ${Number(empresa.mesCobroAnual) === indice + 1 ? 'selected' : ''}>${mes}</option>`).join('')}</select></div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group"><label for="dataFee" id="dataFeeLabel">${empresa.periodicidad === 'anual' ? 'Cuota anual con IVA (Q)' : 'Cuota mensual con IVA (Q)'}</label><input id="dataFee" type="number" min="0" step="0.01" value="${empresa.cuotaMensual ?? ''}"><small class="field-hint">Se usa al generar los cobros del mes.</small></div>
+                    ${empresa.usaErp === false ? '' : `<div class="form-group"><label for="dataPayMethod">Forma de pago del cliente</label>
+                        <select id="dataPayMethod">
+                            <option value="" ${!empresa.formaPago ? 'selected' : ''}>Aún no la elige</option>
+                            <option value="transferencia" ${empresa.formaPago === 'transferencia' ? 'selected' : ''}>Transferencia (sube el comprobante)</option>
+                            <option value="tarjeta" ${empresa.formaPago === 'tarjeta' ? 'selected' : ''}>Tarjeta (paga con el enlace)</option>
+                        </select><small class="field-hint">${empresa.formaPagoElegidaEn ? `Elegida el ${formatDate(empresa.formaPagoElegidaEn)}.` : 'La elige el administrador al entrar al ERP.'}</small></div>`}
+                </div>
+                <div class="form-group"><label for="dataPayLink">Enlace de pago con tarjeta</label><input id="dataPayLink" type="url" maxlength="500" placeholder="https://…" value="${escapeHtml(empresa.enlacePago || '')}"><small class="field-hint">El cliente lo ve en cada factura pendiente si paga con tarjeta.</small></div>
+            </fieldset>
             <div class="form-group"><label for="dataServices">Servicios que contrata</label><input id="dataServices" maxlength="255" placeholder="Ej.: Chatbot de WhatsApp y página web" value="${escapeHtml(empresa.servicios || '')}">${empresa.usaErp === false ? '<small class="field-hint">Es el concepto de su factura mensual.</small>' : ''}</div>
             <div class="form-group"><label for="dataAddress">Dirección</label><input id="dataAddress" maxlength="255" value="${escapeHtml(empresa.direccion || '')}"></div>
             <div class="modal-actions"><button class="primary" type="submit">Guardar datos</button></div>
@@ -695,6 +803,7 @@ function drawerUsers(ficha, organization) {
 }
 
 function drawerInvoices(ficha) {
+    recordarFacturas(ficha.facturas);
     return `
         <div class="card-head"><h3>Facturas</h3><button class="primary" type="button" data-drawer="newinvoice"><i class="fas fa-plus" aria-hidden="true"></i> Nueva factura</button></div>
         <div class="table-wrap"><table>
@@ -767,11 +876,19 @@ function bindDrawer(body, ficha) {
         });
     });
     body.querySelector('#companyDataForm')?.addEventListener('submit', saveCompanyData);
+    // Anual: se elige el mes del cobro y la cuota es por año.
+    body.querySelector('#dataPeriodicity')?.addEventListener('change', (event) => {
+        const anual = event.target.value === 'anual';
+        body.querySelector('#dataYearMonthGroup').hidden = !anual;
+        body.querySelector('#dataFeeLabel').textContent = anual ? 'Cuota anual con IVA (Q)' : 'Cuota mensual con IVA (Q)';
+    });
     body.querySelector('#noteForm')?.addEventListener('submit', saveNote);
     body.querySelectorAll('button[data-note]').forEach(button => {
         button.addEventListener('click', () => deleteNote(button.dataset.note, button));
     });
 }
+
+const fichaEmpresa = () => crm.ficha?.empresa || {};
 
 async function saveCompanyData(event) {
     event.preventDefault();
@@ -788,7 +905,11 @@ async function saveCompanyData(event) {
                     nit: document.getElementById('dataNit').value.trim(),
                     cuotaMensual: document.getElementById('dataFee').value,
                     direccion: document.getElementById('dataAddress').value.trim(),
-                    servicios: document.getElementById('dataServices').value.trim()
+                    servicios: document.getElementById('dataServices').value.trim(),
+                    periodicidad: document.getElementById('dataPeriodicity').value,
+                    mesCobroAnual: document.getElementById('dataYearMonth').value,
+                    enlacePago: document.getElementById('dataPayLink').value.trim(),
+                    formaPago: document.getElementById('dataPayMethod')?.value || fichaEmpresa().formaPago || ''
                 })
             });
             showMessage(data.message);
