@@ -217,6 +217,10 @@ services:
     depends_on:
       automatizaciones-db:
         condition: service_healthy
+    # El framework cambia «localhost» por host.docker.internal (pensado para Chrome en otro
+    # contenedor). Aquí Chrome corre dentro de este mismo contenedor: que apunte a sí mismo.
+    extra_hosts:
+      - "host.docker.internal:127.0.0.1"
     security_opt:
       - no-new-privileges:true
     networks:
