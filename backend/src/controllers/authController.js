@@ -6,8 +6,23 @@ const platformPool = require('../db/platformConnection');
 const { clearSessionCookie, getSessionToken, setSessionCookie } = require('../utils/sessionCookie');
 const { resolveUserAccess } = require('../utils/modules');
 const { verificarCorreo } = require('../utils/onboarding');
+const dominios = require('../utils/dominios');
+const { crearTraspaso, usarTraspaso } = require('../utils/traspaso');
 
 const TRIAL_DAYS = 30;
+
+/**
+ * Entrega la sesión: si corresponde a otra dirección (empresa → su subdominio, soporte →
+ * soporte.<dominio>), responde un pase para llevarla allá en vez de poner la cookie aquí.
+ * En la dirección de siempre (sslip, localhost) pone la cookie como antes.
+ */
+const entregarSesion = (req, res, { token, maxAge, hostDestino, pagina, status = 200, body }) => {
+  if (hostDestino && req.sitio && req.sitio.tipo !== 'otro' && req.hostname !== hostDestino) {
+    return res.status(status).json({ ...body, traspaso: crearTraspaso({ sessionToken: token, host: hostDestino, pagina }) });
+  }
+  const sessionExpiresAt = setSessionCookie(res, token, maxAge);
+  return res.status(status).json({ ...body, sessionExpiresAt });
+};
 
 const generateLicenseKey = () => {
   const value = crypto.randomBytes(6).toString('hex').toUpperCase();
@@ -31,6 +46,8 @@ const getOrganizationPayload = (row) => {
     id: row.organization_id,
     name: row.organization_name,
     slug: row.organization_slug,
+    subdominio: row.organization_subdominio ?? null,
+    url: dominios.urlEmpresa(row.organization_subdominio),
     sector: row.organization_sector,
     email: row.organization_email,
     licenseKey: row.organization_license_key,
@@ -115,7 +132,7 @@ const loginPlatformAdmin = async (email, password) => {
 const crearSesionSoporte = async ({ userId, platformAdmin, modo }) => {
   const result = await pool.query(
     `SELECT u.id, u.organization_id, u.email, u.nombre, u.apellido,
-            o.nombre AS organization_name, o.slug AS organization_slug,
+            o.nombre AS organization_name, o.slug AS organization_slug, o.subdominio AS organization_subdominio,
             o.sector_comercial AS organization_sector,
             o.email AS organization_email,
             o.license_key AS organization_license_key,
@@ -159,6 +176,12 @@ const salirDeSoporte = async (req, res) => {
     if (!decoded?.soporte?.adminId) {
       return res.status(400).json({ error: 'No hay una sesión de soporte abierta' });
     }
+    // En el subdominio de la empresa: se cierra la sesión de aquí; la de soporte sigue abierta
+    // en soporte.<dominio> (cada dirección tiene su cookie).
+    if (req.sitio?.tipo === 'empresa' && dominios.urlSoporte()) {
+      clearSessionCookie(res);
+      return res.json({ volverA: `${dominios.urlSoporte()}/support.html` });
+    }
     const result = await platformPool.query(
       'SELECT id, email, nombre, activo FROM platform_admins WHERE id = $1',
       [decoded.soporte.adminId]
@@ -193,8 +216,13 @@ const register = async (req, res) => {
       empresaSector,
       empresaCorreo,
       empresaTelefono,
-      empresaDireccion
+      empresaDireccion,
+      empresaSubdominio
     } = req.body;
+    const subdominioElegido = dominios.normalizarSubdominio(empresaSubdominio);
+    if (subdominioElegido && dominios.validarSubdominio(subdominioElegido)) {
+      return res.status(400).json({ error: dominios.validarSubdominio(subdominioElegido), field: 'empresaSubdominio' });
+    }
     const normalizedEmail = String(email || '').trim().toLowerCase();
     const normalizedCompanyName = String(empresaNombre || '').trim();
     const normalizedCompanyEmail = String(empresaCorreo || normalizedEmail).trim().toLowerCase();
@@ -230,14 +258,25 @@ const register = async (req, res) => {
       return res.status(409).json({ error: 'El email ya está registrado' });
     }
 
+    let subdominio = subdominioElegido;
+    if (subdominio) {
+      const ocupado = await client.query('SELECT 1 FROM organizations WHERE subdominio = $1', [subdominio]);
+      if (ocupado.rows.length) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: `La dirección ${subdominio} ya la usa otra empresa; elige otra`, field: 'empresaSubdominio' });
+      }
+    } else {
+      subdominio = await dominios.subdominioLibre(client, dominios.sugerirSubdominio(normalizedCompanyName));
+    }
+
     const hashedPassword = await bcrypt.hash(password, 10);
     const organizationResult = await client.query(
       `INSERT INTO organizations
        (nombre, slug, nit, sector_comercial, email, telefono, direccion,
         license_key, license_plan, license_issued_at,
-        subscription_status, trial_started_at, trial_ends_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'Trial', NOW(), 'trial', NOW(), NOW() + ($9 * INTERVAL '1 day'))
-       RETURNING id, nombre, slug, sector_comercial, email, license_key, license_plan,
+        subscription_status, trial_started_at, trial_ends_at, subdominio)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'Trial', NOW(), 'trial', NOW(), NOW() + ($9 * INTERVAL '1 day'), $10)
+       RETURNING id, nombre, slug, subdominio, sector_comercial, email, license_key, license_plan,
                  license_issued_at, license_max_users, subscription_status, trial_ends_at`,
       [
         normalizedCompanyName,
@@ -248,7 +287,8 @@ const register = async (req, res) => {
         empresaTelefono?.trim() || null,
         empresaDireccion?.trim() || null,
         generateLicenseKey(),
-        TRIAL_DAYS
+        TRIAL_DAYS,
+        subdominio
       ]
     );
     const organization = organizationResult.rows[0];
@@ -280,6 +320,7 @@ const register = async (req, res) => {
       organization_id: organization.id,
       organization_name: organization.nombre,
       organization_slug: organization.slug,
+      organization_subdominio: organization.subdominio,
       organization_sector: organization.sector_comercial,
       organization_email: organization.email,
       organization_license_key: organization.license_key,
@@ -291,10 +332,13 @@ const register = async (req, res) => {
     });
 
     const token = createToken(user, roles, permissions);
-    const sessionExpiresAt = setSessionCookie(res, token);
-    res.status(201).json({
+    entregarSesion(req, res, {
+      token,
+      hostDestino: dominios.hostEmpresa(organization.subdominio),
+      pagina: 'index',
+      status: 201,
+      body: {
       message: `Empresa registrada. Tu prueba de ${TRIAL_DAYS} días ha comenzado.`,
-      sessionExpiresAt,
       user: {
         id: user.id,
         email: user.email,
@@ -307,9 +351,14 @@ const register = async (req, res) => {
         organization: organizationData
       },
       organization: organizationData
+      }
     });
   } catch (error) {
-    if (client) await client.query('ROLLBACK');
+    if (client) await client.query('ROLLBACK').catch(() => {});
+    // Dos registros al mismo tiempo con la misma dirección.
+    if (error.code === '23505' && /subdominio/.test(error.constraint || '')) {
+      return res.status(409).json({ error: 'Esa dirección la acaba de tomar otra empresa; elige otra', field: 'empresaSubdominio' });
+    }
     console.error('Error en register:', error);
     res.status(500).json({ error: 'Error registrando usuario' });
   } finally {
@@ -330,15 +379,14 @@ const login = async (req, res) => {
     const normalizedEmail = String(email).trim().toLowerCase();
     const platformSession = await loginPlatformAdmin(normalizedEmail, password);
     if (platformSession) {
-      const sessionExpiresAt = setSessionCookie(res, platformSession.token);
-      delete platformSession.token;
-      return res.status(200).json({ ...platformSession, sessionExpiresAt });
+      const { token: platformToken, ...body } = platformSession;
+      return entregarSesion(req, res, { token: platformToken, hostDestino: dominios.hostSoporte(), pagina: 'support', body });
     }
 
     const result = await pool.query(
       `SELECT u.id, u.organization_id, u.email, u.password_hash, u.nombre, u.apellido, u.activo,
               u.debe_cambiar_password,
-              o.nombre AS organization_name, o.slug AS organization_slug,
+              o.nombre AS organization_name, o.slug AS organization_slug, o.subdominio AS organization_subdominio,
               o.sector_comercial AS organization_sector,
               o.email AS organization_email,
               o.license_key AS organization_license_key,
@@ -392,7 +440,6 @@ const login = async (req, res) => {
 
     // Generar JWT
     const token = createToken(user, roles, permissions);
-    const sessionExpiresAt = setSessionCookie(res, token);
 
     // Actualizar último login
     await pool.query(
@@ -400,9 +447,13 @@ const login = async (req, res) => {
       [user.id]
     );
 
-    res.status(200).json({
+    // En botengine-erp.com (o en el subdominio de otra empresa) la sesión se lleva al de la suya.
+    entregarSesion(req, res, {
+      token,
+      hostDestino: dominios.hostEmpresa(user.organization_subdominio),
+      pagina: 'index',
+      body: {
       message: 'Login exitoso',
-      sessionExpiresAt,
       user: {
         id: user.id,
         email: user.email,
@@ -416,6 +467,7 @@ const login = async (req, res) => {
         organization
       },
       organization
+      }
     });
   } catch (error) {
     console.error('Error en login:', error);
@@ -461,7 +513,9 @@ const getProfile = async (req, res) => {
         // Soporte ve la empresa sin pasar por el cambio de contraseña del usuario.
         ...(req.soporte ? { soporte: req.soporte, debeCambiarPassword: false } : {}),
         organization: req.organization
-      }
+      },
+      // Solo al venir de /api/auth/sesion (después de un traspaso).
+      ...(res.locals.sessionExpiresAt ? { sessionExpiresAt: res.locals.sessionExpiresAt } : {})
     });
   } catch (error) {
     console.error('Error en getProfile:', error);
@@ -499,7 +553,60 @@ const verifyEmail = async (req, res) => {
   res.redirect(303, `/login.html?correo=${estado}`);
 };
 
+/**
+ * POST /api/auth/traspaso { t } — llega en un formulario desde otra dirección (ver utils/traspaso.js).
+ * Pone la cookie aquí y abre el inicio de sesión, que completa los datos y entra.
+ */
+const traspaso = (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  try {
+    const { sessionToken, pagina } = usarTraspaso(req.body?.t, req.hostname);
+    const { exp } = jwt.decode(sessionToken);
+    setSessionCookie(res, sessionToken, Math.max(0, exp * 1000 - Date.now()));
+    res.redirect(303, `/login.html?sesion=${pagina}`);
+  } catch (error) {
+    res.redirect(303, '/login.html?sesion=vencida');
+  }
+};
+
+/** GET /api/auth/sesion — la sesión de esta dirección (para el navegador tras un traspaso). */
+const sesionActual = async (req, res, next) => {
+  try {
+    const token = getSessionToken(req);
+    const decoded = token ? jwt.verify(token, process.env.JWT_SECRET) : null;
+    if (!decoded) return res.status(401).json({ error: 'No hay sesión' });
+    const sessionExpiresAt = new Date(decoded.exp * 1000).toISOString();
+    if (!decoded.platformAdmin) {
+      res.locals.sessionExpiresAt = sessionExpiresAt;
+      return next();
+    }
+    if (req.sitio?.tipo === 'empresa') return res.status(403).json({ error: 'El panel de soporte está en otra dirección' });
+    const { rows } = await platformPool.query('SELECT id, email, nombre, activo FROM platform_admins WHERE id = $1', [decoded.platformAdminId]);
+    if (!rows[0]?.activo) return res.status(401).json({ error: 'Cuenta de soporte inactiva' });
+    const { token: _omitido, ...session } = platformSessionPayload(rows[0]);
+    res.json({ ...session, sessionExpiresAt });
+  } catch (error) {
+    res.status(401).json({ error: 'La sesión venció; inicia sesión otra vez' });
+  }
+};
+
+/** GET /api/auth/sitio — qué dirección es esta, para la pantalla de inicio de sesión. */
+const sitio = (req, res) => {
+  const tipo = req.sitio?.tipo || 'otro';
+  res.json({
+    tipo,
+    base: dominios.baseDomain() || null,
+    empresa: tipo === 'empresa' ? req.sitio.empresa : null,
+    existe: tipo !== 'empresa' || Boolean(req.sitio.organizationId),
+    urlRaiz: dominios.urlRaiz(),
+    urlSoporte: dominios.urlSoporte()
+  });
+};
+
 module.exports = {
+  traspaso,
+  sesionActual,
+  sitio,
   crearSesionSoporte,
   salirDeSoporte,
   verifyEmail,

@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const authPool = require('../db/authConnection');
 const { enviarCorreo, appUrl } = require('./email');
+const { urlEmpresa } = require('./dominios');
 const plantillas = require('./plantillasCorreo');
 
 // Alta de una empresa creada por soporte:
@@ -70,7 +71,7 @@ const enviarCredenciales = async (client, usuario) => {
   const correo = plantillas.credenciales({
     nombre: usuario.nombre,
     empresa: usuario.empresa,
-    url: appUrl(),
+    url: urlEmpresa(usuario.subdominio) || appUrl(),
     email: usuario.email,
     password,
     diasPrueba: usuario.subscription_status === 'trial' ? diasRestantes(usuario) : null
@@ -80,7 +81,7 @@ const enviarCredenciales = async (client, usuario) => {
 
 const USUARIO_SELECT = `
   SELECT u.id AS user_id, u.email, u.nombre, u.email_verificado_en, u.debe_cambiar_password,
-         o.nombre AS empresa, o.subscription_status, o.trial_ends_at, o.subscription_ends_at
+         o.nombre AS empresa, o.subdominio, o.subscription_status, o.trial_ends_at, o.subscription_ends_at
   FROM users u JOIN organizations o ON o.id = u.organization_id`;
 
 /**

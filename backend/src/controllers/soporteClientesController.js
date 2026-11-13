@@ -8,6 +8,9 @@ const { MODULES, enabledModules } = require('../utils/modules');
 const { normalizeModules, saveRoleAndModules, countActiveAdmins } = require('./usersController');
 const { crearSesionSoporte } = require('./authController');
 const { setSessionCookie } = require('../utils/sessionCookie');
+const { crearTraspaso } = require('../utils/traspaso');
+const { hostEmpresa, urlEmpresa, baseDomain, normalizarSubdominio, validarSubdominio } = require('../utils/dominios');
+const { olvidarSubdominio } = require('../middleware/sitio');
 const { FACTURA_SELECT, mapFactura } = require('./facturasPlataformaController');
 
 // Ficha de cada empresa en el panel de soporte: datos, usuarios, facturas, notas y la entrada
@@ -29,7 +32,7 @@ const sendError = (res, error, fallback) => {
 
 const organizacionDe = async (db, id) => {
   const { rows } = await db.query(
-    `SELECT id, nombre, modulos_habilitados, subscription_status, trial_ends_at, subscription_ends_at, usa_erp
+    `SELECT id, nombre, modulos_habilitados, subscription_status, trial_ends_at, subscription_ends_at, usa_erp, subdominio
      FROM organizations WHERE id = $1`,
     [id]
   );
@@ -62,7 +65,7 @@ const ficha = async (req, res) => {
         `SELECT id, nombre, sector_comercial, email, nit, telefono, direccion, cuota_mensual,
                 modulos_habilitados, subscription_status, license_plan, license_key, license_max_users,
                 trial_ends_at, subscription_ends_at, created_at, usa_erp, servicios,
-                forma_pago, forma_pago_elegida_en, periodicidad, mes_cobro_anual, enlace_pago
+                forma_pago, forma_pago_elegida_en, periodicidad, mes_cobro_anual, enlace_pago, subdominio
          FROM organizations WHERE id = $1`,
         [id]
       ),
@@ -118,6 +121,9 @@ const ficha = async (req, res) => {
         periodicidad: o.periodicidad,
         mesCobroAnual: o.mes_cobro_anual,
         enlacePago: o.enlace_pago,
+        subdominio: o.subdominio,
+        url: urlEmpresa(o.subdominio),
+        dominioBase: baseDomain() || null,
         estado: o.subscription_status,
         plan: o.license_plan,
         licencia: o.license_key,
@@ -154,6 +160,24 @@ const textoOpcional = (value, max) => {
   return texto || null;
 };
 
+// Dirección propia (<subdominio>.botengine-erp.com) de una empresa con ERP.
+const cambiarSubdominio = async (organizationId, valor) => {
+  const sub = normalizarSubdominio(valor);
+  const { rows } = await authPool.query('SELECT subdominio, usa_erp FROM organizations WHERE id = $1', [organizationId]);
+  if (!rows[0]) throw httpError(404, 'Empresa no encontrada');
+  if (!rows[0].usa_erp || sub === (rows[0].subdominio || '')) return;
+  const error = validarSubdominio(sub);
+  if (error) throw httpError(400, error);
+  try {
+    await authPool.query('UPDATE organizations SET subdominio = $2, updated_at = NOW() WHERE id = $1', [organizationId, sub]);
+  } catch (e) {
+    if (e.code === '23505') throw httpError(409, `La dirección ${sub} ya la usa otra empresa`);
+    throw e;
+  }
+  olvidarSubdominio(rows[0].subdominio);
+  olvidarSubdominio(sub);
+};
+
 // Datos de contacto y cuota mensual de la empresa.
 const actualizarDatos = async (req, res) => {
   try {
@@ -173,6 +197,7 @@ const actualizarDatos = async (req, res) => {
     const enlace = textoOpcional(req.body.enlacePago, 500);
     if (enlace && !/^https:\/\/[^\s]+$/i.test(enlace)) throw httpError(400, 'El enlace de pago debe empezar con https://');
     const formaPago = ['transferencia', 'tarjeta'].includes(req.body.formaPago) ? req.body.formaPago : null;
+    if (req.body.subdominio !== undefined) await cambiarSubdominio(req.params.id, req.body.subdominio);
     const { rowCount } = await authPool.query(
       `UPDATE organizations
        SET nombre = $1, sector_comercial = $2, email = $3, nit = $4, telefono = $5, direccion = $6,
@@ -193,9 +218,11 @@ const actualizarDatos = async (req, res) => {
 };
 
 // Envía la contraseña temporal por correo. Devuelve null si salió o el motivo si no.
-const enviarCredenciales = async ({ email, nombre, empresa, password, motivo }) => {
+const enviarCredenciales = async ({ email, nombre, empresa, subdominio, password, motivo }) => {
   try {
-    const correo = plantillas.credenciales({ nombre, empresa, url: appUrl(), email, password, diasPrueba: null, motivo });
+    // Enlace a la dirección de la empresa (tropinside.botengine-erp.com) si la tiene.
+    const url = urlEmpresa(subdominio) || appUrl();
+    const correo = plantillas.credenciales({ nombre, empresa, url, email, password, diasPrueba: null, motivo });
     await enviarCorreo({ para: email, nombre, asunto: correo.asunto, html: correo.html, texto: correo.texto });
     return null;
   } catch (error) {
@@ -237,7 +264,7 @@ const crearUsuario = async (req, res) => {
 
     const errorCorreo = req.body.enviarCorreo === false
       ? 'no se pidió enviar el correo'
-      : await enviarCredenciales({ email, nombre, empresa: org.nombre, password, motivo: 'nuevo' });
+      : await enviarCredenciales({ email, nombre, empresa: org.nombre, subdominio: org.subdominio, password, motivo: 'nuevo' });
     res.status(201).json({
       success: true,
       message: errorCorreo
@@ -300,12 +327,12 @@ const restablecerPassword = async (req, res) => {
       `UPDATE users u SET password_hash = $1, debe_cambiar_password = true, updated_at = NOW()
        FROM organizations o
        WHERE u.id = $2 AND u.organization_id = $3 AND o.id = u.organization_id AND u.email NOT LIKE 'baja-%'
-       RETURNING u.email, u.nombre, o.nombre AS empresa`,
+       RETURNING u.email, u.nombre, o.nombre AS empresa, o.subdominio`,
       [await bcrypt.hash(password, 10), req.params.userId, req.params.id]
     );
     const usuario = rows[0];
     if (!usuario) throw httpError(404, 'Usuario no encontrado');
-    const errorCorreo = await enviarCredenciales({ email: usuario.email, nombre: usuario.nombre, empresa: usuario.empresa, password, motivo: 'restablecida' });
+    const errorCorreo = await enviarCredenciales({ email: usuario.email, nombre: usuario.nombre, empresa: usuario.empresa, subdominio: usuario.subdominio, password, motivo: 'restablecida' });
     res.json({
       success: true,
       message: errorCorreo
@@ -375,6 +402,11 @@ const entrar = async (req, res) => {
       'INSERT INTO soporte_accesos (platform_admin_id, organization_id, user_id, modo) VALUES ($1, $2, $3, $4)',
       [req.platformAdmin.id, organizationId, rows[0].id, modo]
     );
+    // Con dirección por empresa se abre en su subdominio y la sesión de soporte sigue intacta aquí.
+    const hostDestino = hostEmpresa(sesion.user.organization?.subdominio);
+    if (hostDestino && req.sitio?.tipo !== 'otro' && req.hostname !== hostDestino) {
+      return res.json({ success: true, traspaso: crearTraspaso({ sessionToken: sesion.token, host: hostDestino, pagina: 'index' }) });
+    }
     const sessionExpiresAt = setSessionCookie(res, sesion.token, sesion.expiresMs);
     res.json({ success: true, user: sesion.user, sessionExpiresAt });
   } catch (error) {

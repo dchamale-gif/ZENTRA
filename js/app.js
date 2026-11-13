@@ -125,7 +125,7 @@ function initializeSupportBanner() {
     document.getElementById('supportBannerExit').addEventListener('click', async (event) => {
         event.currentTarget.disabled = true;
         const result = await authManager.salirDeSoporte();
-        window.location.href = result.success ? '/support.html' : '/login.html';
+        window.location.href = result.volverA || (result.success ? '/support.html' : '/login.html');
     });
 }
 

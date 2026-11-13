@@ -35,6 +35,20 @@ function initializeLoginForm() {
     };
     if (mensajesCorreo[correo]) showAlert(mensajesCorreo[correo][0], mensajesCorreo[correo][1], 0);
 
+    cargarSitio();
+
+    // Llegada desde otra dirección con la sesión ya puesta (ver irConTraspaso).
+    const sesion = new URLSearchParams(window.location.search).get('sesion');
+    if (sesion) {
+        history.replaceState(null, '', window.location.pathname);
+        if (sesion === 'vencida') {
+            showAlert('El enlace para entrar venció o ya se usó. Inicia sesión otra vez.', 'warning', 0);
+        } else {
+            entrarConSesion();
+            return;
+        }
+    }
+
     // Si ya hay sesión activa, redirigir al dashboard
     if (authManager.isAuthenticated() && !authManager.isTokenExpired()) {
         if (authManager.getUser()?.platformAdmin) {
@@ -42,6 +56,77 @@ function initializeLoginForm() {
         } else {
             redirectToDashboard();
         }
+    }
+}
+
+async function entrarConSesion() {
+    showAlert('Entrando…', 'info', 0);
+    const result = await authManager.cargarSesion();
+    if (!result.success) {
+        showAlert('No pudimos abrir tu sesión. Inicia sesión otra vez.', 'warning', 0);
+        return;
+    }
+    if (result.platformAdmin) redirectToSupportPanel();
+    else redirectToDashboard();
+}
+
+// ---------- Dirección: botengine-erp.com, soporte. o <empresa>. ----------
+
+let sitio = null;
+
+// «Café La Ceiba» → cafelaceiba (igual que el servidor).
+function sugerirSubdominio(nombre) {
+    return String(nombre || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 30);
+}
+
+async function cargarSitio() {
+    try {
+        const response = await fetch('/api/auth/sitio', { credentials: 'same-origin' });
+        if (!response.ok) return;
+        sitio = await response.json();
+    } catch (error) {
+        return;
+    }
+    const titulo = document.getElementById('loginTitulo');
+    const subtitulo = document.getElementById('loginSubtitulo');
+    const ocultarRegistro = () => { document.getElementById('signupSection').hidden = true; };
+
+    if (sitio.tipo === 'empresa') {
+        ocultarRegistro();
+        if (sitio.existe) {
+            subtitulo.textContent = `Entra a ${sitio.empresa}.`;
+            document.title = `${sitio.empresa} · BotEngine ERP`;
+        } else {
+            const alerta = showAlert('Esta dirección no corresponde a ninguna empresa. ', 'warning', 0);
+            if (sitio.urlRaiz) {
+                const enlace = document.createElement('a');
+                enlace.href = sitio.urlRaiz;
+                enlace.className = 'alert-link';
+                enlace.textContent = 'Ir al inicio de sesión general';
+                alerta?.querySelector('span')?.appendChild(enlace);
+            }
+        }
+    } else if (sitio.tipo === 'soporte') {
+        ocultarRegistro();
+        titulo.textContent = 'Panel de soporte';
+        subtitulo.textContent = 'Solo para el equipo de BotEngine.';
+        document.title = 'Soporte · BotEngine ERP';
+    }
+
+    // Al registrarse se elige la dirección de la empresa.
+    if (sitio.base) {
+        document.getElementById('subdominioSufijo').textContent = `.${sitio.base}`;
+        document.getElementById('subdominioGrupo').hidden = false;
+        const nombre = document.getElementById('empresaNombre');
+        const sub = document.getElementById('empresaSubdominio');
+        nombre.addEventListener('input', () => {
+            if (!sub.dataset.editado) sub.value = sugerirSubdominio(nombre.value);
+        });
+        sub.addEventListener('input', () => {
+            sub.dataset.editado = sub.value ? '1' : '';
+            sub.value = sub.value.toLowerCase().replace(/[^a-z0-9-]/g, '');
+        });
     }
 }
 
@@ -101,7 +186,9 @@ async function handleLogin(event) {
 
             // Redirigir tras mostrar brevemente el mensaje de bienvenida
             setTimeout(() => {
-                if (result.platformAdmin) {
+                if (result.traspaso) {
+                    irConTraspaso(result.traspaso);
+                } else if (result.platformAdmin) {
                     redirectToSupportPanel();
                 } else {
                     redirectToDashboard();
@@ -170,7 +257,10 @@ function validateRegisterForm() {
         ['registerPassword', password.length < 8, 'La contraseña necesita al menos 8 caracteres.'],
         ['registerPassword', !/[a-zA-Z]/.test(password) || !/\d/.test(password), 'La contraseña necesita letras y números.'],
         ['registerPasswordConfirm', password !== document.getElementById('registerPasswordConfirm').value, 'Las contraseñas no coinciden. Escríbela otra vez.'],
-        ['empresaCorreo', companyEmail && !isValidEmail(companyEmail), 'El correo de la empresa no es válido. Corrígelo o déjalo vacío.']
+        ['empresaCorreo', companyEmail && !isValidEmail(companyEmail), 'El correo de la empresa no es válido. Corrígelo o déjalo vacío.'],
+        ['empresaSubdominio', !document.getElementById('subdominioGrupo').hidden && value('empresaSubdominio') &&
+            !/^[a-z0-9](?:[a-z0-9-]{0,40}[a-z0-9])?$/.test(value('empresaSubdominio')),
+            'Usa solo letras sin acentos, números y guiones (sin guion al inicio ni al final).']
     ];
     const failed = new Set();
     checks.forEach(([id, invalid, message]) => {
@@ -211,11 +301,17 @@ async function handleRegister(event) {
         apellido: value('registerApellido'),
         telefono: value('registerTelefono'),
         email: value('registerEmail'),
-        password: document.getElementById('registerPassword').value
+        password: document.getElementById('registerPassword').value,
+        empresaSubdominio: document.getElementById('subdominioGrupo').hidden ? undefined : value('empresaSubdominio')
     });
 
     if (!result.success) {
         showRegisterStatus(result.error, 'error');
+        if (result.field === 'empresaSubdominio') {
+            const sub = document.getElementById('empresaSubdominio');
+            setFieldError(sub, result.error);
+            sub.focus();
+        }
         if (/registrado/i.test(result.error || '')) {
             setFieldError(document.getElementById('registerEmail'), 'Este correo ya tiene cuenta. Inicia sesión o usa otro correo.');
         }
@@ -223,8 +319,9 @@ async function handleRegister(event) {
         return;
     }
 
-    showRegisterStatus(`¡Listo! Tu empresa fue creada. La prueba gratuita vence el ${new Date(result.organization.trialEndsAt).toLocaleDateString('es-GT')}. Entrando al panel…`, 'success');
-    setTimeout(redirectToDashboard, 1800);
+    const direccion = result.organization?.url ? ` Tu dirección es ${result.organization.url.replace('https://', '')}.` : '';
+    showRegisterStatus(`¡Listo! Tu empresa fue creada. La prueba gratuita vence el ${new Date(result.organization.trialEndsAt).toLocaleDateString('es-GT')}.${direccion} Entrando al panel…`, 'success');
+    setTimeout(() => (result.traspaso ? irConTraspaso(result.traspaso) : redirectToDashboard()), result.traspaso ? 3000 : 1800);
 }
 
 document.addEventListener('input', event => {

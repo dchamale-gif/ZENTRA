@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const { subdominioLibre, sugerirSubdominio } = require('../utils/dominios');
 const pool = require('../db/platformConnection');
 const authPool = require('../db/authConnection');
 const { enviarVerificacion, reenviar, hashInutilizable } = require('../utils/onboarding');
@@ -233,8 +234,8 @@ const createOrganization = async (req, res) => {
       `INSERT INTO organizations
        (nombre, slug, sector_comercial, email, nit, subscription_status,
         license_plan, license_key, license_issued_at, license_max_users,
-        trial_started_at, trial_ends_at, modulos_habilitados, fel_habilitada)
-       VALUES ($1, $2, $3, $4, $5, 'trial', $6, $7, NOW(), $9, NOW(), NOW() + ($8 * INTERVAL '1 day'), $10, $11)
+        trial_started_at, trial_ends_at, modulos_habilitados, fel_habilitada, subdominio)
+       VALUES ($1, $2, $3, $4, $5, 'trial', $6, $7, NOW(), $9, NOW(), NOW() + ($8 * INTERVAL '1 day'), $10, $11, $12)
        RETURNING id, nombre, sector_comercial, email, nit, subscription_status,
                  license_plan, license_key, license_issued_at, license_max_users, modulos_habilitados, fel_habilitada, trial_ends_at,
                  subscription_started_at, subscription_ends_at, created_at,
@@ -251,7 +252,8 @@ const createOrganization = async (req, res) => {
         userLimit,
         // Con contrato, la empresa queda solo con los módulos contratados (null = todos).
         contrato && contrato.modulos.length < MODULE_KEYS.size ? contrato.modulos : null,
-        contrato ? contrato.fel : false
+        contrato ? contrato.fel : false,
+        await subdominioLibre(client, sugerirSubdominio(name))
       ]
     );
     const organization = result.rows[0];
@@ -490,9 +492,10 @@ const activarErp = async (req, res) => {
        SET usa_erp = true, subscription_status = 'trial', license_plan = $2, license_key = $3, license_issued_at = NOW(),
            license_max_users = $4, trial_started_at = NOW(), trial_ends_at = NOW() + ($5 * INTERVAL '1 day'),
            subscription_started_at = NULL, subscription_ends_at = NULL,
-           email = COALESCE(email, $6), updated_at = NOW()
+           email = COALESCE(email, $6), subdominio = COALESCE(subdominio, $7), updated_at = NOW()
        WHERE id = $1`,
-      [organization.id, String(req.body.plan || '').trim().slice(0, 50) || 'Demo', licencia, userLimit, days, correo]
+      [organization.id, String(req.body.plan || '').trim().slice(0, 50) || 'Demo', licencia, userLimit, days, correo,
+        await subdominioLibre(client, sugerirSubdominio(organization.nombre))]
     );
     const adminId = await crearAdministrador(client, organization.id, correo, nombreAdmin);
     await client.query('COMMIT');

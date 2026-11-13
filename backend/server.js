@@ -31,6 +31,8 @@ const suscripcionRoutes = require('./src/routes/suscripcion');
 
 // Importar middleware
 const { auditMiddleware } = require('./src/middleware/audit');
+const { sitioMiddleware } = require('./src/middleware/sitio');
+const { origenPermitido } = require('./src/utils/dominios');
 const pool = require('./src/db/connection');
 const authPool = require('./src/db/authConnection');
 const platformPool = require('./src/db/platformConnection');
@@ -56,7 +58,7 @@ if (process.env.NODE_ENV === 'production' && allowedOrigins.length === 0) {
 
 app.use(cors({
   origin(origin, callback) {
-    if (!origin || allowedOrigins.includes(origin) ||
+    if (!origin || allowedOrigins.includes(origin) || origenPermitido(origin) ||
         (process.env.NODE_ENV !== 'production' && /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin))) {
       return callback(null, true);
     }
@@ -79,6 +81,9 @@ const authRateLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: 'Demasiados intentos. Intenta nuevamente en 15 minutos.' }
 });
+
+// Qué dirección pidió el navegador (botengine-erp.com, soporte., <empresa>.): ver utils/dominios.js
+app.use('/api', sitioMiddleware);
 
 // Logging de solicitudes
 app.use(morgan('combined'));

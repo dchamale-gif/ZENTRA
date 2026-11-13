@@ -263,6 +263,41 @@
             color: #94a3b8;
         }
 
+        [hidden] { display: none !important; }
+
+        /* Dirección de la empresa: el campo y el dominio fijo en una sola caja. */
+        .subdominio-input {
+            display: flex;
+            align-items: stretch;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: #fff;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+        }
+        .subdominio-input:focus-within {
+            border-color: var(--primary);
+            box-shadow: var(--ring);
+        }
+        .form-group .subdominio-input input {
+            flex: 1;
+            min-width: 0;
+            border: 0;
+            box-shadow: none;
+            border-radius: 8px 0 0 8px;
+        }
+        .form-group .subdominio-input input:focus { box-shadow: none; }
+        .subdominio-input span {
+            display: flex;
+            align-items: center;
+            padding: 0 12px;
+            color: #64748b;
+            font-size: 14px;
+            white-space: nowrap;
+            border-left: 1px solid var(--border);
+            background: #f8fafc;
+            border-radius: 0 8px 8px 0;
+        }
+
         .remember-forgot {
             display: flex;
             justify-content: space-between;
@@ -684,8 +719,8 @@
                 <img src="img/botengine-mark.svg" alt="">
                 <span>BotEngine</span><span class="brand-tag">ERP</span>
             </div>
-            <h1>Inicia sesión</h1>
-            <p>Ingresa con tu correo para continuar.</p>
+            <h1 id="loginTitulo">Inicia sesión</h1>
+            <p id="loginSubtitulo">Ingresa con tu correo para continuar.</p>
         </div>
 
         <div id="alertContainer"></div>
@@ -731,7 +766,7 @@
         </form>
 
 
-        <div class="signup-section">
+        <div class="signup-section" id="signupSection">
             <p>¿Primera vez aquí?</p>
             <button type="button" class="signup-btn" onclick="showRegister()">
                 Crear empresa gratis (30 días de prueba)
@@ -751,6 +786,14 @@
                 <div class="form-group">
                     <label for="empresaNombre">Nombre de la empresa <span class="required-mark" aria-hidden="true">*</span></label>
                     <input type="text" id="empresaNombre" maxlength="150" required autocomplete="organization">
+                </div>
+                <div class="form-group" id="subdominioGrupo" hidden>
+                    <label for="empresaSubdominio">Dirección de tu empresa</label>
+                    <div class="subdominio-input">
+                        <input type="text" id="empresaSubdominio" maxlength="42" autocomplete="off" autocapitalize="off" spellcheck="false" inputmode="url" aria-describedby="empresaSubdominioHint">
+                        <span id="subdominioSufijo"></span>
+                    </div>
+                    <small class="field-hint" id="empresaSubdominioHint">Por aquí entrarán tú y tu equipo. Letras sin acentos, números y guiones.</small>
                 </div>
                 <div class="form-row">
                     <div class="form-group">

@@ -19,6 +19,11 @@ const platformAuthMiddleware = async (req, res, next) => {
       return res.status(401).json({ error: 'Token de soporte no proporcionado' });
     }
 
+    // El panel de soporte no se abre desde el subdominio de una empresa.
+    if (req.sitio?.tipo === 'empresa') {
+      return res.status(403).json({ error: 'El panel de soporte está en otra dirección' });
+    }
+
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     if (!decoded.platformAdmin || !decoded.platformAdminId) {
       return res.status(403).json({ error: 'Se requiere una cuenta de soporte' });
@@ -47,6 +52,7 @@ const platformAuthMiddleware = async (req, res, next) => {
  */
 const sesionSoporte = async (req, res) => {
   try {
+    if (req.sitio?.tipo === 'empresa') return res.sendStatus(403);
     const token = getSessionToken(req);
     if (!token) return res.sendStatus(401);
     const decoded = jwt.verify(token, process.env.JWT_SECRET);

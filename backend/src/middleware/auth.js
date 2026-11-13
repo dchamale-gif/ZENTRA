@@ -4,6 +4,7 @@ const platformPool = require('../db/platformConnection');
 const { runWithTenant } = require('../db/tenantContext');
 const { getSessionToken } = require('../utils/sessionCookie');
 const { moduleOfPermission, resolveUserAccess } = require('../utils/modules');
+const { urlEmpresa } = require('../utils/dominios');
 
 const hasOrganizationAccess = (organization) => {
   if (organization.subscription_status === 'active') {
@@ -34,11 +35,16 @@ const authMiddleware = async (req, res, next) => {
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     console.log('✅ Token verificado:', decoded);
+
+    // En el subdominio de una empresa solo vale la sesión de esa empresa.
+    if (req.sitio?.tipo === 'empresa' && decoded.organizationId !== req.sitio.organizationId) {
+      return res.status(401).json({ error: 'Esta sesión es de otra empresa; inicia sesión otra vez', code: 'OTRA_EMPRESA' });
+    }
     
     // Obtener usuario de la BD para verificar que siga activo
     const result = await pool.query(
       `SELECT u.id, u.email, u.nombre, u.apellido, u.activo, u.organization_id, u.debe_cambiar_password,
-              o.nombre AS organization_name, o.slug AS organization_slug,
+              o.nombre AS organization_name, o.slug AS organization_slug, o.subdominio AS organization_subdominio,
               o.sector_comercial AS organization_sector,
               o.email AS organization_email,
               o.license_key AS organization_license_key,
@@ -112,6 +118,8 @@ const authMiddleware = async (req, res, next) => {
       id: user.organization_id,
       name: user.organization_name,
       slug: user.organization_slug,
+      subdominio: user.organization_subdominio,
+      url: urlEmpresa(user.organization_subdominio),
       sector: user.organization_sector,
       email: user.organization_email,
       licenseKey: user.organization_license_key,

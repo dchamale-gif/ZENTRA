@@ -636,6 +636,7 @@ function companyDataForm(empresa) {
             </div>
             <div class="form-row">
                 <div class="form-group"><label for="dataNit">NIT</label><input id="dataNit" maxlength="30" value="${escapeHtml(empresa.nit || '')}"></div>
+                ${empresa.usaErp && empresa.dominioBase ? `<div class="form-group"><label for="dataSubdomain">Dirección del ERP</label><input id="dataSubdomain" maxlength="42" autocomplete="off" spellcheck="false" pattern="[a-z0-9]([a-z0-9-]*[a-z0-9])?" value="${escapeHtml(empresa.subdominio || '')}" aria-describedby="dataSubdomainHint"><small class="field-hint" id="dataSubdomainHint">${empresa.url ? `Entran por <a href="${escapeHtml(empresa.url)}" target="_blank" rel="noopener">${escapeHtml(empresa.url.replace('https://', ''))}</a>. Si la cambias, la anterior deja de funcionar.` : `Quedará como <em>nombre</em>.${escapeHtml(empresa.dominioBase)}`}</small></div>` : ''}
             </div>
             <fieldset class="billing-fieldset">
                 <legend>Cobro de la suscripción</legend>
@@ -909,7 +910,8 @@ async function saveCompanyData(event) {
                     periodicidad: document.getElementById('dataPeriodicity').value,
                     mesCobroAnual: document.getElementById('dataYearMonth').value,
                     enlacePago: document.getElementById('dataPayLink').value.trim(),
-                    formaPago: document.getElementById('dataPayMethod')?.value || fichaEmpresa().formaPago || ''
+                    formaPago: document.getElementById('dataPayMethod')?.value || fichaEmpresa().formaPago || '',
+                    ...(document.getElementById('dataSubdomain') ? { subdominio: document.getElementById('dataSubdomain').value.trim().toLowerCase() } : {})
                 })
             });
             showMessage(data.message);
@@ -1104,6 +1106,11 @@ async function enterCompany(event) {
                 method: 'POST',
                 body: JSON.stringify({ userId: Number(userId), modo: document.querySelector('input[name="enterMode"]:checked').value })
             });
+            // Con dirección por empresa se abre en su subdominio y esta sesión de soporte sigue intacta.
+            if (data.traspaso) {
+                irConTraspaso(data.traspaso);
+                return;
+            }
             // Desde aquí la sesión es la del cliente; «Volver al panel» recupera la de soporte.
             authManager.saveUser(data.user);
             authManager.saveSessionExpiry(data.sessionExpiresAt);

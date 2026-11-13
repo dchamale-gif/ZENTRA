@@ -37,6 +37,11 @@ class AuthManager {
                 throw new Error(data.error || 'Error en login');
             }
 
+            // La sesión es de otra dirección (la de tu empresa o la de soporte): allá se completa.
+            if (data.traspaso) {
+                return { success: true, user: data.user, platformAdmin: data.platformAdmin === true, traspaso: data.traspaso };
+            }
+
             // El JWT queda en una cookie HttpOnly; el navegador no puede leerlo.
             this.saveUser(data.user);
             this.saveSessionExpiry(data.sessionExpiresAt);
@@ -84,6 +89,12 @@ class AuthManager {
             });
             const data = await response.json();
             if (!response.ok) throw new Error(data.error || 'No se pudo volver al panel');
+            // La sesión de soporte sigue abierta en su propia dirección.
+            if (data.volverA) {
+                this.clearUser();
+                this.clearSessionExpiry();
+                return { success: true, volverA: data.volverA };
+            }
             this.saveUser(data.user);
             this.saveSessionExpiry(data.sessionExpiresAt);
             return { success: true };
@@ -111,7 +122,13 @@ class AuthManager {
             const data = await response.json();
 
             if (!response.ok) {
-                throw new Error(data.error || 'Error en registro');
+                const error = new Error(data.error || 'Error en registro');
+                error.field = data.field;
+                throw error;
+            }
+
+            if (data.traspaso) {
+                return { success: true, user: data.user, organization: data.organization, message: data.message, traspaso: data.traspaso };
             }
 
             this.saveUser(data.user);
@@ -128,8 +145,27 @@ class AuthManager {
             console.error('Error en registro:', error);
             return {
                 success: false,
-                error: friendlyError(error)
+                error: friendlyError(error),
+                field: error.field
             };
+        }
+    }
+
+    /**
+     * Sesión que llegó por traspaso desde otra dirección: la cookie ya está; faltan los datos.
+     */
+    async cargarSesion() {
+        try {
+            const response = await fetch(`${this.apiBaseUrl}/api/auth/sesion`, { credentials: 'same-origin' });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || 'No se pudo abrir la sesión');
+            this.saveUser(data.user);
+            this.saveSessionExpiry(data.sessionExpiresAt);
+            return { success: true, platformAdmin: data.platformAdmin === true };
+        } catch (error) {
+            this.clearUser();
+            this.clearSessionExpiry();
+            return { success: false, error: friendlyError(error) };
         }
     }
 
@@ -420,6 +456,23 @@ function redirectToDashboard() {
 
 function redirectToSupportPanel() {
     window.location.href = '/support.html';
+}
+
+/**
+ * Lleva la sesión a otra dirección (tu empresa o soporte): envía el pase de un solo uso por POST,
+ * así no queda en el historial ni en los registros del servidor.
+ */
+function irConTraspaso(traspaso) {
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = traspaso.url;
+    const campo = document.createElement('input');
+    campo.type = 'hidden';
+    campo.name = 't';
+    campo.value = traspaso.token;
+    form.appendChild(campo);
+    document.body.appendChild(form);
+    form.submit();
 }
 
 /**

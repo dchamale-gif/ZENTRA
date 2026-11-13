@@ -61,6 +61,11 @@ services:
       SOPORTE_CORREO: ${SOPORTE_CORREO:-}
       # Forma de pago que sale en las facturas a clientes (banco, cuenta, a nombre de quién).
       FACTURA_DATOS_PAGO: ${FACTURA_DATOS_PAGO:-}
+      # Dirección por empresa: <empresa>.BASE_DOMAIN, soporte.BASE_DOMAIN y BASE_DOMAIN para el
+      # inicio de sesión general (ver backend/src/utils/dominios.js). Vacío = una sola dirección.
+      BASE_DOMAIN: ${BASE_DOMAIN:-}
+      # Enlaces de los correos de verificación (por ejemplo https://botengine-erp.com).
+      APP_URL: ${APP_URL:-}
     # Permite llegar a una base de datos instalada en el mismo servidor, fuera de Docker.
     extra_hosts:
       - "host.docker.internal:host-gateway"
