@@ -553,6 +553,10 @@ const CodigosArticulosModule = {
         if (!modal || !form) return;
 
         form.reset();
+        // reset() no limpia los campos ocultos: sin esto, «Nuevo artículo» después de editar uno
+        // guardaba encima del artículo editado en lugar de crear otro.
+        document.getElementById('articuloId').value = articulo?.id || '';
+        this.state.selectedArticulo = articulo;
         document.getElementById('articuloModalTitle').textContent = articulo ? 'Editar artículo' : 'Nuevo artículo';
         form.querySelectorAll('[aria-invalid]').forEach(input => input.removeAttribute('aria-invalid'));
         form.querySelectorAll('.field-error').forEach(error => error.remove());
