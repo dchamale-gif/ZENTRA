@@ -13,5 +13,7 @@ router.get('/estado', rolePermissionMiddleware(['ventas_view', 'pos_view']), fel
 router.post('/ventas/:ventaId/factura', habilitada, rolePermissionMiddleware(['ventas_create']), felController.emitir);
 router.post('/documentos/:id/anular', habilitada, rolePermissionMiddleware(['ventas_delete']), felController.anular);
 router.get('/documentos/:id/xml', rolePermissionMiddleware(['ventas_view']), felController.getXml);
+// El punto de venta también imprime la factura recién cobrada.
+router.get('/documentos/:id/pdf', rolePermissionMiddleware(['ventas_view', 'pos_view']), felController.getPdf);
 
 module.exports = router;

@@ -4,7 +4,7 @@ const { generateId } = require('../utils/helpers');
 const { encrypt, decrypt } = require('../utils/secretBox');
 const { generarFactura, generarAnulacion, FRASES_POR_DEFECTO } = require('../utils/fel/dte');
 const { nitValido, normalizarReceptor } = require('../utils/fel/identificacion');
-const { CATALOGO, obtenerConector } = require('../utils/fel/certificadores');
+const { CATALOGO, obtenerConector, pdfDelCertificador } = require('../utils/fel/certificadores');
 
 // Facturación electrónica (FEL). Cada empresa configura su emisor, su régimen de IVA y su
 // certificador; al cobrar se elige ticket (sin FEL) o factura (se certifica en ese momento).
@@ -340,11 +340,50 @@ const getXml = async (req, res) => {
   }
 };
 
+/**
+ * GET /api/fel/documentos/:id/pdf — PDF oficial del certificador. Se pide la primera vez y se
+ * guarda una copia; se vuelve a pedir si la factura cambió de estado (por ejemplo, al anularla).
+ */
+const getPdf = async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT id, estado, uuid, serie, numero, certificador, pdf, pdf_estado FROM fel_documentos WHERE id = $1',
+      [req.params.id]
+    );
+    const documento = result.rows[0];
+    if (!documento) throw httpError(404, 'Factura no encontrada');
+    const descargar = pdfDelCertificador(documento.certificador);
+    if (!descargar || !documento.uuid || !['certificado', 'anulado'].includes(documento.estado)) {
+      throw httpError(404, 'Esta factura no tiene PDF del certificador');
+    }
+    let contenido = documento.pdf;
+    if (!contenido || documento.pdf_estado !== documento.estado) {
+      try {
+        contenido = await descargar({ uuid: documento.uuid });
+        await pool.query('UPDATE fel_documentos SET pdf = $2, pdf_estado = $3 WHERE id = $1', [documento.id, contenido, documento.estado]);
+      } catch (error) {
+        // Si el certificador no responde, sirve la copia guardada aunque sea de antes de anularla.
+        if (!documento.pdf) throw error;
+        contenido = documento.pdf;
+      }
+    }
+    const nombre = `Factura-${documento.serie}-${documento.numero}`.replace(/[^\w.-]+/g, '_');
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="${nombre}.pdf"`,
+      'Cache-Control': 'private, no-cache'
+    });
+    res.status(200).send(contenido);
+  } catch (error) {
+    sendError(res, error, 'Error obteniendo el PDF de la factura');
+  }
+};
+
 // Datos del emisor que se imprimen en los comprobantes (null si la empresa no configuró FEL).
 const datosEmisor = async (felHabilitada) =>
   (felHabilitada ? estadoPublico(await loadConfig()).emisor : null);
 
 module.exports = {
-  getConfig, saveConfig, getEstado, emitir, anular, getXml, prepararFactura, emitirFactura, requireHabilitada,
+  getConfig, saveConfig, getEstado, emitir, anular, getXml, getPdf, prepararFactura, emitirFactura, requireHabilitada,
   facturacionActiva, datosEmisor
 };

@@ -30,7 +30,7 @@ const VENTA_SELECT = `
           FROM pagos_factura p WHERE p.venta_id = v.id AND p.origen = 'contado') AS pagos_contado,
          (SELECT row_to_json(f) FROM (
             SELECT id, estado, tipo_dte, serie, numero, uuid, receptor_id, receptor_nombre, error, ambiente,
-                   fecha_certificacion
+                   fecha_certificacion, certificador
             FROM fel_documentos WHERE venta_id = v.id ORDER BY created_at DESC LIMIT 1) f) AS factura,
          GREATEST(v.total - COALESCE(pg.pagado, 0), 0) AS pendiente,
          COALESCE(

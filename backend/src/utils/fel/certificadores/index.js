@@ -66,4 +66,7 @@ const obtenerConector = (id) => {
   return conector;
 };
 
-module.exports = { CATALOGO, obtenerConector };
+// PDF oficial del certificador (null si no lo ofrece; entonces se usa el comprobante del ERP).
+const pdfDelCertificador = (id) => CONECTORES[id]?.pdf || null;
+
+module.exports = { CATALOGO, obtenerConector, pdfDelCertificador };

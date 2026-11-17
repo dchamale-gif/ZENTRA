@@ -95,4 +95,21 @@ const anular = async ({ xml, credenciales, referencia }) => {
   };
 };
 
-module.exports = { certificar, anular, URL_TRANSACCION };
+// PDF oficial de INFILE (representación gráfica con el QR de verificación de la SAT).
+const URL_PDF = process.env.INFILE_URL_PDF || 'https://report.feel.com.gt/ingfacereport/ingfacereport_documento';
+
+const pdf = async ({ uuid }) => {
+  let respuesta;
+  try {
+    respuesta = await fetch(`${URL_PDF}?uuid=${encodeURIComponent(uuid)}`, { signal: AbortSignal.timeout(TIEMPO_MAXIMO_MS) });
+  } catch (error) {
+    throw fallo(502, 'INFILE no respondió al pedir el PDF de la factura; intenta de nuevo en unos minutos');
+  }
+  const contenido = Buffer.from(await respuesta.arrayBuffer());
+  if (!respuesta.ok || contenido.subarray(0, 5).toString() !== '%PDF-') {
+    throw fallo(502, `INFILE no entregó el PDF de la factura (${respuesta.status}); intenta de nuevo en unos minutos`);
+  }
+  return contenido;
+};
+
+module.exports = { certificar, anular, pdf, URL_TRANSACCION, URL_PDF };

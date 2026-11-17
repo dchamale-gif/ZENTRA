@@ -163,6 +163,54 @@ const ComprobanteModule = {
         return hoja ? 'Comprobante de venta' : 'Ticket de venta';
     },
 
+    // ---------- Factura oficial del certificador ----------
+    // Si la factura la certificó INFILE se usa su PDF (con el QR de verificación de la SAT) en vez
+    // del formato del ERP. Los tickets de 80 y 58 mm siguen saliendo del ERP: el PDF es tamaño carta.
+
+    urlOficial(c) {
+        const factura = c?.factura;
+        if (!factura?.id || factura.certificador !== 'infile') return '';
+        return `${authManager.apiBaseUrl}/api/fel/documentos/${encodeURIComponent(factura.id)}/pdf`;
+    },
+
+    async pdfOficial(c) {
+        const response = await fetch(this.urlOficial(c));
+        if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            throw new Error(data.error || 'No se pudo obtener el PDF de la factura.');
+        }
+        return new Blob([await response.blob()], { type: 'application/pdf' });
+    },
+
+    // Sin la ventana abierta (punto de venta al cobrar): el PDF va en un iframe que se imprime.
+    async imprimirOficial(c) {
+        let url;
+        try {
+            url = URL.createObjectURL(await this.pdfOficial(c));
+        } catch (error) {
+            showNotification(`${error.message} Puedes imprimirla desde Ventas.`, 'error');
+            return;
+        }
+        document.getElementById('comprobantePrintFrame')?.remove();
+        const frame = document.createElement('iframe');
+        frame.id = 'comprobantePrintFrame';
+        frame.title = 'Factura';
+        frame.tabIndex = -1;
+        frame.setAttribute('aria-hidden', 'true');
+        frame.style.cssText = 'position:fixed;right:0;bottom:0;width:1px;height:1px;border:0;opacity:0;pointer-events:none';
+        frame.addEventListener('load', () => {
+            try {
+                frame.contentWindow.focus();
+                frame.contentWindow.print();
+            } catch {
+                window.open(url, '_blank');
+            }
+        }, { once: true });
+        frame.src = url;
+        document.body.appendChild(frame);
+        setTimeout(() => URL.revokeObjectURL(url), 120000);
+    },
+
     nombreArchivo(c) {
         const base = c.factura ? `Factura-${c.factura.serie}-${c.factura.numero}` : `Venta-${c.numero || 'cuenta'}`;
         return `${base.replace(/[^\w.-]+/g, '_')}.pdf`;
@@ -379,6 +427,8 @@ const ComprobanteModule = {
 
     // Un iframe oculto con solo el comprobante: se imprime sin el resto de la pantalla.
     async imprimir(c, formato = this.formatoGuardado()) {
+        // Factura de INFILE en hoja: su PDF oficial.
+        if (this.urlOficial(c) && (formato === 'oficial' || this.HOJAS[formato])) return this.imprimirOficial(c);
         const empresa = await this.cargarEmpresa();
         document.getElementById('comprobantePrintFrame')?.remove();
         const frame = document.createElement('iframe');
@@ -480,13 +530,23 @@ const ComprobanteModule = {
         this.state.initialized = true;
         document.getElementById('comprobanteFormatos')?.addEventListener('change', (event) => {
             if (event.target.name !== 'comprobanteFormato') return;
-            this.guardarFormato(event.target.value);
+            if (event.target.value !== 'oficial') this.guardarFormato(event.target.value);
             this.state.pdf = null;
             this.renderVista();
             this.prepararPdfSiComparte();
         });
         document.getElementById('comprobanteImprimir')?.addEventListener('click', () => {
-            if (this.state.actual) this.imprimir(this.state.actual, this.formatoElegido());
+            if (!this.state.actual) return;
+            // La vista previa ya tiene el PDF oficial cargado: se imprime ese mismo.
+            if (this.formatoElegido() === 'oficial') {
+                try {
+                    const vista = document.getElementById('comprobanteVista').contentWindow;
+                    vista.focus();
+                    vista.print();
+                    return;
+                } catch { /* se imprime aparte */ }
+            }
+            this.imprimir(this.state.actual, this.formatoElegido());
         });
         document.getElementById('comprobantePdf')?.addEventListener('click', () => this.descargarPdf());
         document.getElementById('comprobanteWhatsapp')?.addEventListener('click', () => this.enviarWhatsapp());
@@ -501,7 +561,9 @@ const ComprobanteModule = {
         this.state.actual = c;
         this.state.pdf = null;
         document.getElementById('comprobanteTitulo').textContent = c.numero ? `Comprobante · venta ${c.numero}` : 'Comprobante';
-        const formato = this.formatoGuardado();
+        const oficial = Boolean(this.urlOficial(c));
+        document.getElementById('comprobanteFormatoOficial').hidden = !oficial;
+        const formato = oficial ? 'oficial' : this.formatoGuardado();
         const radio = document.querySelector(`input[name="comprobanteFormato"][value="${formato}"]`);
         if (radio) radio.checked = true;
         document.getElementById('comprobanteTelefono').value = telefono || c.cliente?.telefono || '';
@@ -525,6 +587,11 @@ const ComprobanteModule = {
         const frame = document.getElementById('comprobanteVista');
         if (!c || !frame) return;
         const formato = this.formatoElegido();
+        if (formato === 'oficial') {
+            frame.removeAttribute('srcdoc');
+            frame.src = this.urlOficial(c);
+            return;
+        }
         const empresa = await this.cargarEmpresa();
         if (this.state.actual !== c || this.formatoElegido() !== formato) return;
         frame.srcdoc = this.documento(c, formato, empresa, { vista: true });
@@ -561,7 +628,7 @@ const ComprobanteModule = {
         const c = this.state.actual;
         const formato = this.formatoElegido();
         if (this.state.pdf?.c === c && this.state.pdf.formato === formato) return this.state.pdf.promesa;
-        const promesa = this.generarPdf(c, formato);
+        const promesa = formato === 'oficial' ? this.pdfOficial(c) : this.generarPdf(c, formato);
         this.state.pdf = { c, formato, promesa };
         promesa.catch(() => { if (this.state.pdf?.promesa === promesa) this.state.pdf = null; });
         return promesa;

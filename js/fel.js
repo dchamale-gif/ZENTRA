@@ -245,6 +245,7 @@ const FelModule = {
                 </div>` : ''}
                 <p id="felModalError" class="form-error" role="alert" hidden></p>`;
             footer.innerHTML = `
+                ${factura.certificador === 'infile' && factura.estado !== 'pendiente' ? `<a class="btn btn-secondary" href="${authManager.apiBaseUrl}/api/fel/documentos/${encodeURIComponent(factura.id)}/pdf" target="_blank" rel="noopener"><i class="fas fa-file-pdf" aria-hidden="true"></i> PDF</a>` : ''}
                 <a class="btn btn-secondary" href="${authManager.apiBaseUrl}/api/fel/documentos/${encodeURIComponent(factura.id)}/xml" download><i class="fas fa-download" aria-hidden="true"></i> XML</a>
                 ${anulada ? `<a class="btn btn-secondary" href="${authManager.apiBaseUrl}/api/fel/documentos/${encodeURIComponent(factura.id)}/xml?tipo=anulacion" download>XML de anulación</a>` : ''}
                 ${factura.estado === 'certificado' ? '<button type="button" class="btn btn-secondary btn-danger-text" id="felAnularBtn">Anular factura</button>' : ''}
