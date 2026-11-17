@@ -118,10 +118,11 @@ const ComprobanteModule = {
         };
     },
 
-    // La fecha llega como día (UTC a medianoche) y la hora aparte.
+    // La fecha llega como día (UTC a medianoche) y la hora aparte. venta.hora es la del servidor
+    // (UTC): se usa hora_ticket, que el backend ya convierte a hora de Guatemala.
     fechaVenta(venta) {
         const dia = venta.fecha ? new Date(venta.fecha).toLocaleDateString('es-GT', { timeZone: 'UTC' }) : '';
-        const hora = String(venta.hora || '').slice(0, 5);
+        const hora = venta.hora_ticket || String(venta.hora || '').slice(0, 5);
         return [dia, hora].filter(Boolean).join(' ');
     },
 
