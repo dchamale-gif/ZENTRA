@@ -1,19 +1,13 @@
-// Conector de INFILE (FEEL). Dos pasos por documento:
-//   1. Firma: el servicio de firma de INFILE firma el XML con el alias y la llave de firma del emisor.
-//   2. Certificación (o anulación): se envía el XML firmado con el usuario y la llave API.
-// El ambiente de pruebas usa los mismos servicios: lo define la cuenta (credenciales de pruebas).
-// Las direcciones se pueden cambiar con variables de entorno si INFILE entrega otras.
+// Conector de INFILE (FEEL) con el proceso unificado: una sola petición con el XML sin firmar;
+// INFILE lo firma con el alias y la llave de firma y lo certifica (o anula) con el usuario y la
+// llave API. La misma dirección sirve para facturas y anulaciones, y para pruebas y producción:
+// el ambiente lo define la cuenta (credenciales de pruebas). Se puede cambiar con INFILE_URL.
 
-const URLS = {
-  firma: process.env.INFILE_URL_FIRMA || 'https://signer-emisores.feel.com.gt/sign_solicitud_firmas/firma_xml',
-  certificacion: process.env.INFILE_URL_CERTIFICACION || 'https://certificador.feel.com.gt/fel/certificacion/v2/dte/',
-  anulacion: process.env.INFILE_URL_ANULACION || 'https://certificador.feel.com.gt/fel/anulacion/v2/dte/'
-};
+const URL_TRANSACCION = process.env.INFILE_URL || 'https://certificador.feel.com.gt/fel/procesounificado/transaccion/v2/xml';
 const TIEMPO_MAXIMO_MS = 30000;
 
 const fallo = (status, message) => Object.assign(new Error(message), { status, expose: true });
 
-const base64 = (texto) => Buffer.from(texto, 'utf8').toString('base64');
 const desdeBase64 = (texto) => Buffer.from(String(texto || ''), 'base64').toString('utf8');
 
 const revisarCredenciales = (credenciales = {}) => {
@@ -28,13 +22,33 @@ const revisarCredenciales = (credenciales = {}) => {
   }
 };
 
-const llamar = async (url, { headers = {}, body }) => {
+// Mensaje claro con los errores que devuelve INFILE o la SAT.
+const mensajeDeErrores = (datos, accion) => {
+  const errores = Array.isArray(datos.descripcion_errores) ? datos.descripcion_errores : [];
+  const detalle = errores
+    .map((error) => [error.fuente, error.mensaje_error].filter(Boolean).join(': '))
+    .filter(Boolean)
+    .slice(0, 5)
+    .join(' · ');
+  return `INFILE no ${accion} el documento: ${detalle || datos.descripcion || 'sin detalle del error'}`;
+};
+
+const transaccion = async ({ xml, credenciales, identificador, accion }) => {
+  revisarCredenciales(credenciales);
   let respuesta;
   try {
-    respuesta = await fetch(url, {
+    respuesta = await fetch(URL_TRANSACCION, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json', ...headers },
-      body: JSON.stringify(body),
+      headers: {
+        'Content-Type': 'application/xml',
+        Accept: 'application/json',
+        UsuarioFirma: credenciales.usuarioFirma,
+        LlaveFirma: credenciales.llaveFirma,
+        UsuarioApi: credenciales.usuarioApi,
+        LlaveApi: credenciales.llaveApi,
+        identificador
+      },
+      body: xml,
       signal: AbortSignal.timeout(TIEMPO_MAXIMO_MS)
     });
   } catch (error) {
@@ -51,51 +65,6 @@ const llamar = async (url, { headers = {}, body }) => {
   if (respuesta.status === 401 || respuesta.status === 403) {
     throw fallo(422, 'INFILE rechazó las credenciales: revisa el usuario y la llave API en Configuración → Facturación');
   }
-  return datos;
-};
-
-// Mensaje claro con los errores que devuelve INFILE o la SAT.
-const mensajeDeErrores = (datos, accion) => {
-  const errores = Array.isArray(datos.descripcion_errores) ? datos.descripcion_errores : [];
-  const detalle = errores
-    .map((error) => [error.fuente, error.mensaje_error].filter(Boolean).join(': '))
-    .filter(Boolean)
-    .slice(0, 5)
-    .join(' · ');
-  return `INFILE no ${accion} el documento: ${detalle || datos.descripcion || 'sin detalle del error'}`;
-};
-
-const firmar = async ({ xml, credenciales, referencia, anulacion }) => {
-  const datos = await llamar(URLS.firma, {
-    body: {
-      llave: credenciales.llaveFirma,
-      archivo: base64(xml),
-      codigo: referencia,
-      alias: credenciales.usuarioFirma,
-      es_anulacion: anulacion ? 'S' : 'N'
-    }
-  });
-  if (datos.resultado !== true || !datos.archivo) {
-    throw fallo(422, `INFILE no pudo firmar el documento: ${datos.descripcion || 'revisa el usuario y la llave de firma'}`);
-  }
-  return datos.archivo;
-};
-
-const enviar = async ({ url, xmlFirmado, emisor, credenciales, referencia, accion }) => {
-  const datos = await llamar(url, {
-    headers: {
-      UsuarioFirma: credenciales.usuarioFirma,
-      LlaveFirma: credenciales.llaveFirma,
-      UsuarioApi: credenciales.usuarioApi,
-      LlaveApi: credenciales.llaveApi,
-      identificador: referencia
-    },
-    body: {
-      nit_emisor: emisor.nit,
-      correo_copia: emisor.correo || '',
-      xml_dte: xmlFirmado
-    }
-  });
   if (datos.resultado !== true) throw fallo(422, mensajeDeErrores(datos, accion));
   return datos;
 };
@@ -105,30 +74,25 @@ const fechaDe = (texto) => {
   return fecha && !Number.isNaN(fecha.getTime()) ? fecha : new Date();
 };
 
-const certificar = async ({ xml, emisor, credenciales, referencia }) => {
-  revisarCredenciales(credenciales);
-  const xmlFirmado = await firmar({ xml, credenciales, referencia, anulacion: false });
-  const datos = await enviar({ url: URLS.certificacion, xmlFirmado, emisor, credenciales, referencia, accion: 'certificó' });
+const certificar = async ({ xml, credenciales, referencia }) => {
+  const datos = await transaccion({ xml, credenciales, identificador: referencia, accion: 'certificó' });
   if (!datos.uuid) throw fallo(502, 'INFILE certificó sin devolver el número de autorización; revisa la factura en el portal de INFILE');
   return {
     uuid: String(datos.uuid).toUpperCase(),
     serie: datos.serie,
     numero: String(datos.numero),
     fechaCertificacion: fechaDe(datos.fecha),
-    xmlCertificado: datos.xml_certificado ? desdeBase64(datos.xml_certificado) : desdeBase64(xmlFirmado)
+    xmlCertificado: datos.xml_certificado ? desdeBase64(datos.xml_certificado) : xml
   };
 };
 
-const anular = async ({ xml, emisor, credenciales, referencia }) => {
-  revisarCredenciales(credenciales);
+const anular = async ({ xml, credenciales, referencia }) => {
   // El identificador debe ser distinto al de la factura: INFILE lo usa para no repetir envíos.
-  const identificador = `${referencia}-ANU`;
-  const xmlFirmado = await firmar({ xml, credenciales, referencia: identificador, anulacion: true });
-  const datos = await enviar({ url: URLS.anulacion, xmlFirmado, emisor, credenciales, referencia: identificador, accion: 'anuló' });
+  const datos = await transaccion({ xml, credenciales, identificador: `${referencia}-ANU`, accion: 'anuló' });
   return {
     fechaCertificacion: fechaDe(datos.fecha),
-    xmlCertificado: datos.xml_certificado ? desdeBase64(datos.xml_certificado) : desdeBase64(xmlFirmado)
+    xmlCertificado: datos.xml_certificado ? desdeBase64(datos.xml_certificado) : xml
   };
 };
 
-module.exports = { certificar, anular, URLS };
+module.exports = { certificar, anular, URL_TRANSACCION };

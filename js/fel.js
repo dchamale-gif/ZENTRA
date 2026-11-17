@@ -85,6 +85,7 @@ const FelModule = {
         set('felMunicipio', direccion.municipio);
         set('felDepartamento', direccion.departamento);
         set('felCodigoPostal', direccion.codigoPostal || '01001');
+        set('felFrases', (emisor.frases || []).map((frase) => `${frase.tipo}-${frase.escenario}`).join(', '));
         set('felPorDefecto', config.comprobantePorDefecto || 'ticket');
         document.getElementById('felActiva').checked = fel.configurada ? fel.activa : true;
         this.renderCredenciales();
@@ -122,8 +123,8 @@ const FelModule = {
     renderFrasesHint() {
         const afiliacion = document.getElementById('felAfiliacion').value;
         document.getElementById('felFrasesHint').textContent = afiliacion === 'PEQ'
-            ? 'Se emitirá factura de pequeño contribuyente (FPEQ), sin desglose de IVA, con la frase «No genera derecho a crédito fiscal».'
-            : 'Se emitirá factura (FACT) con IVA del 12 % incluido en el precio y la frase «Sujeto a pagos trimestrales ISR». Si tu régimen de ISR es otro, pide a soporte que ajuste la frase.';
+            ? 'Se emitirá factura de pequeño contribuyente (FPEQ), sin desglose de IVA. Sin frases escritas arriba, lleva «No genera derecho a crédito fiscal» (3-1).'
+            : 'Se emitirá factura (FACT) con IVA del 12 % incluido en el precio. Sin frases escritas arriba, lleva «Sujeto a pagos trimestrales ISR» (1-1).';
     },
 
     async saveConfig() {
@@ -133,6 +134,17 @@ const FelModule = {
         document.querySelectorAll('[data-credencial]').forEach((input) => {
             if (input.value.trim()) credenciales[input.dataset.credencial] = input.value.trim();
         });
+        // «1-1, 9-22» → [{ tipo: 1, escenario: 1 }, { tipo: 9, escenario: 22 }]; vacío = la del régimen.
+        const textoFrases = value('felFrases');
+        const partes = textoFrases ? textoFrases.split(/[,;]/).map((parte) => parte.trim()).filter(Boolean) : [];
+        if (partes.some((parte) => !/^\d{1,2}\s*-\s*\d{1,2}$/.test(parte))) {
+            this.showConfigError('Escribe las frases como tipo-escenario separadas por coma, por ejemplo 1-1, 9-22.');
+            document.getElementById('felFrases').focus();
+            return;
+        }
+        const frases = partes.length
+            ? partes.map((parte) => { const [tipo, escenario] = parte.split('-').map((n) => Number(n.trim())); return { tipo, escenario }; })
+            : null;
         const payload = {
             certificador: value('felCertificador'),
             ambiente: value('felAmbiente'),
@@ -152,7 +164,7 @@ const FelModule = {
                     departamento: value('felDepartamento'),
                     codigoPostal: value('felCodigoPostal')
                 },
-                frases: this.state.admin?.config?.emisor?.frases || null
+                frases
             }
         };
         button.disabled = true;
