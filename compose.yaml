@@ -59,6 +59,8 @@ services:
       EMAIL_FROM: ${EMAIL_FROM:-}
       EMAIL_FROM_NAME: ${EMAIL_FROM_NAME:-BotEngine ERP}
       SOPORTE_CORREO: ${SOPORTE_CORREO:-}
+      # A quién llegan los avisos internos (empresas nuevas registradas); varios separados por coma.
+      AVISOS_CORREO: ${AVISOS_CORREO:-}
       # Forma de pago que sale en las facturas a clientes (banco, cuenta, a nombre de quién).
       FACTURA_DATOS_PAGO: ${FACTURA_DATOS_PAGO:-}
       # Dirección por empresa: <empresa>.BASE_DOMAIN, soporte.BASE_DOMAIN y BASE_DOMAIN para el

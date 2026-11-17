@@ -8,6 +8,7 @@ const { resolveUserAccess } = require('../utils/modules');
 const { verificarCorreo } = require('../utils/onboarding');
 const dominios = require('../utils/dominios');
 const { crearTraspaso, usarTraspaso } = require('../utils/traspaso');
+const { avisarRegistro } = require('../utils/avisos');
 
 const TRIAL_DAYS = 30;
 
@@ -315,6 +316,20 @@ const register = async (req, res) => {
       [user.id, 'admin']
     );
     await client.query('COMMIT');
+    // Aviso al equipo de BotEngine, sin esperar ni frenar el registro si el correo falla.
+    avisarRegistro({
+      empresa: {
+        nombre: organization.nombre,
+        nit: empresaNit?.trim() || null,
+        sector: normalizedSector || null,
+        correo: normalizedCompanyEmail,
+        telefono: empresaTelefono?.trim() || null,
+        direccion: empresaDireccion?.trim() || null,
+        subdominio: organization.subdominio,
+        pruebaHasta: organization.trial_ends_at
+      },
+      usuario: { nombre: user.nombre, apellido: user.apellido, email: user.email, telefono: user.telefono }
+    }).catch((error) => console.error('Error en el aviso de registro:', error.message));
     const { roles, permissions, modules } = await resolveUserAccess(pool, user.id, null);
     const organizationData = getOrganizationPayload({
       organization_id: organization.id,
