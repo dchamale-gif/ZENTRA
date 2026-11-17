@@ -814,6 +814,14 @@
                                         <small id="intPreciosHint" class="integracion-help">Con el ERP, el precio de la web solo se usa al crear el artículo, y al publicar desde Precios se escribe en la web (el usuario de la base necesita permiso para modificar la columna de precio).</small>
                                     </div>
                                     <div class="form-group">
+                                        <label for="intDatos">Nombre y datos del artículo</label>
+                                        <select id="intDatos" class="form-input" aria-describedby="intDatosHint">
+                                            <option value="web">Los manda la web: cada sincronización trae los de la web</option>
+                                            <option value="erp">Los manda el ERP: la web solo los pone al crear el artículo</option>
+                                        </select>
+                                        <small id="intDatosHint" class="integracion-help">Nombre, descripción, sección, familia, código de barras, unidad y si está activo. Con el ERP, lo que edites en Artículos no se revierte; la web conserva sus propios nombres.</small>
+                                    </div>
+                                    <div class="form-group">
                                         <label for="intInventario">Existencia y precio de compra desde la web</label>
                                         <select id="intInventario" class="form-input" aria-describedby="intInventarioHint">
                                             <option value="dosVias">En las dos direcciones: compras y ventas del ERP actualizan la web, y las ventas de la web, el ERP</option>

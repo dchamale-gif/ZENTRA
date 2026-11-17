@@ -18,6 +18,8 @@ const CAMPOS = ['codigo', 'nombre', 'precio', 'costo', 'existencia', 'categoria'
 // 'inicial' los copia solo al crear el artículo, 'siempre' en cada sincronización, 'nunca' no los toca,
 // 'dosVias' copia el costo al crear y concilia la existencia en los dos sentidos.
 const MODOS_INVENTARIO = new Set(['inicial', 'siempre', 'nunca', 'dosVias']);
+// Datos que, con datosDesde 'erp', la web solo pone al crear el artículo.
+const DATOS_DEL_ARTICULO = ['nombre_articulo', 'descripcion', 'categoria', 'familia', 'codigo_barras', 'unidad_medida', 'activo'];
 
 // Configuraciones guardadas antes de existir el modo: copiarExistencia true equivalía a 'siempre'.
 const modoInventario = (config) => (MODOS_INVENTARIO.has(config.inventarioDesdeWeb)
@@ -62,6 +64,9 @@ const normalizeConfig = (body) => {
     inventarioDesdeWeb: MODOS_INVENTARIO.has(body.inventarioDesdeWeb) ? body.inventarioDesdeWeb : 'inicial',
     // 'erp': el precio de venta lo calcula y publica el ERP (pantalla Precios); 'web': lo trae la web.
     preciosDesde: body.preciosDesde === 'web' ? 'web' : 'erp',
+    // 'web': nombre, descripción, clasificación, código de barras, unidad y estado los trae la web
+    // en cada sincronización; 'erp': la web solo los usa al crear el artículo y luego se editan en el ERP.
+    datosDesde: body.datosDesde === 'erp' ? 'erp' : 'web',
     // Dirección de la web para las fotos guardadas como ruta («/uploads/pez.jpg»).
     urlFotos: text(body.urlFotos, 255).replace(/\/+$/, ''),
     autoMinutos: Math.min(Math.max(Math.round(Number(body.autoMinutos) || 0), 0), MAX_AUTO_MINUTOS)
@@ -364,7 +369,9 @@ const sincronizarWeb = async (row) => {
         _soloAlCrear: [
         ...(['inicial', 'dosVias'].includes(modo) ? ['cantidad_disponible', 'precio_costo'] : []),
         // Si el ERP publica los precios, el de la web solo sirve para crear el artículo.
-        ...(config.preciosDesde === 'web' ? [] : ['precio_unitario'])
+        ...(config.preciosDesde === 'web' ? [] : ['precio_unitario']),
+        // Si los datos los manda el ERP, la web no pisa lo que se editó en el ERP.
+        ...(config.datosDesde === 'erp' ? DATOS_DEL_ARTICULO : [])
       ],
         _foto: fotos.get(data.codigo)
       }));

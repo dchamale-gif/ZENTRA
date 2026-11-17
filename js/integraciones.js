@@ -97,6 +97,7 @@ const IntegracionModule = {
             || (config.motor ? (config.copiarExistencia ? 'siempre' : 'nunca') : 'inicial');
         this.explicarInventario();
         this.field('intPrecios').value = config.preciosDesde || 'erp';
+        this.field('intDatos').value = config.datosDesde || 'web';
         this.field('intUrlFotos').value = config.urlFotos || '';
         this.state.categoriaTabla = config.categoriaTabla || null;
         this.mostrarCategoriaRel();
@@ -194,6 +195,7 @@ const IntegracionModule = {
             columnas,
             inventarioDesdeWeb: this.field('intInventario').value,
             preciosDesde: this.field('intPrecios').value,
+            datosDesde: this.field('intDatos').value,
             urlFotos: this.field('intUrlFotos').value.trim(),
             categoriaTabla: this.field('intCol-categoria').value.trim() ? this.state.categoriaTabla : null,
             autoMinutos: Number(this.field('intAuto').value),

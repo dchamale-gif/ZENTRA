@@ -132,10 +132,9 @@ const upsertArticulo = async (client, raw, index, { requiresManualId }) => {
       const id = existing.rows[0].id;
       // Lo que solo se copia al crear (p. ej. existencia de la web) no pisa al artículo existente.
       (raw._soloAlCrear || []).forEach((column) => { data[column] = null; });
-      // nombre_articulo siempre viene; el resto conserva su valor si llega vacío.
+      // Lo que llega vacío conserva su valor (el nombre también, si es «solo al crear»).
       const values = ARTICULO_UPDATE_COLUMNS.map((column) => data[column]);
-      const expressions = ARTICULO_UPDATE_COLUMNS.map((column, i) =>
-        (column === 'nombre_articulo' ? `$${i + 1}` : `COALESCE($${i + 1}, ${column})`));
+      const expressions = ARTICULO_UPDATE_COLUMNS.map((column, i) => `COALESCE($${i + 1}, ${column})`);
       const result = await client.query(
         `UPDATE codigos_articulos
          SET ${ARTICULO_UPDATE_COLUMNS.map((column, i) => `${column} = ${expressions[i]}`).join(', ')},
