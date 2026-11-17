@@ -21,7 +21,7 @@ const CATALOGO = [
   {
     id: 'infile',
     nombre: 'INFILE',
-    disponible: false,
+    disponible: true,
     campos: [
       { id: 'usuarioFirma', label: 'Usuario de firma (alias)' },
       { id: 'llaveFirma', label: 'Llave de firma', secreto: true },
@@ -50,7 +50,8 @@ const CATALOGO = [
 ];
 
 const CONECTORES = {
-  prueba: require('./prueba')
+  prueba: require('./prueba'),
+  infile: require('./infile')
 };
 
 const obtenerConector = (id) => {
