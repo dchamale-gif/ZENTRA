@@ -1268,6 +1268,11 @@ tr.is-inactive td { color: var(--text-gray); }
 
 .pos-line-qty span { min-width: 22px; text-align: center; font-weight: 600; }
 .pos-line-qty-readonly { display: none; color: var(--text-gray); }
+.pos-cantidad-producto { margin: 0 0 12px; }
+.pos-cantidad-producto span { color: var(--text-gray); }
+.pos-cantidad-rapidas { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 12px; }
+.pos-cantidad-rapidas .btn { min-width: 52px; justify-content: center; }
+.pos-cantidad-total { margin: 0; font-size: 1.05rem; }
 /* Cantidad de un artículo por fracción: se toca para escribirla (1.5). */
 .pos-qty-valor {
     min-width: 44px;

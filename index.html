@@ -1895,6 +1895,39 @@
         </div>
     </div>
 
+    <!-- Cantidad de un artículo que se vende por fracción (1.5 libras). -->
+    <div id="posCantidadModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="posCantidadTitle">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="posCantidadTitle">¿Cuánto vas a vender?</h2>
+                <button class="close-btn" type="button" aria-label="Cerrar" onclick="PosModule.cerrarCantidad()">&times;</button>
+            </div>
+            <form id="posCantidadForm" novalidate>
+                <div class="modal-body">
+                    <p class="pos-cantidad-producto"><strong id="posCantidadProducto"></strong> <span id="posCantidadPrecio"></span></p>
+                    <div class="form-group">
+                        <label for="posCantidadInput" id="posCantidadLabel">Cantidad</label>
+                        <input id="posCantidadInput" class="form-input" type="text" inputmode="decimal" autocomplete="off" aria-describedby="posCantidadHint posCantidadError">
+                        <small id="posCantidadHint">Puedes usar decimales: 1.5 o 0.25.</small>
+                        <p id="posCantidadError" class="form-error" role="alert" hidden></p>
+                    </div>
+                    <div class="pos-cantidad-rapidas" role="group" aria-label="Cantidades rápidas">
+                        <button type="button" class="btn btn-secondary" data-cantidad="0.25">¼</button>
+                        <button type="button" class="btn btn-secondary" data-cantidad="0.5">½</button>
+                        <button type="button" class="btn btn-secondary" data-cantidad="1">1</button>
+                        <button type="button" class="btn btn-secondary" data-cantidad="1.5">1½</button>
+                        <button type="button" class="btn btn-secondary" data-cantidad="2">2</button>
+                    </div>
+                    <p class="pos-cantidad-total">Total: <strong id="posCantidadTotal">Q0.00</strong></p>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" type="button" onclick="PosModule.cerrarCantidad()">Cancelar</button>
+                    <button class="btn btn-primary" type="submit" id="posCantidadSubmit">Agregar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <div id="depositoModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="depositoTitle">
         <div class="modal-content modal-content-lg">
             <div class="modal-header">

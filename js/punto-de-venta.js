@@ -66,6 +66,25 @@ const PosModule = {
             if (button) this.lineAction(button.dataset.lineAction, button.dataset.item);
         });
         document.getElementById('posNewAccountBtn')?.addEventListener('click', () => this.openNewAccount());
+        document.getElementById('posCantidadForm')?.addEventListener('submit', (event) => {
+            event.preventDefault();
+            this.confirmarCantidad();
+        });
+        document.getElementById('posCantidadInput')?.addEventListener('input', () => {
+            this.mostrarErrorCantidad('');
+            this.actualizarTotalCantidad();
+        });
+        document.querySelector('#posCantidadModal .pos-cantidad-rapidas')?.addEventListener('click', (event) => {
+            const boton = event.target.closest('[data-cantidad]');
+            if (!boton) return;
+            document.getElementById('posCantidadInput').value = boton.dataset.cantidad;
+            this.mostrarErrorCantidad('');
+            this.actualizarTotalCantidad();
+            document.getElementById('posCantidadInput').focus();
+        });
+        document.getElementById('posCantidadModal')?.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') this.cerrarCantidad();
+        });
         document.getElementById('posNewAccountForm')?.addEventListener('submit', (event) => {
             event.preventDefault();
             this.createCuenta();
@@ -585,7 +604,7 @@ const PosModule = {
         if (!this.state.cuentaId && !(await this.quickOpenCuenta())) return;
         const articulo = this.state.articulos.find(entry => entry.id === articuloId);
         // Por fracción se pregunta cuánto (1.5 libras); los demás suman de uno en uno.
-        const cantidad = articulo?.fraccion ? this.pedirCantidad(articulo) : 1;
+        const cantidad = articulo?.fraccion ? await this.pedirCantidad(articulo) : 1;
         if (!cantidad) return;
         if (articulo && (this.unitsByArticulo()[articuloId] || 0) + cantidad > articulo.stock) {
             this.notify(`Solo hay ${this.cantidadTexto(articulo.stock)} de «${articulo.nombre}» en existencia; al cobrar no alcanzará.`, 'warning');
@@ -603,22 +622,67 @@ const PosModule = {
         return (Math.round(Number(valor || 0) * 1000) / 1000).toLocaleString('es-GT', { maximumFractionDigits: 3 });
     },
 
-    // Cantidad para un artículo por fracción; null si se cancela o no es válida (ya avisado).
+    // ---------- Cantidad de un artículo por fracción ----------
+    // Ventana propia (no prompt(): el navegador puede bloquearlo y el toque no haría nada).
+    // Devuelve la cantidad o null si se cancela.
+
     pedirCantidad(articulo, actual = '') {
+        this.state.cantidadResolver?.(null);
         const unidad = this.unidadDe(articulo);
         const precio = Number(articulo.precio ?? articulo.precio_unitario) || 0;
-        const texto = prompt(`¿Cuánto de «${articulo.nombre}»? En ${unidad}, por ejemplo 1.5 o 0.25.\nPrecio: ${formatQ(precio)} por ${unidad}.`, actual);
-        if (texto === null) return null;
-        const cantidad = parseMonto(texto);
-        if (!Number.isFinite(cantidad) || cantidad <= 0 || cantidad > 999) {
-            this.notify('Escribe una cantidad mayor que 0, por ejemplo 1.5.', 'warning');
-            return null;
+        this.state.cantidadPrecio = precio;
+        document.getElementById('posCantidadProducto').textContent = articulo.nombre;
+        document.getElementById('posCantidadPrecio').textContent = `· ${formatQ(precio)} por ${unidad}`;
+        document.getElementById('posCantidadLabel').textContent = `Cantidad (${unidad})`;
+        document.getElementById('posCantidadSubmit').textContent = actual ? 'Cambiar' : 'Agregar';
+        const input = document.getElementById('posCantidadInput');
+        input.value = actual;
+        this.mostrarErrorCantidad('');
+        this.actualizarTotalCantidad();
+        this.openModal('posCantidadModal');
+        input.focus();
+        input.select();
+        return new Promise((resolve) => { this.state.cantidadResolver = resolve; });
+    },
+
+    leerCantidad() {
+        const cantidad = parseMonto(document.getElementById('posCantidadInput').value);
+        if (!Number.isFinite(cantidad) || cantidad <= 0 || cantidad > 999) return { error: 'Escribe una cantidad mayor que 0, por ejemplo 1.5.' };
+        if (Math.abs(Math.round(cantidad * 1000) - cantidad * 1000) > 1e-6) return { error: 'La cantidad admite hasta 3 decimales, por ejemplo 1.25.' };
+        return { cantidad };
+    },
+
+    actualizarTotalCantidad() {
+        const { cantidad } = this.leerCantidad();
+        document.getElementById('posCantidadTotal').textContent = formatQ(cantidad ? cantidad * this.state.cantidadPrecio : 0);
+    },
+
+    mostrarErrorCantidad(mensaje) {
+        const error = document.getElementById('posCantidadError');
+        error.textContent = mensaje;
+        error.hidden = !mensaje;
+        document.getElementById('posCantidadInput').toggleAttribute('aria-invalid', Boolean(mensaje));
+    },
+
+    confirmarCantidad() {
+        const { cantidad, error } = this.leerCantidad();
+        if (error) {
+            this.mostrarErrorCantidad(error);
+            document.getElementById('posCantidadInput').focus();
+            return;
         }
-        if (Math.abs(Math.round(cantidad * 1000) - cantidad * 1000) > 1e-6) {
-            this.notify('La cantidad admite hasta 3 decimales, por ejemplo 1.25.', 'warning');
-            return null;
-        }
-        return cantidad;
+        this.terminarCantidad(cantidad);
+    },
+
+    cerrarCantidad() {
+        this.terminarCantidad(null);
+    },
+
+    terminarCantidad(valor) {
+        this.closeModal('posCantidadModal');
+        const resolver = this.state.cantidadResolver;
+        this.state.cantidadResolver = null;
+        resolver?.(valor);
     },
 
     // Respuesta inmediata al toque, antes de que conteste el servidor.
@@ -641,8 +705,8 @@ const PosModule = {
         if (action === 'qty') {
             const item = this.state.cuenta?.items?.find(entry => String(entry.id) === String(itemId));
             if (!item) return;
-            const cantidad = this.pedirCantidad(item, String(Number(item.cantidad)));
-            return cantidad ? this.mutate(base, 'PUT', { cantidad }) : null;
+            return this.pedirCantidad(item, String(Number(item.cantidad)))
+                .then((cantidad) => (cantidad ? this.mutate(base, 'PUT', { cantidad }) : null));
         }
         return this.mutate(base, 'PUT', { delta: action === 'plus' ? 1 : -1 });
     },
