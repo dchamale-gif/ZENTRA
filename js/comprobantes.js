@@ -407,7 +407,7 @@ const ComprobanteModule = {
             <table class="cpb-fel-items">
                 <thead><tr><th>Cant</th><th class="desc">Descripción</th><th class="num">Prec</th><th class="num">Total</th></tr></thead>
                 <tbody>${f.items.map(item => `<tr>
-                    <td>${n2(item.cantidad)}</td>
+                    <td>${Number.isInteger(Math.round(item.cantidad * 1000) / 10) ? n2(item.cantidad) : Number(item.cantidad).toFixed(3)}</td>
                     <td class="desc">${e(item.descripcion)}${item.descuento > 0 ? `<br>Desc. −${n2(item.descuento)}` : ''}</td>
                     <td class="num">${n2(item.precioUnitario)}</td>
                     <td class="num">${n2(item.total)}</td>

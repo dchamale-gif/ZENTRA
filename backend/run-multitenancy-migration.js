@@ -69,7 +69,8 @@ const run = async () => {
       'cierres-aprobacion.sql',
       'suscripcion-pagos.sql',
       'subdominios.sql',
-      'fel-pdf.sql'
+      'fel-pdf.sql',
+      'cantidades-fraccion.sql'
     ];
     for (const file of featureMigrations) {
       console.log(`Aplicando ${file}...`);

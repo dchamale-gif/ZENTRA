@@ -1268,6 +1268,22 @@ tr.is-inactive td { color: var(--text-gray); }
 
 .pos-line-qty span { min-width: 22px; text-align: center; font-weight: 600; }
 .pos-line-qty-readonly { display: none; color: var(--text-gray); }
+/* Cantidad de un artículo por fracción: se toca para escribirla (1.5). */
+.pos-qty-valor {
+    min-width: 44px;
+    height: 30px;
+    padding: 0 6px;
+    border: 1px dashed var(--border-color);
+    border-radius: var(--radius);
+    background: var(--bg-white);
+    color: var(--text-body);
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+}
+.pos-qty-valor:hover { border-color: var(--primary-color); color: var(--primary-color); }
+.pos-qty-valor:focus-visible { outline: none; box-shadow: var(--ring); }
+@media (pointer: coarse) { .pos-qty-valor { height: 36px; } }
 
 .pos-qty-btn,
 .pos-line-remove {

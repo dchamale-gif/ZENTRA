@@ -570,7 +570,7 @@ class ReportsController {
             const result = await db.query(query, [...params, limit]);
             const data = result.rows.map(row => ({
                 producto: row.producto,
-                cantidadVendida: parseInt(row.cantidad_vendida),
+                cantidadVendida: Math.round(Number(row.cantidad_vendida) * 1000) / 1000,
                 totalVentas: parseFloat(row.total_ventas),
                 precioPromedio: parseFloat(row.precio_promedio)
             }));

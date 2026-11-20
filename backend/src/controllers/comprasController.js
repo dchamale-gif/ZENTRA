@@ -1,5 +1,5 @@
 const pool = require('../db/connection');
-const { dbInputErrorMessage } = require('../utils/inventory');
+const { dbInputErrorMessage, cantidadPermitida, mensajeCantidad } = require('../utils/inventory');
 const { limitarRango } = require('../utils/rangoConsulta');
 
 // Por pedir (pendiente) → Pedida (ordenada) → Recibida (suma al inventario); o Cancelada.
@@ -67,8 +67,9 @@ const normalizeItems = (items) => {
       error.status = 400;
       throw error;
     }
-    if (!Number.isInteger(cantidad) || cantidad <= 0) {
-      const error = new Error(`Concepto ${index + 1}: la cantidad debe ser un entero mayor a cero`);
+    // Hasta 3 decimales; si el artículo no se vende por fracción, insertItems exige entero.
+    if (!cantidadPermitida(cantidad, true) || cantidad <= 0) {
+      const error = new Error(`Concepto ${index + 1}: la cantidad debe ser mayor a cero`);
       error.status = 400;
       throw error;
     }
@@ -101,7 +102,21 @@ const getNextNumeroCompra = async (client) => {
   return `${parts[1]}${String(Number(parts[2]) + 1).padStart(parts[2].length, '0')}`;
 };
 
+// Con decimales solo los artículos que se venden por fracción (las medicinas, siempre enteras).
+const revisarFracciones = async (client, items) => {
+  const ids = items.filter((item) => item.tipo === 'articulo' && !Number.isInteger(item.cantidad)).map((item) => item.conceptoId);
+  const medicina = items.find((item) => item.tipo === 'medicina' && !Number.isInteger(item.cantidad));
+  if (medicina) throw httpError(400, 'Las medicinas se compran por unidades enteras');
+  if (!ids.length) return;
+  const result = await client.query(
+    'SELECT nombre_articulo AS nombre FROM codigos_articulos WHERE id = ANY($1) AND NOT vende_fraccion LIMIT 1',
+    [ids]
+  );
+  if (result.rows[0]) throw httpError(400, mensajeCantidad(result.rows[0].nombre, false));
+};
+
 const insertItems = async (client, compraId, items) => {
+  await revisarFracciones(client, items);
   for (const item of items) {
     const itemId = `CI-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
     await client.query(
@@ -157,7 +172,7 @@ const moverInventario = async (client, compraId, signo) => {
   );
   // Agrupado por artículo por si la compra lo trae en varias líneas.
   const items = await client.query(
-    `SELECT ci.articulo_id, SUM(ci.cantidad)::INTEGER AS cantidad,
+    `SELECT ci.articulo_id, ROUND(SUM(ci.cantidad)::NUMERIC, 3)::FLOAT8 AS cantidad,
             ROUND(SUM(ci.subtotal) / NULLIF(SUM(ci.cantidad), 0), 2) AS precio_unitario,
             a.nombre_articulo, a.cantidad_disponible
      FROM compra_items ci
@@ -424,7 +439,8 @@ const recibirCompra = async (req, res) => {
     }
 
     const lineas = await client.query(
-      `SELECT ci.id, COALESCE(a.nombre_articulo, 'Artículo') AS nombre, ci.cantidad, ci.precio_unitario
+      `SELECT ci.id, COALESCE(a.nombre_articulo, 'Artículo') AS nombre, ci.cantidad, ci.precio_unitario,
+              COALESCE(a.vende_fraccion, false) AS vende_fraccion
        FROM compra_items ci LEFT JOIN codigos_articulos a ON a.id = ci.articulo_id
        WHERE ci.compra_id = $1`,
       [compra.id]
@@ -435,7 +451,11 @@ const recibirCompra = async (req, res) => {
       // Sin dato para la línea: llegó tal como se pidió.
       const cantidad = recibido ? Number(recibido.cantidad) : Number(linea.cantidad);
       const precio = recibido && recibido.precio_unitario !== undefined ? Number(recibido.precio_unitario) : Number(linea.precio_unitario);
-      if (!Number.isInteger(cantidad) || cantidad < 0) throw httpError(400, `«${linea.nombre}»: la cantidad recibida debe ser un entero de 0 o más`);
+      if (!cantidadPermitida(cantidad, linea.vende_fraccion) || cantidad < 0) {
+        throw httpError(400, linea.vende_fraccion
+          ? `«${linea.nombre}»: la cantidad recibida debe ser 0 o más, con hasta 3 decimales`
+          : `«${linea.nombre}»: la cantidad recibida debe ser un entero de 0 o más`);
+      }
       if (!Number.isFinite(precio) || precio < 0 || precio > 99999999.99) throw httpError(400, `«${linea.nombre}»: el costo no es válido`);
       if (cantidad === 0) {
         await client.query('DELETE FROM compra_items WHERE id = $1', [linea.id]);

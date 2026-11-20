@@ -269,6 +269,9 @@ const VentasModule = {
                 precio: Number(articulo.precio_unitario ?? 0),
                 costo: Number(articulo.precio_costo ?? 0),
                 stock: Number(articulo.cantidad_disponible ?? 0),
+                // Por fracción (libra, metro…): la cantidad admite decimales y el precio es por unidad.
+                fraccion: articulo.vende_fraccion === true,
+                unidad: articulo.unidad_medida || '',
                 seccion: articulo.categoria || articulo.seccion || '',
                 familia: articulo.familia || '',
                 subfamilia: articulo.subfamilia || ''
@@ -677,7 +680,7 @@ const VentasModule = {
                         </select>
                     </div>
                     <div id="saleConceptResults-${index}" class="concept-search-results" hidden></div></div></td>
-                <td><input class="form-input" type="text" inputmode="numeric" autocomplete="off" aria-label="Cantidad de la línea ${index + 1}" value="${this.escapeHtml(this.inputValue(item, 'cantidad'))}" onchange="VentasModule.updateItem(${index}, 'cantidad', this.value)"></td>
+                <td><input class="form-input" type="text" inputmode="decimal" autocomplete="off" aria-label="Cantidad de la línea ${index + 1}" value="${this.escapeHtml(this.inputValue(item, 'cantidad'))}" onchange="VentasModule.updateItem(${index}, 'cantidad', this.value)"></td>
                 <td><input class="form-input" type="text" inputmode="decimal" autocomplete="off" aria-label="Precio unitario de la línea ${index + 1}" value="${this.escapeHtml(this.inputValue(item, 'precio_unitario'))}" onchange="VentasModule.updateItem(${index}, 'precio_unitario', this.value)"></td>
                 ${this.state.mostrarDescuentos ? `<td class="sale-desc-col"><input class="form-input" type="text" inputmode="decimal" autocomplete="off" placeholder="0"
                     aria-label="Descuento de la línea ${index + 1} (en quetzales o 10%)" value="${this.escapeHtml(item.descuentoTexto || '')}"
@@ -826,11 +829,15 @@ const VentasModule = {
             if (!item.concepto_id || !articulo) {
                 return { message: line(index, 'Busca y elige un artículo de la lista.'), focusId: `saleConceptSearch-${index}` };
             }
-            if (!Number.isInteger(item.cantidad) || item.cantidad <= 0) {
-                return { message: line(index, 'La cantidad debe ser un número entero mayor que 0.') };
+            if (articulo.fraccion
+                ? !(item.cantidad > 0) || Math.abs(Math.round(item.cantidad * 1000) - item.cantidad * 1000) > 1e-6
+                : !Number.isInteger(item.cantidad) || item.cantidad <= 0) {
+                return { message: line(index, articulo.fraccion
+                    ? `Escribe cuánto de «${articulo.nombre}», por ejemplo 1.5 (hasta 3 decimales).`
+                    : 'La cantidad debe ser un número entero mayor que 0.') };
             }
             if (item.cantidad > articulo.stock && !document.getElementById('saleId').value) {
-                return { message: line(index, `Solo hay ${articulo.stock} unidades de «${articulo.nombre}». Baja la cantidad o registra una compra para tener más existencia.`) };
+                return { message: line(index, `Solo hay ${articulo.stock} ${articulo.fraccion ? (articulo.unidad || 'unidades') : 'unidades'} de «${articulo.nombre}». Baja la cantidad o registra una compra para tener más existencia.`) };
             }
             if (Number.isNaN(item.precio_unitario) || item.precio_unitario < 0 || item.precio_unitario > MAX_PRICE) {
                 return { message: line(index, 'Escribe un precio válido, por ejemplo 25.50.') };

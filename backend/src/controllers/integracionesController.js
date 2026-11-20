@@ -447,7 +447,8 @@ const conciliarExistencias = async (conn, config, rows) => {
   const stockCol = quote(parseIdentifier(config.columnas.existencia, 'existencia'));
   const web = new Map(rows.map((r) => [String(r.codigo ?? '').trim(), r.existencia]).filter(([codigo]) => codigo));
   const { rows: articulos } = await pool.query(
-    'SELECT id, codigo, cantidad_disponible, existencia_web_base FROM codigos_articulos WHERE codigo = ANY($1)',
+    // Los que se venden por fracción (1.5 lb) no se concilian: la web lleva existencias enteras.
+    'SELECT id, codigo, cantidad_disponible, existencia_web_base FROM codigos_articulos WHERE codigo = ANY($1) AND NOT vende_fraccion',
     [[...web.keys()]]
   );
   const resultado = { enviados: 0, recibidos: 0, errores: [] };

@@ -134,12 +134,12 @@ const getTransactions = async (req, res) => {
       SELECT * FROM (
         SELECT v.id, v.fecha, v.created_at, 'Venta' AS type, v.numero_venta AS number,
                'Venta ' || v.numero_venta AS description, v.total::float AS amount, v.estado AS status,
-               (SELECT COALESCE(SUM(cantidad), 0)::int FROM venta_items WHERE venta_id = v.id) AS quantity
+               (SELECT ROUND(COALESCE(SUM(cantidad), 0)::numeric, 3)::float8 FROM venta_items WHERE venta_id = v.id) AS quantity
         FROM ventas v
         UNION ALL
         SELECT c.id, c.fecha, c.created_at, 'Compra', c.numero_compra,
                'Compra ' || c.numero_compra, c.total::float, c.estado,
-               (SELECT COALESCE(SUM(cantidad), 0)::int FROM compra_items WHERE compra_id = c.id)
+               (SELECT ROUND(COALESCE(SUM(cantidad), 0)::numeric, 3)::float8 FROM compra_items WHERE compra_id = c.id)
         FROM compras c
       ) t
       WHERE ($1::text IS NULL OR type = $1)

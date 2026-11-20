@@ -17,6 +17,23 @@ const FRASES_POR_DEFECTO = {
   PEQ: [{ tipo: 3, escenario: 1 }]
 };
 
+// Unidad de medida del XML (hasta 3 letras): las comunes con su abreviatura, otras recortadas.
+const UNIDADES = {
+  libra: 'LB', libras: 'LB', lb: 'LB', lbs: 'LB',
+  kilo: 'KG', kilos: 'KG', kilogramo: 'KG', kilogramos: 'KG', kg: 'KG',
+  gramo: 'G', gramos: 'G', g: 'G', gr: 'G',
+  onza: 'OZ', onzas: 'OZ', oz: 'OZ',
+  metro: 'M', metros: 'M', m: 'M', mts: 'M',
+  litro: 'L', litros: 'L', l: 'L', lt: 'L',
+  galon: 'GAL', galón: 'GAL', galones: 'GAL', gal: 'GAL',
+  pie: 'PIE', pies: 'PIE', yarda: 'YD', yardas: 'YD'
+};
+const unidadSat = (texto) => {
+  const limpio = String(texto || '').trim().toLowerCase().replace(/\.$/, '');
+  if (!limpio) return 'UNI';
+  return UNIDADES[limpio] || limpio.normalize('NFD').replace(/[^a-z]/g, '').slice(0, 3).toUpperCase() || 'UNI';
+};
+
 const escapeXml = (value) => String(value ?? '')
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   .replace(/"/g, '&quot;').replace(/'/g, '&apos;');
@@ -59,6 +76,7 @@ const calcularLineas = (items, afiliacion) => items.map((item, index) => {
   const linea = {
     numero: index + 1,
     bienOServicio: item.bienOServicio === 'S' ? 'S' : 'B',
+    unidad: item.unidad || 'UNI',
     cantidad,
     descripcion: item.descripcion,
     precioUnitario,
@@ -86,8 +104,8 @@ const generarFactura = ({ emisor, receptor, items, notas = null, fechaEmision = 
 
   const itemsXml = lineas.map((linea) => `
         <dte:Item${attrs({ BienOServicio: linea.bienOServicio, NumeroLinea: linea.numero })}>
-          <dte:Cantidad>${num(linea.cantidad, 2)}</dte:Cantidad>
-          <dte:UnidadMedida>UNI</dte:UnidadMedida>
+          <dte:Cantidad>${num(linea.cantidad, Number.isInteger(Math.round(linea.cantidad * 1000) / 10) ? 2 : 3)}</dte:Cantidad>
+          <dte:UnidadMedida>${escapeXml(linea.unidad)}</dte:UnidadMedida>
           <dte:Descripcion>${escapeXml(linea.descripcion)}</dte:Descripcion>
           <dte:PrecioUnitario>${num(linea.precioUnitario, 6)}</dte:PrecioUnitario>
           <dte:Precio>${num(linea.precio, 6)}</dte:Precio>
@@ -164,4 +182,4 @@ const generarAnulacion = ({ emisorNit, uuid, receptorId, fechaEmisionDocumento, 
 </dte:GTAnulacionDocumento>
 `;
 
-module.exports = { generarFactura, generarAnulacion, fechaGuatemala, TIPO_DTE, FRASES_POR_DEFECTO };
+module.exports = { generarFactura, generarAnulacion, fechaGuatemala, TIPO_DTE, FRASES_POR_DEFECTO, unidadSat };

@@ -2410,13 +2410,17 @@
                     <div class="form-row">
                         <div class="form-group">
                             <label for="articuloCantidad">Existencia: unidades que tienes hoy <span class="required">*</span></label>
-                            <input type="text" id="articuloCantidad" class="form-input" inputmode="numeric" autocomplete="off" required placeholder="Ej: 10">
+                            <input type="text" id="articuloCantidad" class="form-input" inputmode="decimal" autocomplete="off" required placeholder="Ej: 10">
                             <small>Sin existencia no podrás venderlo. Escribe 0 si aún no tienes unidades.</small>
                         </div>
                         <div class="form-group">
                             <label for="articuloUnidadMedida">Unidad de medida</label>
-                            <input type="text" id="articuloUnidadMedida" class="form-input" maxlength="50" placeholder="Ej: unidad, caja, litro">
+                            <input type="text" id="articuloUnidadMedida" class="form-input" maxlength="50" placeholder="Ej: unidad, caja, libra">
                         </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="checkbox-line"><input type="checkbox" id="articuloFraccion" aria-describedby="articuloFraccionAyuda"> Se vende por fracción (por libra, metro, litro…)</label>
+                        <small id="articuloFraccionAyuda">El precio es por unidad de medida y se puede vender 1.5, 0.25… El cobro es cantidad × precio: 1.5 libras a Q50 = Q75.</small>
                     </div>
 
                     <details class="form-more">

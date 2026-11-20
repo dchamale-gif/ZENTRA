@@ -13,18 +13,31 @@ const NUMERIC_FIELDS = [
   ['cantidad_disponible', 'La existencia', MAX_QUANTITY, true]
 ];
 
+// Cantidades: enteras, o con hasta 3 decimales si el artículo se vende por fracción
+// (codigos_articulos.vende_fraccion: por libra, metro…).
+const cantidadPermitida = (cantidad, fraccion = false) => (fraccion
+  ? Number.isFinite(cantidad) && Math.abs(Math.round(cantidad * 1000) - cantidad * 1000) < 1e-6
+  : Number.isInteger(cantidad));
+
+const mensajeCantidad = (nombre, fraccion) => (fraccion
+  ? `La cantidad de «${nombre}» admite hasta 3 decimales (por ejemplo 1.5).`
+  : `«${nombre}» se vende por unidades enteras. Si se vende por libra u otra medida, márcalo en Artículos como «Se vende por fracción».`);
+
 /**
  * Devuelve un mensaje de error si algún precio o existencia no es válido,
  * o null si todo está bien. Los campos ausentes se ignoran (actualización parcial).
+ * fraccion: el artículo se vende por fracción (la existencia puede tener decimales).
  */
-const validateArticleNumbers = (body) => {
+const validateArticleNumbers = (body, { fraccion = false } = {}) => {
   for (const [field, label, max, integer] of NUMERIC_FIELDS) {
     const raw = body[field];
     if (raw === undefined || raw === null || raw === '') continue;
     const value = Number(raw);
     if (!Number.isFinite(value)) return `${label} debe ser un número.`;
     if (value < 0) return `${label} no puede ser negativo.`;
-    if (integer && !Number.isInteger(value)) return `${label} debe ser un número entero.`;
+    if (integer && !cantidadPermitida(value, fraccion)) {
+      return fraccion ? `${label} admite hasta 3 decimales.` : `${label} debe ser un número entero.`;
+    }
     if (value > max) {
       return `${label} es demasiado grande (máximo ${max.toLocaleString('es-GT')}).`;
     }
@@ -42,4 +55,4 @@ const DB_INPUT_ERRORS = {
 
 const dbInputErrorMessage = (error) => DB_INPUT_ERRORS[error?.code] || null;
 
-module.exports = { LOW_STOCK_THRESHOLD, validateArticleNumbers, dbInputErrorMessage };
+module.exports = { LOW_STOCK_THRESHOLD, validateArticleNumbers, dbInputErrorMessage, cantidadPermitida, mensajeCantidad };

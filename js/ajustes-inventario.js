@@ -362,7 +362,7 @@ const AjustesInventarioModule = {
             return `<tr data-linea="${this.escape(id)}">
                 <td><strong>${this.escape(articulo.nombre_articulo)}</strong><small class="ajuste-codigo">${this.escape(articulo.codigo)}</small></td>
                 <td class="text-right">${existencia.toLocaleString('es-GT')}</td>
-                <td class="text-right"><input class="form-input ajuste-cantidad" type="number" min="${conteo ? 0 : 1}" ${efecto === 'salida' ? `max="${existencia}"` : ''} step="1" inputmode="numeric"
+                <td class="text-right"><input class="form-input ajuste-cantidad" type="number" min="${conteo ? 0 : (articulo.vende_fraccion ? 0.001 : 1)}" ${efecto === 'salida' ? `max="${existencia}"` : ''} step="${articulo.vende_fraccion ? 'any' : '1'}" inputmode="${articulo.vende_fraccion ? 'decimal' : 'numeric'}"
                     data-campo="valor" value="${this.escape(linea.valor)}" aria-label="${this.escape(columna)} de ${this.escape(articulo.nombre_articulo)}"></td>
                 <td class="text-right" data-quedara></td>
                 <td><input class="form-input ajuste-nota" type="text" maxlength="200" data-campo="nota" value="${this.escape(linea.nota)}" placeholder="Detalle (opcional)" aria-label="Nota de ${this.escape(articulo.nombre_articulo)}"></td>
@@ -377,10 +377,14 @@ const AjustesInventarioModule = {
     diferencia(linea) {
         if (linea.valor === '' || linea.valor === null) return null;
         const valor = Number(linea.valor);
-        if (!Number.isInteger(valor) || valor < 0) return null;
+        // Por fracción (libra, metro): hasta 3 decimales; los demás, enteros.
+        const valido = linea.articulo.vende_fraccion
+            ? Number.isFinite(valor) && Math.abs(Math.round(valor * 1000) - valor * 1000) < 1e-6
+            : Number.isInteger(valor);
+        if (!valido || valor < 0) return null;
         const existencia = Number(linea.articulo.cantidad_disponible || 0);
         const efecto = this.efecto();
-        if (efecto === 'conteo') return valor - existencia;
+        if (efecto === 'conteo') return Math.round((valor - existencia) * 1000) / 1000;
         if (valor === 0) return null;
         return efecto === 'salida' ? -valor : valor;
     },
@@ -394,7 +398,7 @@ const AjustesInventarioModule = {
             celda.textContent = linea.valor === '' ? '—' : 'No válida';
             return;
         }
-        const nueva = existencia + diferencia;
+        const nueva = Math.round((existencia + diferencia) * 1000) / 1000;
         if (nueva < 0) {
             celda.textContent = `Solo hay ${existencia}`;
             fila.classList.add('ajuste-falta');

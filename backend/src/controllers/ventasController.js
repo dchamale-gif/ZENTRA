@@ -1,6 +1,6 @@
 const pool = require('../db/connection');
 const authPool = require('../db/authConnection');
-const { dbInputErrorMessage } = require('../utils/inventory');
+const { dbInputErrorMessage, cantidadPermitida, mensajeCantidad } = require('../utils/inventory');
 const { limitarRango } = require('../utils/rangoConsulta');
 const { registrarMovimientoCaja, anularMovimientosDeVenta } = require('../utils/cajaLedger');
 
@@ -99,7 +99,8 @@ const normalizeItems = (items) => {
     if (!['articulo', 'medicina'].includes(tipo) || !conceptoId) {
       throw httpError(400, `Línea ${index + 1}: selecciona un artículo`);
     }
-    if (!Number.isInteger(cantidad) || cantidad <= 0 || !Number.isFinite(precioUnitario) || precioUnitario < 0) {
+    // Hasta 3 decimales; si el artículo no se vende por fracción, se revisa al descontar existencia.
+    if (!cantidadPermitida(cantidad, true) || cantidad <= 0 || !Number.isFinite(precioUnitario) || precioUnitario < 0) {
       throw httpError(400, `Línea ${index + 1}: cantidad o precio no válido`);
     }
     const descuento = Number(item.descuento || 0);
@@ -263,13 +264,15 @@ const validateAndDiscountStock = async (client, items) => {
     const stockColumn = isMedicine ? 'cantidad' : 'cantidad_disponible';
     const nameColumn = isMedicine ? 'nombre' : 'nombre_articulo';
     const result = await client.query(
-      `SELECT ${stockColumn} AS stock, ${nameColumn} AS nombre FROM ${table} WHERE id = $1 FOR UPDATE`,
+      `SELECT ${stockColumn} AS stock, ${nameColumn} AS nombre, ${isMedicine ? 'false' : 'vende_fraccion'} AS fraccion
+       FROM ${table} WHERE id = $1 FOR UPDATE`,
       [item.conceptoId]
     );
     if (result.rows.length === 0) {
       throw httpError(400, 'Uno de los artículos ya no existe; vuelve a seleccionarlo');
     }
-    const { stock, nombre } = result.rows[0];
+    const { stock, nombre, fraccion } = result.rows[0];
+    if (!cantidadPermitida(item.cantidad, fraccion)) throw httpError(400, mensajeCantidad(nombre, fraccion));
     if (Number(stock) < item.cantidad) {
       throw httpError(409, `No hay suficiente existencia de «${nombre}»: hay ${Number(stock) || 0} y quieres vender ${item.cantidad}. Baja la cantidad o registra una compra.`);
     }

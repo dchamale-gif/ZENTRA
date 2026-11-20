@@ -6,7 +6,7 @@ const ARTICLE_COLUMNS = `
   id, codigo, nombre_articulo, descripcion, categoria, familia,
   precio_unitario, cantidad_disponible, activo, created_at, updated_at,
   tipo, subfamilia, precio_costo, unidad_medida, codigo_barras,
-  codigo_alternativo, descripcion2, margen
+  codigo_alternativo, descripcion2, margen, vende_fraccion
 `;
 
 // Precio de venta cambiado a mano: si el ERP manda los precios, se publica también en la web.
@@ -182,6 +182,7 @@ const createArticulo = async (req, res) => {
       activo = true,
       foto
     } = req.body;
+    const vendeFraccion = req.body.vende_fraccion === true;
 
     // Validar campos requeridos
     if (!String(nombre_articulo || '').trim()) {
@@ -190,7 +191,7 @@ const createArticulo = async (req, res) => {
       });
     }
     leerMargen(req.body);
-    const numberError = validateArticleNumbers(req.body);
+    const numberError = validateArticleNumbers(req.body, { fraccion: vendeFraccion });
     if (numberError) return res.status(400).json({ error: numberError });
     if (foto) parseFotoBase64(foto);
 
@@ -214,13 +215,13 @@ const createArticulo = async (req, res) => {
     const values = [codigo, nombre_articulo, descripcion || null, categoria || null, familia || null,
       subfamilia || null, precio_unitario ?? 0, precio_costo ?? 0, cantidad_disponible ?? 0,
       unidad_medida || null, codigo_barras || null, codigo_alternativo || null,
-      descripcion2 || null, tipo || 'producto', activo];
+      descripcion2 || null, tipo || 'producto', activo, vendeFraccion];
 
     const result = await client.query(
       `INSERT INTO codigos_articulos
        (${requiresManualId ? 'id, ' : ''}codigo, nombre_articulo, descripcion, categoria, familia, subfamilia,
         precio_unitario, precio_costo, cantidad_disponible, unidad_medida,
-        codigo_barras, codigo_alternativo, descripcion2, tipo, activo,
+        codigo_barras, codigo_alternativo, descripcion2, tipo, activo, vende_fraccion,
         created_at, updated_at)
        VALUES (${requiresManualId ? '$1, ' : ''}${values.map((_, index) => `$${index + (requiresManualId ? 2 : 1)}`).join(', ')}, NOW(), NOW())
        RETURNING ${ARTICLE_COLUMNS}`,
@@ -275,8 +276,6 @@ const updateArticulo = async (req, res) => {
     } = req.body;
 
     leerMargen(req.body);
-    const numberError = validateArticleNumbers(req.body);
-    if (numberError) return res.status(400).json({ error: numberError });
     if (nombre_articulo !== undefined && !String(nombre_articulo).trim()) {
       return res.status(400).json({ error: 'Nombre del artículo es requerido' });
     }
@@ -284,12 +283,20 @@ const updateArticulo = async (req, res) => {
 
     // Verificar que existe
     const existing = await pool.query(
-      'SELECT id, precio_unitario, cantidad_disponible, margen FROM codigos_articulos WHERE id = $1',
+      'SELECT id, precio_unitario, cantidad_disponible, margen, vende_fraccion FROM codigos_articulos WHERE id = $1',
       [id]
     );
 
     if (existing.rows.length === 0) {
       return res.status(404).json({ error: 'Artículo no encontrado' });
+    }
+    // Se vende por fracción: lo que dice el formulario o, si no viene, lo que ya tenía.
+    const vendeFraccion = typeof req.body.vende_fraccion === 'boolean' ? req.body.vende_fraccion : existing.rows[0].vende_fraccion;
+    const numberError = validateArticleNumbers(req.body, { fraccion: vendeFraccion });
+    if (numberError) return res.status(400).json({ error: numberError });
+    const existenciaFinal = cantidad_disponible ?? existing.rows[0].cantidad_disponible;
+    if (!vendeFraccion && !Number.isInteger(Number(existenciaFinal))) {
+      return res.status(400).json({ error: `La existencia es ${Number(existenciaFinal)}: para vender por unidades enteras, primero ajústala a un número entero.` });
     }
 
     // Precio y existencia tienen su propio permiso (módulos Precios y Ajustes de inventario):
@@ -325,12 +332,13 @@ const updateArticulo = async (req, res) => {
            descripcion2 = COALESCE($13, descripcion2),
            tipo = COALESCE($14, tipo),
            activo = COALESCE($15, activo),
+           vende_fraccion = $17,
            updated_at = NOW()
        WHERE id = $16
       RETURNING ${ARTICLE_COLUMNS}`,
       [codigo, nombre_articulo, descripcion, categoria, familia, subfamilia,
        precio_unitario, precio_costo, cantidad_disponible, unidad_medida,
-       codigo_barras, codigo_alternativo, descripcion2, tipo, activo, id]
+       codigo_barras, codigo_alternativo, descripcion2, tipo, activo, id, vendeFraccion]
     );
     await guardarFoto(pool, id, foto);
     await guardarMargen(pool, id, req.body, result.rows[0]);
@@ -441,7 +449,8 @@ const actualizarCantidad = async (req, res) => {
     if (cantidad_disponible === undefined) {
       return res.status(400).json({ error: 'Cantidad es requerida' });
     }
-    const numberError = validateArticleNumbers({ cantidad_disponible });
+    const fraccion = await pool.query('SELECT vende_fraccion FROM codigos_articulos WHERE id = $1', [id]);
+    const numberError = validateArticleNumbers({ cantidad_disponible }, { fraccion: Boolean(fraccion.rows[0]?.vende_fraccion) });
     if (numberError) return res.status(400).json({ error: numberError });
 
     const result = await pool.query(

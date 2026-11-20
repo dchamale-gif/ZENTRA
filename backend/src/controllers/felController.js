@@ -2,7 +2,7 @@ const pool = require('../db/connection');
 const { getTenantId } = require('../db/tenantContext');
 const { generateId } = require('../utils/helpers');
 const { encrypt, decrypt } = require('../utils/secretBox');
-const { generarFactura, generarAnulacion, FRASES_POR_DEFECTO } = require('../utils/fel/dte');
+const { generarFactura, generarAnulacion, FRASES_POR_DEFECTO, unidadSat } = require('../utils/fel/dte');
 const { nitValido, normalizarReceptor } = require('../utils/fel/identificacion');
 const { CATALOGO, obtenerConector, pdfDelCertificador } = require('../utils/fel/certificadores');
 const { leerFactura } = require('../utils/fel/lectura');
@@ -228,7 +228,8 @@ const emitirFactura = async (ventaId, receptorInput, userId, felHabilitada) => {
     `SELECT vi.cantidad, vi.precio_unitario, COALESCE(a.nombre_articulo, m.nombre, 'Producto') AS descripcion,
             -- Descuento de la línea más su parte del descuento al total.
             COALESCE(vi.descuento, 0) + COALESCE(vi.descuento_general, 0) AS descuento,
-            CASE WHEN lower(COALESCE(a.tipo, '')) LIKE 'servicio%' THEN 'S' ELSE 'B' END AS bien_o_servicio
+            CASE WHEN lower(COALESCE(a.tipo, '')) LIKE 'servicio%' THEN 'S' ELSE 'B' END AS bien_o_servicio,
+            COALESCE(a.vende_fraccion, false) AS vende_fraccion, a.unidad_medida
      FROM venta_items vi
      LEFT JOIN codigos_articulos a ON a.id = vi.articulo_id
      LEFT JOIN medicinas m ON m.id = vi.medicina_id
@@ -248,6 +249,8 @@ const emitirFactura = async (ventaId, receptorInput, userId, felHabilitada) => {
       precioUnitario: Number(linea.precio_unitario),
       descuento: Number(linea.descuento),
       descripcion: linea.descripcion,
+      // Por fracción: la unidad del artículo (libra → LB); el resto, por unidad (UNI).
+      unidad: linea.vende_fraccion ? unidadSat(linea.unidad_medida) : 'UNI',
       bienOServicio: linea.bien_o_servicio
     }))
   });

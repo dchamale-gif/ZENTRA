@@ -4,6 +4,7 @@ const { registrarVenta, sendError, httpError } = require('./ventasController');
 const { FOTO_VERSION_COLUMN } = require('../utils/fotos');
 const { prepararFactura, emitirFactura, facturacionActiva } = require('./felController');
 const { normalizarReceptor } = require('../utils/fel/identificacion');
+const { cantidadPermitida, mensajeCantidad } = require('../utils/inventory');
 
 // El punto de venta cobra al momento; las ventas al crédito se registran en Ventas.
 // «mixto» es el pago dividido: llega con el detalle en pagos [{ metodo, monto }].
@@ -14,7 +15,7 @@ const userName = (user) => [user.nombre, user.apellido].filter(Boolean).join(' '
 
 const CUENTA_SELECT = `
   SELECT c.id, c.nombre, c.estado, c.version, c.abierta_por_nombre, c.created_at, c.updated_at,
-         COALESCE(SUM(i.cantidad), 0)::INTEGER AS unidades,
+         ROUND(COALESCE(SUM(i.cantidad), 0)::NUMERIC, 3)::FLOAT8 AS unidades,
          COALESCE(SUM(i.descuento), 0) AS descuento,
          COALESCE(SUM(i.cantidad * i.precio_unitario - i.descuento), 0) AS total
   FROM pos_cuentas c
@@ -42,6 +43,7 @@ const getCuentaDetalle = async (db, cuentaId) => {
   if (!cuenta.rows[0]) return null;
   const items = await db.query(
     `SELECT i.id, i.articulo_id, a.nombre_articulo AS nombre, a.codigo, i.cantidad,
+            a.vende_fraccion, a.unidad_medida,
             i.precio_unitario, i.descuento, i.nota, i.user_id, i.usuario_nombre, i.created_at
      FROM pos_cuenta_items i
      JOIN codigos_articulos a ON a.id = i.articulo_id
@@ -77,7 +79,7 @@ const getCatalogo = async (req, res) => {
     const result = await pool.query(
       `SELECT id, codigo, nombre_articulo AS nombre, categoria AS seccion, familia, subfamilia,
               COALESCE(precio_unitario, 0) AS precio, COALESCE(cantidad_disponible, 0) AS stock,
-              ${FOTO_VERSION_COLUMN}
+              vende_fraccion, unidad_medida, ${FOTO_VERSION_COLUMN}
        FROM codigos_articulos
        WHERE COALESCE(activo, true) = true
        ORDER BY categoria NULLS LAST, familia NULLS LAST, nombre_articulo`
@@ -129,17 +131,28 @@ const createCuenta = async (req, res) => {
   }
 };
 
-const addItem = withCuenta('Error agregando el producto', async (client, cuenta, req) => {
-  const cantidad = Number(req.body.cantidad ?? 1);
-  if (!Number.isInteger(cantidad) || cantidad <= 0 || cantidad > MAX_CANTIDAD) {
-    throw httpError(400, `La cantidad debe ser un número entero entre 1 y ${MAX_CANTIDAD}`);
+// Cantidad de una línea: mayor que 0, hasta MAX_CANTIDAD; con decimales solo si el artículo
+// se vende por fracción.
+const leerCantidad = (valor, articulo) => {
+  const cantidad = Number(valor);
+  if (!Number.isFinite(cantidad) || cantidad <= 0 || cantidad > MAX_CANTIDAD) {
+    throw httpError(400, `La cantidad debe ser mayor que 0 y hasta ${MAX_CANTIDAD}`);
   }
+  if (!cantidadPermitida(cantidad, articulo.vende_fraccion)) {
+    throw httpError(400, mensajeCantidad(articulo.nombre, articulo.vende_fraccion));
+  }
+  return cantidad;
+};
+
+const addItem = withCuenta('Error agregando el producto', async (client, cuenta, req) => {
   const nota = String(req.body.nota || '').trim().slice(0, 120);
   const articulo = await client.query(
-    'SELECT id, COALESCE(precio_unitario, 0) AS precio FROM codigos_articulos WHERE id = $1 AND COALESCE(activo, true) = true',
+    `SELECT id, nombre_articulo AS nombre, vende_fraccion, COALESCE(precio_unitario, 0) AS precio
+     FROM codigos_articulos WHERE id = $1 AND COALESCE(activo, true) = true`,
     [String(req.body.articulo_id || '')]
   );
   if (!articulo.rows[0]) throw httpError(400, 'El producto ya no está disponible; actualiza el catálogo');
+  const cantidad = leerCantidad(req.body.cantidad ?? 1, articulo.rows[0]);
 
   // Si dos toques llegan a la vez, la base suma ambos sobre la misma línea.
   await client.query(
@@ -155,8 +168,25 @@ const addItem = withCuenta('Error agregando el producto', async (client, cuenta,
   return 201;
 });
 
-// Suma o resta unidades a una línea; en 0 la línea se quita.
+// Suma o resta unidades a una línea (delta); en 0 la línea se quita. Con «cantidad» se
+// escribe la cantidad exacta (artículos por fracción: 1.5 lb).
 const changeItem = withCuenta('Error cambiando la cantidad', async (client, cuenta, req) => {
+  if (req.body.cantidad !== undefined) {
+    const linea = await client.query(
+      `SELECT a.nombre_articulo AS nombre, a.vende_fraccion
+       FROM pos_cuenta_items i JOIN codigos_articulos a ON a.id = i.articulo_id
+       WHERE i.id = $1 AND i.cuenta_id = $2`,
+      [req.params.itemId, cuenta.id]
+    );
+    if (!linea.rows[0]) throw httpError(404, 'Ese producto ya no está en la cuenta');
+    const cantidad = leerCantidad(req.body.cantidad, linea.rows[0]);
+    await client.query(
+      `UPDATE pos_cuenta_items SET cantidad = $1::FLOAT8, descuento = LEAST(descuento, $1::NUMERIC * precio_unitario), updated_at = NOW()
+       WHERE id = $2 AND cuenta_id = $3`,
+      [cantidad, req.params.itemId, cuenta.id]
+    );
+    return;
+  }
   const delta = Number(req.body.delta);
   if (!Number.isInteger(delta) || delta === 0 || Math.abs(delta) > MAX_CANTIDAD) {
     throw httpError(400, 'Indica cuántas unidades sumar o quitar');
@@ -230,7 +260,7 @@ const cobrarCuenta = async (req, res) => {
     const cuenta = await lockCuentaAbierta(client, req.params.id);
     // Las líneas de distintos usuarios se agrupan por producto y precio en la venta.
     const lineas = await client.query(
-      `SELECT articulo_id, precio_unitario, SUM(cantidad)::INTEGER AS cantidad, SUM(descuento) AS descuento
+      `SELECT articulo_id, precio_unitario, ROUND(SUM(cantidad)::NUMERIC, 3)::FLOAT8 AS cantidad, SUM(descuento) AS descuento
        FROM pos_cuenta_items WHERE cuenta_id = $1
        GROUP BY articulo_id, precio_unitario ORDER BY MIN(created_at)`,
       [cuenta.id]

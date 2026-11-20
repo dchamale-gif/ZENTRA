@@ -111,6 +111,7 @@ const CodigosArticulosModule = {
             descripcion: articulo.descripcion || '',
             descripcion2: articulo.descripcion2 || '',
             fotoVersion: articulo.foto_version || '',
+            vendeFraccion: articulo.vende_fraccion === true,
             activo: articulo.activo !== false
         };
 
@@ -582,6 +583,7 @@ const CodigosArticulosModule = {
             document.getElementById('articuloSubfamilia').value = articulo.subfamiliaId;
             document.getElementById('articuloTipo').value = articulo.tipo;
             document.getElementById('articuloEstado').value = articulo.estado;
+            document.getElementById('articuloFraccion').checked = articulo.vendeFraccion;
             document.getElementById('articuloDescripcion').value = articulo.descripcion || '';
         } else {
             this.renderFamiliasForModal();
@@ -831,7 +833,11 @@ const CodigosArticulosModule = {
         check('margen', Number.isNaN(values.margen) || values.margen < 0 || values.margen > 1000, 'Escribe un margen entre 0 y 1000, o déjalo vacío.');
         check('cantidad', Number.isNaN(values.cantidad), 'Escribe cuántas unidades tienes hoy (0 si no tienes).');
         check('cantidad', values.cantidad < 0, 'La existencia no puede ser negativa.');
-        check('cantidad', !Number.isInteger(values.cantidad), 'La existencia debe ser un número entero.');
+        if (document.getElementById('articuloFraccion').checked) {
+            check('cantidad', Math.abs(Math.round(values.cantidad * 1000) - values.cantidad * 1000) > 1e-6, 'La existencia admite hasta 3 decimales, por ejemplo 12.5.');
+        } else {
+            check('cantidad', !Number.isInteger(values.cantidad), 'La existencia debe ser un número entero. Si lo vendes por libra u otra medida, marca «Se vende por fracción».');
+        }
         check('cantidad', values.cantidad > 2147483647, 'La existencia es demasiado grande.');
 
         if (!errors.length) return values;
@@ -887,7 +893,8 @@ const CodigosArticulosModule = {
                 codigo_alternativo: this.state.selectedArticulo?.codigoAlternativo || null,
                 descripcion2: concepto || null,
                 tipo: tipo || 'producto',
-                activo: estado !== 'inactivo'
+                activo: estado !== 'inactivo',
+                vende_fraccion: document.getElementById('articuloFraccion').checked
             };
             if (this.state.fotoPendiente !== undefined) apiData.foto = this.state.fotoPendiente;
 

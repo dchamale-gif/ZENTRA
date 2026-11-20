@@ -2,6 +2,7 @@ const pool = require('../db/connection');
 const { getNextCodigo } = require('./codigosArticulosController');
 const { text, number, bool, runImport, rowError } = require('../utils/bulkImport');
 const { guardarFoto } = require('../utils/fotos');
+const { cantidadPermitida } = require('../utils/inventory');
 
 const isDryRun = (req) => req.body.dryRun === true;
 
@@ -98,6 +99,15 @@ const ARTICULO_UPDATE_COLUMNS = [
  * raw._soloAlCrear: columnas que se usan al crear el artículo pero no al actualizarlo.
  * Devuelve 'created', 'updated' o 'unchanged'.
  */
+// Existencia con decimales solo en artículos que se venden por fracción (se marcan en Artículos).
+const revisarExistencia = (data, fraccion) => {
+  if (data.cantidad_disponible === null || data.cantidad_disponible === undefined) return;
+  if (!cantidadPermitida(data.cantidad_disponible, fraccion)) {
+    throw rowError(fraccion ? 'La existencia admite hasta 3 decimales'
+      : 'La existencia debe ser un número entero (márcalo en Artículos como «Se vende por fracción» para usar decimales)');
+  }
+};
+
 const upsertArticulo = async (client, raw, index, { requiresManualId }) => {
   const activoRaw = raw.activo;
   const data = {
@@ -126,12 +136,13 @@ const upsertArticulo = async (client, raw, index, { requiresManualId }) => {
 
   if (data.codigo) {
     const existing = await client.query(
-      'SELECT id FROM codigos_articulos WHERE codigo = $1', [data.codigo]
+      'SELECT id, vende_fraccion FROM codigos_articulos WHERE codigo = $1', [data.codigo]
     );
     if (existing.rows.length > 0) {
       const id = existing.rows[0].id;
       // Lo que solo se copia al crear (p. ej. existencia de la web) no pisa al artículo existente.
       (raw._soloAlCrear || []).forEach((column) => { data[column] = null; });
+      revisarExistencia(data, existing.rows[0].vende_fraccion);
       // Lo que llega vacío conserva su valor (el nombre también, si es «solo al crear»).
       const values = ARTICULO_UPDATE_COLUMNS.map((column) => data[column]);
       const expressions = ARTICULO_UPDATE_COLUMNS.map((column, i) => `COALESCE($${i + 1}, ${column})`);
@@ -151,6 +162,8 @@ const upsertArticulo = async (client, raw, index, { requiresManualId }) => {
     await client.query("SELECT pg_advisory_xact_lock(hashtext('codigos_articulos_codigo_correlativo'))");
     data.codigo = await getNextCodigo(client);
   }
+  // Artículo nuevo: se crea por unidades; la marca de fracción se pone después en Artículos.
+  revisarExistencia(data, false);
 
   const values = [data.codigo, data.nombre_articulo, data.descripcion, data.categoria,
     data.familia, data.subfamilia, data.precio_unitario ?? 0, data.precio_costo ?? 0,

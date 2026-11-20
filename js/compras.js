@@ -300,7 +300,7 @@ const ComprasModule = {
             <tr data-item-id="${this.escapeHtml(item.id)}">
                 <td>${this.escapeHtml(item.concepto_nombre)}${item.concepto_codigo ? `<small class="compra-detalle">${this.escapeHtml(item.concepto_codigo)}</small>` : ''}</td>
                 <td class="text-right">${Number(item.cantidad)}</td>
-                <td><input class="form-input receive-qty" type="text" inputmode="numeric" autocomplete="off" value="${Number(item.cantidad)}" aria-label="Cantidad que llegó de ${this.escapeHtml(item.concepto_nombre)}"></td>
+                <td><input class="form-input receive-qty" type="text" inputmode="decimal" autocomplete="off" value="${Number(item.cantidad)}" aria-label="Cantidad que llegó de ${this.escapeHtml(item.concepto_nombre)}"></td>
                 <td><input class="form-input receive-price" type="text" inputmode="decimal" autocomplete="off" value="${Number(item.precio_unitario)}" aria-label="Costo unitario de ${this.escapeHtml(item.concepto_nombre)}"></td>
                 <td class="text-right receive-subtotal"></td>
             </tr>`).join('');
@@ -335,16 +335,22 @@ const ComprasModule = {
         document.getElementById('receiveTotal').textContent = formatQ(total);
     },
 
+    // Número desde min, con hasta 3 decimales (1.5 libras); enteros o no lo decide el artículo.
+    cantidadValida(valor, min) {
+        return Number.isFinite(valor) && valor >= min && Math.abs(Math.round(valor * 1000) - valor * 1000) < 1e-6;
+    },
+
     async recibir() {
         const compra = this.state.recibiendo;
         if (!compra) return;
         const error = document.getElementById('receiveError');
         error.hidden = true;
         const lines = this.readReceiveLines();
-        const invalid = lines.find(line => !Number.isInteger(line.cantidad) || line.cantidad < 0 ||
+        // Hasta 3 decimales (artículos por libra o metro); el servidor exige enteros en los demás.
+        const invalid = lines.find(line => !this.cantidadValida(line.cantidad, 0) ||
             Number.isNaN(line.precio_unitario) || line.precio_unitario < 0);
         if (invalid) {
-            error.textContent = `«${invalid.nombre}»: escribe una cantidad entera (0 si no llegó) y un costo válido.`;
+            error.textContent = `«${invalid.nombre}»: escribe la cantidad que llegó (0 si no llegó) y un costo válido.`;
             error.hidden = false;
             return;
         }
@@ -633,7 +639,7 @@ const ComprasModule = {
                             <div id="conceptSearchResults-${index}" class="concept-search-results" hidden></div>
                         </div>
                     </td>
-                    <td><input class="form-input" type="text" inputmode="numeric" autocomplete="off" aria-label="Cantidad de la línea ${index + 1}" value="${this.escapeHtml(item.texto?.cantidad ?? item.cantidad)}" onchange="ComprasModule.updateItem(${index}, 'cantidad', this.value)"></td>
+                    <td><input class="form-input" type="text" inputmode="decimal" autocomplete="off" aria-label="Cantidad de la línea ${index + 1}" value="${this.escapeHtml(item.texto?.cantidad ?? item.cantidad)}" onchange="ComprasModule.updateItem(${index}, 'cantidad', this.value)"></td>
                     <td><input id="purchaseItemPrice-${index}" class="form-input" type="text" inputmode="decimal" autocomplete="off" aria-label="Precio unitario de la línea ${index + 1}" value="${this.escapeHtml(item.texto?.precio_unitario ?? item.precio_unitario)}" onchange="ComprasModule.updateItem(${index}, 'precio_unitario', this.value)"></td>
                     <td><strong id="purchaseItemSubtotal-${index}">${formatQ(subtotal)}</strong></td>
                     <td>
@@ -676,11 +682,11 @@ const ComprasModule = {
             return;
         }
         const lineError = payload.items.findIndex(item =>
-            !item.concepto_id || !Number.isInteger(item.cantidad) || item.cantidad <= 0 ||
+            !item.concepto_id || !this.cantidadValida(item.cantidad, 0.001) ||
             Number.isNaN(item.precio_unitario) || item.precio_unitario < 0 || item.precio_unitario > 99999999.99);
         if (lineError >= 0) {
             const prefix = payload.items.length > 1 ? `Línea ${lineError + 1}: ` : '';
-            this.notify(`${prefix}elige un artículo, una cantidad entera mayor que 0 y un precio válido (por ejemplo 25.50).`.replace(/^./, c => c.toUpperCase()), 'warning');
+            this.notify(`${prefix}elige un artículo, una cantidad mayor que 0 y un precio válido (por ejemplo 25.50).`.replace(/^./, c => c.toUpperCase()), 'warning');
             return;
         }
 

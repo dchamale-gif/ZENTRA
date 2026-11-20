@@ -168,7 +168,10 @@ const PosModule = {
                 familia: articulo.familia || '',
                 precio: Number(articulo.precio) || 0,
                 stock: Number(articulo.stock) || 0,
-                fotoVersion: articulo.foto_version || ''
+                fotoVersion: articulo.foto_version || '',
+                // Por fracción: se vende 1.5, 0.25… de su unidad (libra, metro); el precio es por unidad.
+                fraccion: articulo.vende_fraccion === true,
+                unidad: articulo.unidad_medida || ''
             }));
             this.state.catalogLoadedAt = Date.now();
         } catch (error) {
@@ -314,14 +317,14 @@ const PosModule = {
             const sinStock = articulo.stock <= 0;
             return `<button type="button" class="pos-product${sinStock ? ' pos-product-out' : ''}${withPhotos ? ' pos-product-photo' : ''}" data-articulo="${this.escape(articulo.id)}"
                 ${disabled || sinStock ? 'disabled' : ''} title="${sinStock ? 'Sin existencia' : `Agregar ${this.escape(articulo.nombre)}`}">
-                ${units ? `<span class="pos-product-count" aria-label="${units} en la cuenta">${units}</span>` : ''}
+                ${units ? `<span class="pos-product-count" aria-label="${this.cantidadTexto(units)} en la cuenta">${this.cantidadTexto(units)}</span>` : ''}
                 ${articulo.fotoVersion
                     ? `<img class="pos-product-img" src="${this.fotoUrl(articulo)}" alt="" loading="lazy" decoding="async">`
                     : (withPhotos ? '<span class="pos-product-img pos-product-img-empty" aria-hidden="true"><i class="fas fa-image"></i></span>' : '')}
                 <span class="pos-product-name">${this.escape(articulo.nombre)}</span>
                 <span class="pos-product-meta">
-                    <strong>${formatQ(articulo.precio)}</strong>
-                    <small>${sinStock ? 'Sin existencia' : `${articulo.stock} disp.`}</small>
+                    <strong>${formatQ(articulo.precio)}${articulo.fraccion ? `<small> / ${this.escape(this.unidadDe(articulo))}</small>` : ''}</strong>
+                    <small>${sinStock ? 'Sin existencia' : `${this.cantidadTexto(articulo.stock)}${articulo.fraccion ? ` ${this.escape(this.unidadDe(articulo))}` : ''} disp.`}</small>
                 </span>
             </button>`;
         }).join('');
@@ -439,17 +442,19 @@ const PosModule = {
                         <span class="pos-line-name">${this.escape(item.nombre)}</span>
                         <strong class="pos-line-total">${formatQ(qty * Number(item.precio_unitario) - descuento)}</strong>
                         <div class="pos-line-info">
-                            <small>${formatQ(Number(item.precio_unitario))} c/u${byOther ? ` · agregó ${this.escape(item.usuario_nombre || 'otro usuario')}` : ''}${item.nota ? ` · ${this.escape(item.nota)}` : ''}</small>
+                            <small>${formatQ(Number(item.precio_unitario))} ${item.vende_fraccion ? `por ${this.escape(this.unidadDe(item))}` : 'c/u'}${byOther ? ` · agregó ${this.escape(item.usuario_nombre || 'otro usuario')}` : ''}${item.nota ? ` · ${this.escape(item.nota)}` : ''}</small>
                             ${descuento > 0 ? `<small class="pos-line-desc">Descuento −${formatQ(descuento)}</small>` : ''}
                             ${overStock ? `<small class="pos-line-warning">Solo hay ${stock} en existencia</small>` : ''}
                         </div>
                         <div class="pos-line-controls">
                             <div class="pos-line-qty pos-sell-only">
                                 <button type="button" class="pos-qty-btn" data-line-action="minus" data-item="${this.escape(item.id)}" aria-label="Quitar una unidad de ${this.escape(item.nombre)}"><i class="fas fa-minus" aria-hidden="true"></i></button>
-                                <span aria-live="polite">${qty}</span>
+                                ${item.vende_fraccion
+                                    ? `<button type="button" class="pos-qty-valor" data-line-action="qty" data-item="${this.escape(item.id)}" aria-label="Cambiar la cantidad de ${this.escape(item.nombre)}" title="Escribir la cantidad" aria-live="polite">${this.cantidadTexto(qty)}</button>`
+                                    : `<span aria-live="polite">${qty}</span>`}
                                 <button type="button" class="pos-qty-btn" data-line-action="plus" data-item="${this.escape(item.id)}" aria-label="Agregar una unidad de ${this.escape(item.nombre)}"><i class="fas fa-plus" aria-hidden="true"></i></button>
                             </div>
-                            <span class="pos-line-qty-readonly">× ${qty}</span>
+                            <span class="pos-line-qty-readonly">× ${this.cantidadTexto(qty)}</span>
                             <div class="pos-line-acciones pos-sell-only">
                                 ${puedeDescontar ? `<button type="button" class="pos-line-remove pos-line-discount${descuento > 0 ? ' active' : ''}" data-line-action="discount" data-item="${this.escape(item.id)}" aria-label="Descuento para ${this.escape(item.nombre)}" title="Descuento"><i class="fas fa-percent" aria-hidden="true"></i></button>` : ''}
                                 <button type="button" class="pos-line-remove" data-line-action="remove" data-item="${this.escape(item.id)}" aria-label="Quitar ${this.escape(item.nombre)} de la cuenta" title="Quitar"><i class="fas fa-xmark" aria-hidden="true"></i></button>
@@ -464,7 +469,7 @@ const PosModule = {
         if (totalEl) totalEl.textContent = formatQ(total);
         const unitsEl = document.getElementById('posUnits');
         const descuento = Number(cuenta?.descuento) || 0;
-        if (unitsEl) unitsEl.textContent = `${units} ${units === 1 ? 'producto' : 'productos'}${descuento > 0 ? ` · descuento −${formatQ(descuento)}` : ''}`;
+        if (unitsEl) unitsEl.textContent = `${this.cantidadTexto(units)} ${units === 1 ? 'producto' : 'productos'}${descuento > 0 ? ` · descuento −${formatQ(descuento)}` : ''}`;
         const chargeBtn = document.getElementById('posChargeBtn');
         if (chargeBtn) {
             chargeBtn.disabled = !cuenta || !cuenta.items.length;
@@ -579,15 +584,45 @@ const PosModule = {
         // Venta de mostrador: sin cuenta seleccionada, el primer toque abre una.
         if (!this.state.cuentaId && !(await this.quickOpenCuenta())) return;
         const articulo = this.state.articulos.find(entry => entry.id === articuloId);
-        if (articulo && (this.unitsByArticulo()[articuloId] || 0) >= articulo.stock) {
-            this.notify(`Solo hay ${articulo.stock} de «${articulo.nombre}» en existencia; al cobrar no alcanzará.`, 'warning');
+        // Por fracción se pregunta cuánto (1.5 libras); los demás suman de uno en uno.
+        const cantidad = articulo?.fraccion ? this.pedirCantidad(articulo) : 1;
+        if (!cantidad) return;
+        if (articulo && (this.unitsByArticulo()[articuloId] || 0) + cantidad > articulo.stock) {
+            this.notify(`Solo hay ${this.cantidadTexto(articulo.stock)} de «${articulo.nombre}» en existencia; al cobrar no alcanzará.`, 'warning');
         }
-        this.bumpPreview(articuloId);
-        await this.mutate(`/api/pos/cuentas/${encodeURIComponent(this.state.cuentaId)}/items`, 'POST', { articulo_id: articuloId, cantidad: 1 });
+        this.bumpPreview(articuloId, cantidad);
+        await this.mutate(`/api/pos/cuentas/${encodeURIComponent(this.state.cuentaId)}/items`, 'POST', { articulo_id: articuloId, cantidad });
+    },
+
+    unidadDe(articulo) {
+        return articulo.unidad || articulo.unidad_medida || 'unidad';
+    },
+
+    // 1.5 → «1.5»; 2 → «2» (sin ceros de más).
+    cantidadTexto(valor) {
+        return (Math.round(Number(valor || 0) * 1000) / 1000).toLocaleString('es-GT', { maximumFractionDigits: 3 });
+    },
+
+    // Cantidad para un artículo por fracción; null si se cancela o no es válida (ya avisado).
+    pedirCantidad(articulo, actual = '') {
+        const unidad = this.unidadDe(articulo);
+        const precio = Number(articulo.precio ?? articulo.precio_unitario) || 0;
+        const texto = prompt(`¿Cuánto de «${articulo.nombre}»? En ${unidad}, por ejemplo 1.5 o 0.25.\nPrecio: ${formatQ(precio)} por ${unidad}.`, actual);
+        if (texto === null) return null;
+        const cantidad = parseMonto(texto);
+        if (!Number.isFinite(cantidad) || cantidad <= 0 || cantidad > 999) {
+            this.notify('Escribe una cantidad mayor que 0, por ejemplo 1.5.', 'warning');
+            return null;
+        }
+        if (Math.abs(Math.round(cantidad * 1000) - cantidad * 1000) > 1e-6) {
+            this.notify('La cantidad admite hasta 3 decimales, por ejemplo 1.25.', 'warning');
+            return null;
+        }
+        return cantidad;
     },
 
     // Respuesta inmediata al toque, antes de que conteste el servidor.
-    bumpPreview(articuloId) {
+    bumpPreview(articuloId, cantidad = 1) {
         const tile = document.querySelector(`.pos-product[data-articulo="${CSS.escape(articuloId)}"]`);
         if (!tile) return;
         let badge = tile.querySelector('.pos-product-count');
@@ -596,13 +631,19 @@ const PosModule = {
             badge.className = 'pos-product-count';
             tile.prepend(badge);
         }
-        badge.textContent = Number(badge.textContent || 0) + 1;
+        badge.textContent = this.cantidadTexto(Number(String(badge.textContent || 0).replace(/,/g, '')) + cantidad);
     },
 
     lineAction(action, itemId) {
         const base = `/api/pos/cuentas/${encodeURIComponent(this.state.cuentaId)}/items/${encodeURIComponent(itemId)}`;
         if (action === 'remove') return this.mutate(base, 'DELETE');
         if (action === 'discount') return this.descontarLinea(itemId, base);
+        if (action === 'qty') {
+            const item = this.state.cuenta?.items?.find(entry => String(entry.id) === String(itemId));
+            if (!item) return;
+            const cantidad = this.pedirCantidad(item, String(Number(item.cantidad)));
+            return cantidad ? this.mutate(base, 'PUT', { cantidad }) : null;
+        }
         return this.mutate(base, 'PUT', { delta: action === 'plus' ? 1 : -1 });
     },
 

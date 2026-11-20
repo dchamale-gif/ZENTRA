@@ -1,5 +1,6 @@
 const { randomUUID } = require('crypto');
 const pool = require('../db/connection');
+const { cantidadPermitida, mensajeCantidad } = require('../utils/inventory');
 
 // Regularizaciones de inventario. Los tipos de ajuste los configura cada empresa y cada uno tiene
 // un efecto: «conteo» (se escribe la existencia contada y se aplica la diferencia), «salida»
@@ -35,13 +36,17 @@ const sendError = (res, error, fallback) => {
 
 const userName = (user) => [user.nombre, user.apellido].filter(Boolean).join(' ') || user.email || null;
 
+// Hasta 3 decimales: si el artículo no se vende por fracción, crear() exige entero.
 const entero = (valor, { min, label }) => {
   const numero = Number(valor);
-  if (valor === '' || valor === null || valor === undefined || !Number.isInteger(numero) || numero < min || numero > MAX_CANTIDAD) {
-    throw httpError(400, `${label} debe ser un número entero entre ${min} y ${MAX_CANTIDAD.toLocaleString('en-US')}`);
+  if (valor === '' || valor === null || valor === undefined || !cantidadPermitida(numero, true)
+      || numero < min || numero > MAX_CANTIDAD) {
+    throw httpError(400, `${label} debe ser un número entre ${min} y ${MAX_CANTIDAD.toLocaleString('en-US')}`);
   }
   return numero;
 };
+
+const redondear3 = (valor) => Math.round(valor * 1000) / 1000;
 
 // ---------- Tipos de ajuste ----------
 
@@ -135,7 +140,7 @@ const RESUMEN_SELECT = `
   SELECT a.id, a.numero, a.tipo_ajuste_id, a.tipo_nombre, a.efecto, a.fecha, a.observaciones, a.estado,
          a.usuario_nombre, a.created_at, a.anulado_at, a.anulado_por_nombre, a.motivo_anulacion,
          COUNT(i.id)::INTEGER AS lineas,
-         COALESCE(SUM(i.cantidad), 0)::INTEGER AS unidades,
+         ROUND(COALESCE(SUM(i.cantidad), 0)::NUMERIC, 3)::FLOAT8 AS unidades,
          COALESCE(SUM(i.cantidad * COALESCE(i.costo_unitario, 0)), 0) AS valor
   FROM ajustes_inventario a
   LEFT JOIN ajuste_inventario_items i ON i.ajuste_id = a.id
@@ -204,7 +209,7 @@ const leerAjuste = async (body) => {
     const nota = String(item.nota || '').trim().slice(0, 200) || null;
     return tipo.efecto === 'conteo'
       ? { articuloId, existencia: entero(item.existencia, { min: 0, label: 'La existencia contada' }), nota }
-      : { articuloId, cantidad: entero(item.cantidad, { min: 1, label: tipo.efecto === 'salida' ? 'La cantidad a descontar' : 'La cantidad a sumar' }), nota };
+      : { articuloId, cantidad: entero(item.cantidad, { min: 0.001, label: tipo.efecto === 'salida' ? 'La cantidad a descontar' : 'La cantidad a sumar' }), nota };
   });
   return { tipo, fecha, observaciones, lineas };
 };
@@ -219,7 +224,7 @@ const crear = async (req, res) => {
     // Un correlativo por empresa sin choques entre dos ajustes simultáneos.
     await client.query("SELECT pg_advisory_xact_lock(hashtext('ajustes_inventario_' || app_current_organization_id()))");
     const articulos = await client.query(
-      `SELECT id, codigo, nombre_articulo, COALESCE(cantidad_disponible, 0) AS existencia, precio_costo
+      `SELECT id, codigo, nombre_articulo, COALESCE(cantidad_disponible, 0) AS existencia, precio_costo, vende_fraccion
        FROM codigos_articulos WHERE id = ANY($1::varchar[]) ORDER BY id FOR UPDATE`,
       [lineas.map((linea) => linea.articuloId)]
     );
@@ -230,15 +235,17 @@ const crear = async (req, res) => {
     for (const linea of lineas) {
       const articulo = porId.get(linea.articuloId);
       if (!articulo) throw httpError(400, 'Uno de los artículos ya no existe; recarga la página');
+      const escrita = tipo.efecto === 'conteo' ? linea.existencia : linea.cantidad;
+      if (!cantidadPermitida(escrita, articulo.vende_fraccion)) throw httpError(400, mensajeCantidad(articulo.nombre_articulo, articulo.vende_fraccion));
       const anterior = Number(articulo.existencia);
-      const cantidad = tipo.efecto === 'conteo' ? linea.existencia - anterior
-        : tipo.efecto === 'salida' ? -linea.cantidad : linea.cantidad;
+      const cantidad = redondear3(tipo.efecto === 'conteo' ? linea.existencia - anterior
+        : tipo.efecto === 'salida' ? -linea.cantidad : linea.cantidad);
       if (cantidad === 0) continue;
       if (anterior + cantidad < 0) {
         faltan.push(`«${articulo.nombre_articulo}» tiene ${anterior} y quieres descontar ${linea.cantidad}`);
         continue;
       }
-      aplicar.push({ articulo, anterior, cantidad, nueva: anterior + cantidad, nota: linea.nota });
+      aplicar.push({ articulo, anterior, cantidad, nueva: redondear3(anterior + cantidad), nota: linea.nota });
     }
     if (faltan.length) {
       throw httpError(409, `No alcanza la existencia: ${faltan.slice(0, 5).join('; ')}${faltan.length > 5 ? ` y ${faltan.length - 5} más` : ''}`);
@@ -307,7 +314,7 @@ const anular = async (req, res) => {
       [req.params.id]
     );
     const faltan = items.rows
-      .filter((item) => Number(item.existencia) - Number(item.cantidad) < 0)
+      .filter((item) => Number(item.existencia) - Number(item.cantidad) < -1e-9)
       .map((item) => `«${item.nombre_articulo}» (quedan ${item.existencia})`);
     if (faltan.length) {
       throw httpError(409, `No se puede anular: ya se vendió o descontó parte de lo que sumó el ajuste: ${faltan.slice(0, 5).join(', ')}`);
