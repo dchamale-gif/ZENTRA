@@ -55,7 +55,7 @@ const PosModule = {
         });
         document.getElementById('posProducts')?.addEventListener('click', (event) => {
             const tile = event.target.closest('[data-articulo]');
-            if (tile && !tile.disabled) this.addItem(tile.dataset.articulo);
+            if (tile && !tile.disabled && tile.getAttribute('aria-disabled') !== 'true') this.addItem(tile.dataset.articulo);
         });
         document.getElementById('posCuentas')?.addEventListener('click', (event) => {
             const tab = event.target.closest('[data-cuenta]');
@@ -334,8 +334,9 @@ const PosModule = {
         container.innerHTML = products.map(articulo => {
             const units = inCuenta[articulo.id] || 0;
             const sinStock = articulo.stock <= 0;
+            // Sin existencia no se usa «disabled»: así el navegador muestra el nombre completo al pasar el mouse.
             return `<button type="button" class="pos-product${sinStock ? ' pos-product-out' : ''}${withPhotos ? ' pos-product-photo' : ''}" data-articulo="${this.escape(articulo.id)}"
-                ${disabled || sinStock ? 'disabled' : ''} title="${sinStock ? 'Sin existencia' : `Agregar ${this.escape(articulo.nombre)}`}">
+                ${disabled ? 'disabled' : ''}${sinStock ? ' aria-disabled="true"' : ''} title="${sinStock ? `${this.escape(articulo.nombre)} (sin existencia)` : `Agregar ${this.escape(articulo.nombre)}`}">
                 ${units ? `<span class="pos-product-count" aria-label="${this.cantidadTexto(units)} en la cuenta">${this.cantidadTexto(units)}</span>` : ''}
                 ${articulo.fotoVersion
                     ? `<img class="pos-product-img" src="${this.fotoUrl(articulo)}" alt="" loading="lazy" decoding="async">`

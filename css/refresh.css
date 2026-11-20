@@ -1070,8 +1070,9 @@ tr.is-inactive td { color: var(--text-gray); }
     -webkit-tap-highlight-color: transparent;
 }
 
-.pos-product:hover:not(:disabled) { border-color: var(--primary-color); }
-.pos-product:active:not(:disabled) { background: var(--primary-soft); }
+.pos-product:hover:not(:disabled):not([aria-disabled="true"]) { border-color: var(--primary-color); }
+.pos-product:active:not(:disabled):not([aria-disabled="true"]) { background: var(--primary-soft); }
+.pos-product[aria-disabled="true"] { cursor: not-allowed; }
 .pos-product:focus-visible { outline: none; box-shadow: var(--ring); }
 .pos-product:disabled { cursor: not-allowed; }
 .pos-product-out { opacity: 0.55; }
