@@ -363,7 +363,9 @@ const CodigosArticulosModule = {
         const margen = costo > 0 && precio > 0 ? ((precio - costo) / precio) * 100 : null;
         const stock = articulo.cantidadDisponible;
         const stockTone = stock <= 0 ? 'is-danger' : (stock <= this.stockBajo ? 'is-warning' : 'is-ok');
-        const stockLabel = stock <= 0 ? 'Agotado' : `${stock.toLocaleString('es-GT')}${articulo.unidadMedida ? ` ${esc(articulo.unidadMedida)}` : ''}`;
+        // La unidad solo si tiene letras: un número pegado a la existencia se lee como otra cifra («4 1» → 41).
+        const unidad = /[a-záéíóúñ]/i.test(articulo.unidadMedida || '') ? ` ${esc(articulo.unidadMedida)}` : '';
+        const stockLabel = stock <= 0 ? 'Agotado' : `${stock.toLocaleString('es-GT')}${unidad}`;
         const codigos = [
             articulo.codigoVenta ? `<span title="Código de venta (interno)">${esc(articulo.codigoVenta)}</span>` : '',
             articulo.codigoCompra ? `<span title="Código de compra o de barras">${esc(articulo.codigoCompra)}</span>` : ''
@@ -821,6 +823,10 @@ const CodigosArticulosModule = {
         if (!document.getElementById('articuloNombre').value.trim()) {
             errors.push(['nombre', 'Escribe el nombre del artículo.']);
         }
+        const unidadMedida = document.getElementById('articuloUnidadMedida').value.trim();
+        if (unidadMedida && !/[a-záéíóúñ]/i.test(unidadMedida)) {
+            errors.push(['unidad', 'La unidad de medida es una palabra (unidad, caja, libra). La cantidad va en Existencia.']);
+        }
         check('precioVenta', Number.isNaN(values.precioVenta), 'Escribe el precio de venta, por ejemplo 25.50.');
         check('precioVenta', values.precioVenta <= 0, 'El precio de venta debe ser mayor que 0.');
         check('precioVenta', values.precioVenta > MAX_PRICE, 'El precio es demasiado grande.');
@@ -841,11 +847,10 @@ const CodigosArticulosModule = {
         check('cantidad', values.cantidad > 2147483647, 'La existencia es demasiado grande.');
 
         if (!errors.length) return values;
-        errors.forEach(([key, message]) => {
-            this.setFieldError(key === 'nombre' ? document.getElementById('articuloNombre') : fields[key], message);
-        });
-        const [firstKey] = errors[0];
-        (firstKey === 'nombre' ? document.getElementById('articuloNombre') : fields[firstKey]).focus();
+        const campo = (key) => (key === 'nombre' ? document.getElementById('articuloNombre')
+            : key === 'unidad' ? document.getElementById('articuloUnidadMedida') : fields[key]);
+        errors.forEach(([key, message]) => this.setFieldError(campo(key), message));
+        campo(errors[0][0]).focus();
         return null;
     },
 

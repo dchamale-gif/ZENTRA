@@ -55,4 +55,12 @@ const DB_INPUT_ERRORS = {
 
 const dbInputErrorMessage = (error) => DB_INPUT_ERRORS[error?.code] || null;
 
-module.exports = { LOW_STOCK_THRESHOLD, validateArticleNumbers, dbInputErrorMessage, cantidadPermitida, mensajeCantidad };
+// La unidad de medida es una palabra (unidad, libra); un número ahí se confunde con la existencia.
+const unidadInvalida = (unidad) => {
+  const texto = String(unidad ?? '').trim();
+  return texto !== '' && !/[a-záéíóúñ]/i.test(texto)
+    ? 'La unidad de medida es una palabra (unidad, caja, libra). La cantidad va en Existencia.'
+    : null;
+};
+
+module.exports = { LOW_STOCK_THRESHOLD, validateArticleNumbers, dbInputErrorMessage, cantidadPermitida, mensajeCantidad, unidadInvalida };

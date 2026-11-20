@@ -1,5 +1,5 @@
 const pool = require('../db/connection');
-const { LOW_STOCK_THRESHOLD, validateArticleNumbers, dbInputErrorMessage } = require('../utils/inventory');
+const { LOW_STOCK_THRESHOLD, validateArticleNumbers, dbInputErrorMessage, unidadInvalida } = require('../utils/inventory');
 const { parseFotoBase64, guardarFoto, FOTO_VERSION_COLUMN } = require('../utils/fotos');
 
 const ARTICLE_COLUMNS = `
@@ -191,7 +191,7 @@ const createArticulo = async (req, res) => {
       });
     }
     leerMargen(req.body);
-    const numberError = validateArticleNumbers(req.body, { fraccion: vendeFraccion });
+    const numberError = validateArticleNumbers(req.body, { fraccion: vendeFraccion }) || unidadInvalida(unidad_medida);
     if (numberError) return res.status(400).json({ error: numberError });
     if (foto) parseFotoBase64(foto);
 
@@ -292,7 +292,7 @@ const updateArticulo = async (req, res) => {
     }
     // Se vende por fracción: lo que dice el formulario o, si no viene, lo que ya tenía.
     const vendeFraccion = typeof req.body.vende_fraccion === 'boolean' ? req.body.vende_fraccion : existing.rows[0].vende_fraccion;
-    const numberError = validateArticleNumbers(req.body, { fraccion: vendeFraccion });
+    const numberError = validateArticleNumbers(req.body, { fraccion: vendeFraccion }) || unidadInvalida(unidad_medida);
     if (numberError) return res.status(400).json({ error: numberError });
     const existenciaFinal = cantidad_disponible ?? existing.rows[0].cantidad_disponible;
     if (!vendeFraccion && !Number.isInteger(Number(existenciaFinal))) {
