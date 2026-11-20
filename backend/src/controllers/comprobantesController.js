@@ -1,5 +1,5 @@
 const authPool = require('../db/authConnection');
-const { datosEmisor } = require('./felController');
+const { datosEmisor, formatoFactura } = require('./felController');
 const { sendError } = require('./ventasController');
 
 /**
@@ -9,12 +9,13 @@ const { sendError } = require('./ventasController');
  */
 const getEmpresa = async (req, res) => {
   try {
-    const [organizacion, emisor] = await Promise.all([
+    const [organizacion, emisor, formato] = await Promise.all([
       authPool.query(
         'SELECT nombre, nit, telefono, direccion, email FROM organizations WHERE id = $1',
         [req.organization.id]
       ),
-      datosEmisor(req.organization.felHabilitada)
+      datosEmisor(req.organization.felHabilitada),
+      formatoFactura(req.organization.felHabilitada)
     ]);
     const org = organizacion.rows[0] || {};
     res.status(200).json({
@@ -25,7 +26,9 @@ const getEmpresa = async (req, res) => {
         nit: emisor?.nit || org.nit || null,
         direccion: emisor?.direccion || org.direccion || null,
         telefono: org.telefono || null,
-        email: org.email || null
+        email: org.email || null,
+        // Cómo imprime sus facturas electrónicas: 'ticket' (80 mm) o 'certificador' (PDF).
+        formatoFactura: formato
       }
     });
   } catch (error) {

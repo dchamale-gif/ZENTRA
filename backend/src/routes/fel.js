@@ -15,5 +15,6 @@ router.post('/documentos/:id/anular', habilitada, rolePermissionMiddleware(['ven
 router.get('/documentos/:id/xml', rolePermissionMiddleware(['ventas_view']), felController.getXml);
 // El punto de venta también imprime la factura recién cobrada.
 router.get('/documentos/:id/pdf', rolePermissionMiddleware(['ventas_view', 'pos_view']), felController.getPdf);
+router.get('/documentos/:id/impresion', rolePermissionMiddleware(['ventas_view', 'pos_view']), felController.getImpresion);
 
 module.exports = router;

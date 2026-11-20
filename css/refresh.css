@@ -960,6 +960,9 @@ tr.is-inactive td { color: var(--text-gray); }
 .fel-receptor { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 0 12px; }
 .fel-receptor-id { display: flex; gap: 6px; }
 .fel-receptor-id .form-input { flex: 1; min-width: 0; text-transform: uppercase; }
+.fel-logo .fel-logo-label { display: block; margin-bottom: 6px; font-weight: 600; }
+.fel-logo-fila { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.fel-logo-vista { max-width: 160px; max-height: 80px; padding: 4px; border: 1px solid var(--border, #e5e9f0); border-radius: 6px; background: #fff; }
 .fel-uuid { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; overflow-wrap: anywhere; }
 @media (max-width: 600px) {
     .fel-receptor { grid-template-columns: minmax(0, 1fr); }

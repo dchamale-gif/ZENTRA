@@ -237,7 +237,19 @@ const ComprobanteModule = {
             .cpb .cpb-item { margin-bottom: 3px; }
             .cpb .cpb-total { font-size: 1.3em; font-weight: bold; }
             .cpb .cpb-chico { font-size: 0.9em; overflow-wrap: anywhere; }
-            .cpb .cpb-nota { margin-top: 2px; text-align: left; white-space: pre-wrap; overflow-wrap: anywhere; }`;
+            .cpb .cpb-nota { margin-top: 2px; text-align: left; white-space: pre-wrap; overflow-wrap: anywhere; }
+            .cpb .cpb-logo { display: block; max-width: 40mm; max-height: 28mm; margin: 0 auto 4px; }
+            .cpb .cpb-igual { height: 0; border-top: 3px double #000; margin: 7px 0; }
+            .cpb .cpb-fel-titulo { margin-top: 2px; font-size: 1.15em; font-weight: bold; }
+            .cpb .cpb-fel-dato { font-weight: bold; overflow-wrap: anywhere; }
+            .cpb .cpb-izq { text-align: left; overflow-wrap: anywhere; }
+            .cpb table.cpb-fel-items { width: 100%; border-collapse: collapse; margin: 2px 0 4px; font: inherit; }
+            .cpb .cpb-fel-items th { padding: 0 0 3px; font-weight: bold; text-align: left; }
+            .cpb .cpb-fel-items td { padding: 1px 0; vertical-align: top; }
+            .cpb .cpb-fel-items .num { text-align: right; white-space: nowrap; padding-left: 4px; }
+            .cpb .cpb-fel-items .desc { overflow-wrap: anywhere; padding-left: 4px; }
+            .cpb .cpb-totales-fel .cpb-fila { justify-content: flex-end; gap: 6px; }
+            .cpb .cpb-anulada { margin: 4px 0; font-size: 1.3em; font-weight: bold; }`;
         }
         return `${comun}
             .cpb { width: 100%; font: 10.5pt/1.4 Arial, Helvetica, sans-serif; color: #111; }
@@ -278,7 +290,142 @@ const ComprobanteModule = {
     },
 
     cuerpo(c, formato, empresa, { pdf = false } = {}) {
-        return this.esHoja(formato) ? this.cuerpoHoja(c, formato, empresa) : this.cuerpoTicket(c, formato, empresa, pdf);
+        if (this.esHoja(formato)) return this.cuerpoHoja(c, formato, empresa);
+        // Factura electrónica en ticket: sale de los datos certificados (ver prepararFel).
+        return c.felDatos ? this.cuerpoTicketFel(c, formato, pdf) : this.cuerpoTicket(c, formato, empresa, pdf);
+    },
+
+    // ---------- Ticket de factura electrónica ----------
+
+    // Datos certificados de la factura (del XML del certificador), con el logo y la sucursal de
+    // la empresa. Se piden una vez por factura; si fallan, se imprime el ticket normal.
+    async prepararFel(c) {
+        const id = c?.factura?.id;
+        if (!id || c.felDatos !== undefined) return c;
+        this.state.felDatos ||= new Map();
+        if (!this.state.felDatos.has(id)) {
+            this.state.felDatos.set(id, fetch(`${authManager.apiBaseUrl}/api/fel/documentos/${encodeURIComponent(id)}/impresion`)
+                .then(response => (response.ok ? response.json() : null))
+                .then(data => data?.factura || null)
+                .catch(() => null));
+        }
+        c.felDatos = await this.state.felDatos.get(id);
+        if (!c.felDatos) this.state.felDatos.delete(id);
+        return c;
+    },
+
+    // Fecha del XML («2026-09-30T16:37:00-06:00», ya en hora de Guatemala) → «30/09/2026 16:37».
+    fechaFel(valor) {
+        if (!valor) return '';
+        const texto = String(valor);
+        if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}.*-06:00$/.test(texto)) {
+            return `${texto.slice(8, 10)}/${texto.slice(5, 7)}/${texto.slice(0, 4)} ${texto.slice(11, 16)}`;
+        }
+        const fecha = new Date(texto);
+        if (Number.isNaN(fecha.getTime())) return texto;
+        const partes = Object.fromEntries(new Intl.DateTimeFormat('es-GT', {
+            timeZone: 'America/Guatemala', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23'
+        }).formatToParts(fecha).map(({ type, value }) => [type, value]));
+        return `${partes.day}/${partes.month}/${partes.year} ${partes.hour}:${partes.minute}`;
+    },
+
+    // 215.5 → «Doscientos quince quetzales con 50/100».
+    montoEnLetras(monto) {
+        const U = ['', 'uno', 'dos', 'tres', 'cuatro', 'cinco', 'seis', 'siete', 'ocho', 'nueve', 'diez', 'once', 'doce',
+            'trece', 'catorce', 'quince', 'dieciséis', 'diecisiete', 'dieciocho', 'diecinueve', 'veinte', 'veintiuno',
+            'veintidós', 'veintitrés', 'veinticuatro', 'veinticinco', 'veintiséis', 'veintisiete', 'veintiocho', 'veintinueve'];
+        const D = ['', '', '', 'treinta', 'cuarenta', 'cincuenta', 'sesenta', 'setenta', 'ochenta', 'noventa'];
+        const C = ['', 'ciento', 'doscientos', 'trescientos', 'cuatrocientos', 'quinientos', 'seiscientos', 'setecientos', 'ochocientos', 'novecientos'];
+        const apocope = (texto) => texto.replace(/veintiuno$/, 'veintiún').replace(/uno$/, 'un');
+        const menosDeMil = (n) => {
+            if (n === 100) return 'cien';
+            const resto = n % 100;
+            const decenas = resto < 30 ? U[resto] : `${D[Math.floor(resto / 10)]}${resto % 10 ? ` y ${U[resto % 10]}` : ''}`;
+            return [C[Math.floor(n / 100)], decenas].filter(Boolean).join(' ');
+        };
+        const letras = (n) => {
+            if (n === 0) return 'cero';
+            const millones = Math.floor(n / 1e6);
+            const miles = Math.floor((n % 1e6) / 1000);
+            const resto = n % 1000;
+            return [
+                millones ? (millones === 1 ? 'un millón' : `${apocope(letras(millones))} millones`) : '',
+                miles ? (miles === 1 ? 'mil' : `${apocope(menosDeMil(miles))} mil`) : '',
+                resto ? menosDeMil(resto) : ''
+            ].filter(Boolean).join(' ');
+        };
+        const centavosTotales = Math.round(Number(monto || 0) * 100);
+        const entero = Math.floor(centavosTotales / 100);
+        const centavos = centavosTotales % 100;
+        const texto = `${apocope(letras(entero))} ${entero === 1 ? 'quetzal' : 'quetzales'}${centavos ? ` con ${String(centavos).padStart(2, '0')}/100` : ''}`;
+        return texto.charAt(0).toUpperCase() + texto.slice(1);
+    },
+
+    cuerpoTicketFel(c, formato, pdf) {
+        const e = (value) => this.escape(value);
+        const f = c.felDatos;
+        const fila = (label, value, cls = '') => `<div class="cpb-fila ${cls}"><span>${label}</span><span>${value}</span></div>`;
+        const q = (n) => `Q ${Number(n || 0).toFixed(2)}`;
+        const n2 = (n) => Number(n || 0).toFixed(2);
+        const igual = '<div class="cpb-igual"></div>';
+        const direccion = [f.emisor.direccion, f.emisor.municipio, f.emisor.departamento].filter(Boolean).join(', ');
+        const cliente = c.cliente || {};
+        const receptorId = f.receptor.id || 'CF';
+        const etiquetaId = f.receptor.tipoEspecial === 'CUI' ? 'CUI' : 'NIT';
+        const subtotal = Math.round((f.totales.precio - f.totales.descuento) * 100) / 100;
+        return `<div class="cpb cpb-${e(formato)} cpb-fel${pdf ? ' cpb-pdf' : ''}">
+            ${f.logo ? `<img class="cpb-logo" src="${e(f.logo)}" alt="">` : ''}
+            <h1>${e(f.emisor.nombreComercial || f.emisor.nombre || '')}</h1>
+            ${direccion ? `<p>${e(direccion)}</p>` : ''}
+            ${f.emisor.nombre && f.emisor.nombre !== f.emisor.nombreComercial ? `<p>${e(f.emisor.nombre)}</p>` : ''}
+            ${f.emisor.nit ? `<p><strong>NIT: ${e(f.emisor.nit)}</strong></p>` : ''}
+            ${igual}
+            <p class="cpb-fel-titulo">Documento Tributario Electrónico</p>
+            <p><strong>${e(f.tipoNombre)}</strong></p>
+            ${f.estado === 'anulado' ? '<p class="cpb-anulada">ANULADA</p>' : ''}
+            <p>Autorización</p>
+            <p class="cpb-fel-dato">${e(f.autorizacion.uuid || '')}</p>
+            <p>Fecha de emisión:</p>
+            <p class="cpb-fel-dato">${e(this.fechaFel(f.fechaEmision))}</p>
+            ${fila('Serie', e(f.autorizacion.serie || ''))}
+            ${fila('No.', e(f.autorizacion.numero || ''))}
+            <p>Fecha de certificación:</p>
+            <p class="cpb-fel-dato">${e(this.fechaFel(f.autorizacion.fechaCertificacion))}</p>
+            ${f.sucursal ? fila('Emisor', e(f.sucursal)) : ''}
+            ${igual}
+            <p class="cpb-fel-titulo">Datos del receptor</p>
+            <div class="cpb-izq">
+                <div>Nombre: ${e(f.receptor.nombre || 'Consumidor Final')}</div>
+                <div>${etiquetaId}: ${e(receptorId)}</div>
+                <div>Dirección: ${e(f.receptor.direccion || cliente.direccion || 'Ciudad')}</div>
+                <div>Correo: ${e(f.receptor.correo || '')}</div>
+                <div>Teléfono: ${e(cliente.telefono || '')}</div>
+                ${c.numero ? `<div>No. de venta: ${e(c.numero)}</div>` : ''}
+                <div>Descripción: ${e(c.observaciones || '')}</div>
+            </div>
+            ${igual}
+            <table class="cpb-fel-items">
+                <thead><tr><th>Cant</th><th class="desc">Descripción</th><th class="num">Prec</th><th class="num">Total</th></tr></thead>
+                <tbody>${f.items.map(item => `<tr>
+                    <td>${n2(item.cantidad)}</td>
+                    <td class="desc">${e(item.descripcion)}${item.descuento > 0 ? `<br>Desc. −${n2(item.descuento)}` : ''}</td>
+                    <td class="num">${n2(item.precioUnitario)}</td>
+                    <td class="num">${n2(item.total)}</td>
+                </tr>`).join('')}</tbody>
+            </table>
+            <div class="cpb-totales-fel">
+                ${fila('Subtotal:', q(f.totales.precio))}
+                ${fila('Descuentos:', q(f.totales.descuento))}
+                ${fila('Subtotal:', q(subtotal))}
+                ${fila('Total:', q(f.totales.total), 'cpb-total')}
+            </div>
+            <div class="cpb-izq">Total en letras:<br>${e(this.montoEnLetras(f.totales.total))}</div>
+            ${igual}
+            ${fila('Certificador', e(f.certificador.nombre || ''))}
+            ${fila('NIT', e(f.certificador.nit || ''))}
+            ${f.frases.map(frase => `<p>${e(frase.texto)}</p>`).join('')}
+            ${f.ambiente && f.ambiente !== 'produccion' ? '<p class="cpb-chico"><strong>Ambiente de pruebas: sin validez fiscal</strong></p>' : ''}
+        </div>`;
     },
 
     cuerpoTicket(c, formato, empresa, pdf) {
@@ -429,7 +576,7 @@ const ComprobanteModule = {
     async imprimir(c, formato = this.formatoGuardado()) {
         // Factura de INFILE en hoja: su PDF oficial.
         if (this.urlOficial(c) && (formato === 'oficial' || this.HOJAS[formato])) return this.imprimirOficial(c);
-        const empresa = await this.cargarEmpresa();
+        const [empresa] = await Promise.all([this.cargarEmpresa(), this.prepararFel(c)]);
         document.getElementById('comprobantePrintFrame')?.remove();
         const frame = document.createElement('iframe');
         frame.id = 'comprobantePrintFrame';
@@ -450,7 +597,7 @@ const ComprobanteModule = {
     },
 
     async generarPdf(c, formato) {
-        const [empresa] = await Promise.all([this.cargarEmpresa(), loadLibrary('pdf')]);
+        const [empresa] = await Promise.all([this.cargarEmpresa(), loadLibrary('pdf'), this.prepararFel(c)]);
         const holder = document.createElement('div');
         holder.setAttribute('aria-hidden', 'true');
         holder.style.cssText = 'position:fixed;left:-10000px;top:0;pointer-events:none';
@@ -556,14 +703,21 @@ const ComprobanteModule = {
         });
     },
 
-    abrir(c, { telefono = '' } = {}) {
+    async abrir(c, { telefono = '' } = {}) {
         this.init();
         this.state.actual = c;
         this.state.pdf = null;
         document.getElementById('comprobanteTitulo').textContent = c.numero ? `Comprobante · venta ${c.numero}` : 'Comprobante';
         const oficial = Boolean(this.urlOficial(c));
         document.getElementById('comprobanteFormatoOficial').hidden = !oficial;
-        const formato = oficial ? 'oficial' : this.formatoGuardado();
+        // Factura electrónica: el formato que eligió la empresa (ticket de 80 mm o PDF del certificador).
+        let formato = this.formatoGuardado();
+        if (c.factura) {
+            const empresa = await this.cargarEmpresa();
+            if (this.state.actual !== c) return;
+            if (empresa.formatoFactura === 'ticket') formato = '80';
+            else if (oficial) formato = 'oficial';
+        }
         const radio = document.querySelector(`input[name="comprobanteFormato"][value="${formato}"]`);
         if (radio) radio.checked = true;
         document.getElementById('comprobanteTelefono').value = telefono || c.cliente?.telefono || '';
@@ -592,7 +746,7 @@ const ComprobanteModule = {
             frame.src = this.urlOficial(c);
             return;
         }
-        const empresa = await this.cargarEmpresa();
+        const [empresa] = await Promise.all([this.cargarEmpresa(), this.prepararFel(c)]);
         if (this.state.actual !== c || this.formatoElegido() !== formato) return;
         frame.srcdoc = this.documento(c, formato, empresa, { vista: true });
     },

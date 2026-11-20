@@ -667,6 +667,35 @@
                                 </fieldset>
 
                                 <fieldset>
+                                    <legend>Factura impresa</legend>
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label for="felFormatoFactura">Formato</label>
+                                            <select id="felFormatoFactura" class="form-input" aria-describedby="felFormatoFacturaAyuda">
+                                                <option value="ticket">Ticket de 80 mm con los datos certificados</option>
+                                                <option value="certificador">PDF del certificador (hoja carta)</option>
+                                            </select>
+                                            <small class="form-hint" id="felFormatoFacturaAyuda">Es el que aparece marcado al imprimir una factura. En el punto de venta manda el papel elegido: 80 mm imprime el ticket y carta, el PDF.</small>
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="felSucursal">Sucursal</label>
+                                            <input type="text" id="felSucursal" class="form-input" maxlength="60" placeholder="Ejemplo: Metro Norte" aria-describedby="felSucursalAyuda">
+                                            <small class="form-hint" id="felSucursalAyuda">Se imprime en el ticket como «Emisor». Opcional.</small>
+                                        </div>
+                                    </div>
+                                    <div class="form-group fel-logo">
+                                        <span class="fel-logo-label" id="felLogoTitulo">Logo del ticket</span>
+                                        <div class="fel-logo-fila">
+                                            <img id="felLogoVista" class="fel-logo-vista" alt="Logo actual" hidden>
+                                            <label class="btn btn-secondary" for="felLogoInput"><i class="fas fa-image" aria-hidden="true"></i> <span id="felLogoBoton">Elegir logo</span></label>
+                                            <input type="file" id="felLogoInput" accept="image/png,image/jpeg" class="sr-only" aria-labelledby="felLogoTitulo">
+                                            <button type="button" class="btn btn-secondary btn-danger-text" id="felLogoQuitar" hidden>Quitar</button>
+                                        </div>
+                                        <small class="form-hint">PNG o JPG. Se imprime en blanco y negro; los logos con fondo blanco salen mejor.</small>
+                                    </div>
+                                </fieldset>
+
+                                <fieldset>
                                     <legend>Al cobrar</legend>
                                     <div class="form-row">
                                         <div class="form-group">

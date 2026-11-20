@@ -5,12 +5,15 @@ const { encrypt, decrypt } = require('../utils/secretBox');
 const { generarFactura, generarAnulacion, FRASES_POR_DEFECTO } = require('../utils/fel/dte');
 const { nitValido, normalizarReceptor } = require('../utils/fel/identificacion');
 const { CATALOGO, obtenerConector, pdfDelCertificador } = require('../utils/fel/certificadores');
+const { leerFactura } = require('../utils/fel/lectura');
 
 // Facturación electrónica (FEL). Cada empresa configura su emisor, su régimen de IVA y su
 // certificador; al cobrar se elige ticket (sin FEL) o factura (se certifica en ese momento).
 const TIPO = 'fel';
 const AFILIACIONES = new Set(['GEN', 'PEQ']);
 const AMBIENTES = new Set(['pruebas', 'produccion']);
+// El logo se guarda achicado por el navegador (ancho del ticket); unos 300 KB como máximo.
+const LOGO_MAXIMO = 400000;
 
 const httpError = (status, message) => Object.assign(new Error(message), { status, expose: true });
 
@@ -90,6 +93,13 @@ const normalizeConfig = (body) => {
       frases: Array.isArray(emisor.frases) ? emisor.frases.slice(0, 10).map((frase) => ({
         tipo: Number(frase.tipo), escenario: Number(frase.escenario)
       })) : null
+    },
+    // Cómo se imprime la factura en esta empresa. El logo se agrega en saveConfig.
+    impresion: {
+      // 'ticket': ticket de 80 mm con los datos certificados; 'certificador': PDF del certificador.
+      formatoFactura: body.impresion?.formatoFactura === 'ticket' ? 'ticket' : 'certificador',
+      // Nombre de la sucursal que se imprime como «Emisor» (por ejemplo, Metro Norte).
+      sucursal: text(body.impresion?.sucursal, 60) || null
     }
   };
   const e = config.emisor;
@@ -149,6 +159,19 @@ const saveConfig = async (req, res) => {
       credenciales[campo.id] = nuevo || anteriores[campo.id] || '';
     }
     const secreto = campos.length ? encrypt(JSON.stringify(credenciales), getTenantId()) : null;
+    // Logo: undefined = se conserva el guardado; null = se quita; texto = imagen nueva.
+    const logo = req.body.impresion?.logo;
+    if (logo === undefined) {
+      config.impresion.logo = row?.config?.impresion?.logo || null;
+    } else if (logo === null || logo === '') {
+      config.impresion.logo = null;
+    } else {
+      if (typeof logo !== 'string' || !/^data:image\/(png|jpeg);base64,[A-Za-z0-9+/=]+$/.test(logo)) {
+        throw httpError(400, 'El logo debe ser una imagen PNG o JPG');
+      }
+      if (logo.length > LOGO_MAXIMO) throw httpError(400, 'El logo es demasiado grande; usa una imagen más pequeña');
+      config.impresion.logo = logo;
+    }
     await pool.query(
       `INSERT INTO integraciones (tipo, activa, config, secreto, updated_at)
        VALUES ($1, $2, $3, $4, NOW())
@@ -379,11 +402,56 @@ const getPdf = async (req, res) => {
   }
 };
 
+/**
+ * GET /api/fel/documentos/:id/impresion — datos para imprimir la factura en ticket, leídos del
+ * XML certificado, más el logo y la sucursal de la empresa.
+ */
+const getImpresion = async (req, res) => {
+  try {
+    const [result, row] = await Promise.all([
+      pool.query(
+        `SELECT estado, ambiente, uuid, serie, numero, fecha_certificacion, xml_certificado, xml_enviado
+         FROM fel_documentos WHERE id = $1`,
+        [req.params.id]
+      ),
+      loadConfig()
+    ]);
+    const documento = result.rows[0];
+    if (!documento) throw httpError(404, 'Factura no encontrada');
+    if (!['certificado', 'anulado'].includes(documento.estado)) throw httpError(409, 'La factura no está certificada');
+    const datos = leerFactura(documento.xml_certificado || documento.xml_enviado);
+    if (!datos) throw httpError(404, 'No se pudo leer el XML de la factura');
+    datos.autorizacion = {
+      uuid: datos.autorizacion.uuid || documento.uuid,
+      serie: datos.autorizacion.serie || documento.serie,
+      numero: datos.autorizacion.numero || documento.numero,
+      fechaCertificacion: datos.autorizacion.fechaCertificacion || documento.fecha_certificacion
+    };
+    const impresion = row?.config?.impresion || {};
+    res.status(200).json({
+      success: true,
+      factura: {
+        ...datos,
+        estado: documento.estado,
+        ambiente: documento.ambiente,
+        sucursal: impresion.sucursal || null,
+        logo: impresion.logo || null
+      }
+    });
+  } catch (error) {
+    sendError(res, error, 'Error obteniendo los datos de la factura');
+  }
+};
+
+// Formato con que la empresa imprime sus facturas: 'ticket' o 'certificador'.
+const formatoFactura = async (felHabilitada) =>
+  (felHabilitada ? (await loadConfig())?.config?.impresion?.formatoFactura || 'certificador' : null);
+
 // Datos del emisor que se imprimen en los comprobantes (null si la empresa no configuró FEL).
 const datosEmisor = async (felHabilitada) =>
   (felHabilitada ? estadoPublico(await loadConfig()).emisor : null);
 
 module.exports = {
-  getConfig, saveConfig, getEstado, emitir, anular, getXml, getPdf, prepararFactura, emitirFactura, requireHabilitada,
+  getConfig, saveConfig, getEstado, emitir, anular, getXml, getPdf, getImpresion, formatoFactura, prepararFactura, emitirFactura, requireHabilitada,
   facturacionActiva, datosEmisor
 };

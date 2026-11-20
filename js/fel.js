@@ -50,6 +50,61 @@ const FelModule = {
         });
         document.getElementById('felCertificador')?.addEventListener('change', () => this.renderCredenciales());
         document.getElementById('felAfiliacion')?.addEventListener('change', () => this.renderFrasesHint());
+        document.getElementById('felLogoInput')?.addEventListener('change', (event) => this.elegirLogo(event.target));
+        document.getElementById('felLogoQuitar')?.addEventListener('click', () => {
+            this.state.logo = null;
+            this.renderLogo(null);
+        });
+    },
+
+    // ---------- Logo del ticket ----------
+    // undefined: sin cambios · null: quitarlo · texto: imagen nueva (PNG achicado al ancho del ticket).
+
+    renderLogo(src) {
+        const vista = document.getElementById('felLogoVista');
+        vista.hidden = !src;
+        if (src) vista.src = src;
+        else vista.removeAttribute('src');
+        document.getElementById('felLogoQuitar').hidden = !src;
+        document.getElementById('felLogoBoton').textContent = src ? 'Cambiar logo' : 'Elegir logo';
+    },
+
+    async elegirLogo(input) {
+        const archivo = input.files?.[0];
+        input.value = '';
+        if (!archivo) return;
+        try {
+            this.state.logo = await this.achicarLogo(archivo);
+            this.renderLogo(this.state.logo);
+            this.showConfigError('');
+        } catch {
+            this.showConfigError('No se pudo leer la imagen. Usa un logo en PNG o JPG.');
+        }
+    },
+
+    // 384 puntos de ancho como máximo (la mitad del ancho útil de una térmica de 80 mm a 203 ppp).
+    achicarLogo(archivo) {
+        return new Promise((resolve, reject) => {
+            const url = URL.createObjectURL(archivo);
+            const imagen = new Image();
+            imagen.onload = () => {
+                URL.revokeObjectURL(url);
+                const escala = Math.min(1, 384 / imagen.width, 240 / imagen.height);
+                const canvas = document.createElement('canvas');
+                canvas.width = Math.max(1, Math.round(imagen.width * escala));
+                canvas.height = Math.max(1, Math.round(imagen.height * escala));
+                const contexto = canvas.getContext('2d');
+                contexto.fillStyle = '#fff';
+                contexto.fillRect(0, 0, canvas.width, canvas.height);
+                contexto.drawImage(imagen, 0, 0, canvas.width, canvas.height);
+                resolve(canvas.toDataURL('image/png'));
+            };
+            imagen.onerror = () => {
+                URL.revokeObjectURL(url);
+                reject(new Error('Imagen no válida'));
+            };
+            imagen.src = url;
+        });
     },
 
     async loadConfig() {
@@ -87,6 +142,10 @@ const FelModule = {
         set('felCodigoPostal', direccion.codigoPostal || '01001');
         set('felFrases', (emisor.frases || []).map((frase) => `${frase.tipo}-${frase.escenario}`).join(', '));
         set('felPorDefecto', config.comprobantePorDefecto || 'ticket');
+        set('felFormatoFactura', config.impresion?.formatoFactura || 'certificador');
+        set('felSucursal', config.impresion?.sucursal || '');
+        this.state.logo = undefined;
+        this.renderLogo(config.impresion?.logo || null);
         document.getElementById('felActiva').checked = fel.configurada ? fel.activa : true;
         this.renderCredenciales();
         this.renderFrasesHint();
@@ -151,6 +210,11 @@ const FelModule = {
             comprobantePorDefecto: value('felPorDefecto'),
             activa: document.getElementById('felActiva').checked,
             credenciales,
+            impresion: {
+                formatoFactura: value('felFormatoFactura'),
+                sucursal: value('felSucursal'),
+                ...(this.state.logo !== undefined ? { logo: this.state.logo } : {})
+            },
             emisor: {
                 nit: value('felNit'),
                 afiliacionIVA: value('felAfiliacion'),
