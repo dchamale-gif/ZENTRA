@@ -17,7 +17,7 @@ const CUENTA_SELECT = `
   SELECT c.id, c.nombre, c.estado, c.version, c.abierta_por_nombre, c.created_at, c.updated_at,
          ROUND(COALESCE(SUM(i.cantidad), 0)::NUMERIC, 3)::FLOAT8 AS unidades,
          COALESCE(SUM(i.descuento), 0) AS descuento,
-         COALESCE(SUM(i.cantidad * i.precio_unitario - i.descuento), 0) AS total
+         COALESCE(SUM(i.cantidad::NUMERIC * i.precio_unitario - i.descuento), 0) AS total
   FROM pos_cuentas c
   LEFT JOIN pos_cuenta_items i ON i.cuenta_id = c.id
 `;

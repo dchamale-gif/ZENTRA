@@ -141,7 +141,7 @@ const RESUMEN_SELECT = `
          a.usuario_nombre, a.created_at, a.anulado_at, a.anulado_por_nombre, a.motivo_anulacion,
          COUNT(i.id)::INTEGER AS lineas,
          ROUND(COALESCE(SUM(i.cantidad), 0)::NUMERIC, 3)::FLOAT8 AS unidades,
-         COALESCE(SUM(i.cantidad * COALESCE(i.costo_unitario, 0)), 0) AS valor
+         COALESCE(SUM(i.cantidad::NUMERIC * COALESCE(i.costo_unitario, 0)), 0) AS valor
   FROM ajustes_inventario a
   LEFT JOIN ajuste_inventario_items i ON i.ajuste_id = a.id
 `;

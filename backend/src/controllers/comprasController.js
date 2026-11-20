@@ -173,7 +173,8 @@ const moverInventario = async (client, compraId, signo) => {
   // Agrupado por artículo por si la compra lo trae en varias líneas.
   const items = await client.query(
     `SELECT ci.articulo_id, ROUND(SUM(ci.cantidad)::NUMERIC, 3)::FLOAT8 AS cantidad,
-            ROUND(SUM(ci.subtotal) / NULLIF(SUM(ci.cantidad), 0), 2) AS precio_unitario,
+            -- La cantidad es DOUBLE PRECISION (admite 1.5 lb): se pasa a NUMERIC para redondear el costo.
+            ROUND(SUM(ci.subtotal) / NULLIF(SUM(ci.cantidad)::NUMERIC, 0), 2) AS precio_unitario,
             a.nombre_articulo, a.cantidad_disponible
      FROM compra_items ci
      JOIN codigos_articulos a ON a.id = ci.articulo_id
