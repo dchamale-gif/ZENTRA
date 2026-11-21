@@ -927,6 +927,7 @@ tr.is-inactive td { color: var(--text-gray); }
 .integracion-prueba.is-ok { border-color: #a7f3d0; background: #f0fdf4; }
 .integracion-prueba p { margin: 0 0 8px; }
 .integracion-prueba p:last-child { margin-bottom: 0; }
+.integracion-prueba code { overflow-wrap: anywhere; user-select: all; }
 .integracion-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 
 /* Explorador de la base de la web: tablas, columnas y primeras filas */

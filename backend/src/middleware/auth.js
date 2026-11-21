@@ -175,5 +175,6 @@ const rolePermissionMiddleware = (requiredPermissions = []) => {
 
 module.exports = {
   authMiddleware,
-  rolePermissionMiddleware
+  rolePermissionMiddleware,
+  hasOrganizationAccess
 };

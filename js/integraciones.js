@@ -41,6 +41,8 @@ const IntegracionModule = {
         document.getElementById('intSyncBtn')?.addEventListener('click', () => this.sincronizar());
         document.getElementById('intQuitarBtn')?.addEventListener('click', () => this.quitar());
         document.getElementById('intInventario')?.addEventListener('change', () => this.explicarInventario());
+        document.getElementById('intLlaveBtn')?.addEventListener('click', () => this.crearLlave());
+        document.getElementById('intLlaveQuitarBtn')?.addEventListener('click', () => this.quitarLlave());
         document.getElementById('intMotor')?.addEventListener('change', (event) => {
             document.getElementById('intPuerto').placeholder = event.target.value === 'mysql' ? '3306' : '5432';
         });
@@ -132,13 +134,15 @@ const IntegracionModule = {
     explicarInventario() {
         const modo = this.field('intInventario').value;
         const textos = {
+            erpManda: 'La existencia la lleva el ERP: después de cada compra, venta o ajuste se escribe tal cual en la web. Cada pedido de la web se registra como venta del ERP en el momento; si no hay existencia, la web no acepta el pedido. Necesita una llave (abajo). La web solo da la existencia y el costo al crear un artículo nuevo.',
             dosVias: 'Al activarlo, el ERP toma la existencia actual de la web. Desde ahí se suma desde los dos lados: lo que compres o vendas en el ERP llega a la web y lo que se venda en la web llega al ERP. El precio de compra solo se copia al crear el artículo.',
             inicial: 'La web da la existencia y el costo solo al crear cada artículo; después los llevan las compras y ventas del ERP. Los artículos que ya existían no toman la existencia de la web: para eso usa «En las dos direcciones».',
             siempre: 'Cada sincronización reemplaza existencia y costo por los de la web. No registres compras en el ERP: se perderían.',
             nunca: 'El ERP lleva existencia y costo desde cero; la web no los toca.'
         };
         this.field('intInventarioHint').textContent = textos[modo];
-        this.field('intUsuarioHint').textContent = modo === 'dosVias'
+        this.renderLlave();
+        this.field('intUsuarioHint').textContent = ['dosVias', 'erpManda'].includes(modo)
             ? `Este usuario necesita permiso para modificar la columna de existencia${this.field('intCol-existencia').value.trim() ? ` («${this.field('intCol-existencia').value.trim()}»)` : ''}; con el resto basta leer.`
             : 'Usa un usuario que solo pueda leer.';
     },
@@ -205,8 +209,8 @@ const IntegracionModule = {
 
     // Revisa en el navegador lo que el servidor rechazaría, y enfoca el primer campo.
     validate(config, { requireMapping }) {
-        if (requireMapping && config.inventarioDesdeWeb === 'dosVias' && !config.columnas.existencia) {
-            this.showError('Para sincronizar la existencia en las dos direcciones indica la columna de existencia.');
+        if (requireMapping && ['dosVias', 'erpManda'].includes(config.inventarioDesdeWeb) && !config.columnas.existencia) {
+            this.showError('Para enviar la existencia a la web indica la columna de existencia.');
             this.field('intCol-existencia').focus();
             return false;
         }
@@ -450,6 +454,46 @@ const IntegracionModule = {
             } finally {
                 await this.load();
             }
+        });
+    },
+
+    // La llave solo hace falta con «El ERP manda»: con ella la web registra sus pedidos como ventas.
+    renderLlave() {
+        const info = this.state.data;
+        const bloque = this.field('intLlaveBloque');
+        if (!bloque || !info) return;
+        bloque.hidden = this.field('intInventario').value !== 'erpManda';
+        const llave = info.llaveWeb;
+        this.field('intLlaveEstado').textContent = !info.configurada
+            ? 'Guarda la conexión primero; después crea la llave.'
+            : llave
+                ? `Hay una llave activa (empieza con ${llave.inicio}…), creada el ${new Date(llave.creada).toLocaleString('es-GT', { dateStyle: 'medium', timeStyle: 'short' })}. Crear otra deja sin efecto la anterior.`
+                : 'Aún no hay llave: la página web no puede registrar sus pedidos como ventas.';
+        this.field('intLlaveBtn').disabled = !info.configurada;
+        this.field('intLlaveBtn').lastChild.textContent = llave ? ' Crear llave nueva' : ' Crear llave';
+        this.field('intLlaveQuitarBtn').hidden = !llave;
+    },
+
+    crearLlave() {
+        if (this.state.data?.llaveWeb && !confirm('¿Crear una llave nueva? La página web dejará de registrar ventas hasta que pongas la nueva en su servidor.')) return;
+        return this.withBusy(this.field('intLlaveBtn'), async () => {
+            const data = await this.request('/api/integraciones/web/llave', { method: 'POST', body: '{}' });
+            this.state.data = data.integracion;
+            this.renderLlave();
+            this.field('intLlaveTexto').textContent = data.llave;
+            this.field('intLlaveUrl').textContent = authManager.apiBaseUrl || window.location.origin;
+            this.field('intLlaveNueva').hidden = false;
+        });
+    },
+
+    async quitarLlave() {
+        if (!confirm('¿Quitar la llave? La página web dejará de registrar sus pedidos como ventas y los pedidos quedarán pendientes de enviar.')) return;
+        await this.withBusy(this.field('intLlaveQuitarBtn'), async () => {
+            const data = await this.request('/api/integraciones/web/llave', { method: 'DELETE' });
+            this.state.data = data.integracion;
+            this.field('intLlaveNueva').hidden = true;
+            this.renderLlave();
+            showNotification('Llave de la página web quitada.', 'success');
         });
     },
 

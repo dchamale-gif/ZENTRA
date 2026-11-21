@@ -853,12 +853,26 @@
                                     <div class="form-group">
                                         <label for="intInventario">Existencia y precio de compra desde la web</label>
                                         <select id="intInventario" class="form-input" aria-describedby="intInventarioHint">
+                                            <option value="erpManda">El ERP manda: la web muestra la existencia del ERP y sus pedidos se registran como ventas</option>
                                             <option value="dosVias">En las dos direcciones: compras y ventas del ERP actualizan la web, y las ventas de la web, el ERP</option>
                                             <option value="inicial">Solo al crear el artículo; después los llevan las compras y ventas del ERP</option>
                                             <option value="siempre">Siempre: cada sincronización los reemplaza por los de la web</option>
                                             <option value="nunca">Nunca: el ERP los lleva desde cero</option>
                                         </select>
                                         <small id="intInventarioHint" class="integracion-help">Si registras las compras en el ERP, no uses «Siempre»: la siguiente sincronización borraría lo que sumó la compra.</small>
+                                    </div>
+                                    <div class="form-group" id="intLlaveBloque" hidden>
+                                        <label>Llave para la página web</label>
+                                        <p id="intLlaveEstado" class="integracion-help"></p>
+                                        <div id="intLlaveNueva" class="integracion-prueba is-ok" role="status" hidden>
+                                            <p><strong>Copia esta llave ahora:</strong> no se vuelve a mostrar. En el servidor de la página web ponla en <code>ERP_API_TOKEN</code> y la dirección del ERP en <code>ERP_API_URL</code>.</p>
+                                            <p><code id="intLlaveTexto" class="int-llave"></code></p>
+                                            <p>ERP_API_URL=<code id="intLlaveUrl"></code></p>
+                                        </div>
+                                        <div class="integracion-actions">
+                                            <button type="button" class="btn btn-secondary" id="intLlaveBtn"><i class="fas fa-key" aria-hidden="true"></i> Crear llave</button>
+                                            <button type="button" class="btn btn-secondary btn-danger-text" id="intLlaveQuitarBtn" hidden>Quitar llave</button>
+                                        </div>
                                     </div>
                                     <div class="form-row">
                                         <div class="form-group">

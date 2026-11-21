@@ -590,21 +590,27 @@ const updateVenta = async (req, res) => {
   }
 };
 
+// Elimina la venta dentro de la transacción del llamador: devuelve la existencia, quita el
+// pago de contado y la entrada a caja. La usan Ventas y la anulación de pedidos de la web.
+const eliminarVenta = async (client, ventaId) => {
+  const existing = await client.query('SELECT id FROM ventas WHERE id = $1 FOR UPDATE', [ventaId]);
+  if (existing.rows.length === 0) throw httpError(404, 'Venta no encontrada');
+  await assertSinFacturaVigente(client, ventaId, 'eliminarla');
+  await assertSinCierreCaja(client, ventaId, 'eliminarla');
+  if (await getAbonos(client, ventaId) > 0) {
+    throw httpError(409, 'La venta tiene abonos registrados en Cuentas por Cobrar y no se puede eliminar');
+  }
+  await revertirPago(client, ventaId);
+  await restoreStock(client, ventaId);
+  await client.query('DELETE FROM ventas WHERE id = $1', [ventaId]);
+};
+
 const deleteVenta = async (req, res) => {
   let client;
   try {
     client = await pool.connect();
     await client.query('BEGIN');
-    const existing = await client.query('SELECT id FROM ventas WHERE id = $1 FOR UPDATE', [req.params.id]);
-    if (existing.rows.length === 0) throw httpError(404, 'Venta no encontrada');
-    await assertSinFacturaVigente(client, req.params.id, 'eliminarla');
-    await assertSinCierreCaja(client, req.params.id, 'eliminarla');
-    if (await getAbonos(client, req.params.id) > 0) {
-      throw httpError(409, 'La venta tiene abonos registrados en Cuentas por Cobrar y no se puede eliminar');
-    }
-    await revertirPago(client, req.params.id);
-    await restoreStock(client, req.params.id);
-    await client.query('DELETE FROM ventas WHERE id = $1', [req.params.id]);
+    await eliminarVenta(client, req.params.id);
     await client.query('COMMIT');
     res.status(200).json({ success: true, message: 'Venta eliminada, inventario restituido y caja ajustada' });
   } catch (error) {
@@ -644,5 +650,5 @@ const registrarFacturaExterna = async (req, res) => {
 
 module.exports = {
   getVentas, getReceptores, createVenta, updateVenta, deleteVenta, registrarFacturaExterna,
-  registrarVenta, sendError, httpError
+  registrarVenta, eliminarVenta, sendError, httpError
 };
