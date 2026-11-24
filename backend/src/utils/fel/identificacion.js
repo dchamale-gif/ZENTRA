@@ -42,4 +42,15 @@ const normalizarReceptor = ({ id, nombre, tipo } = {}) => {
   return { id: valor, tipo: null, nombre: nombreLimpio };
 };
 
-module.exports = { nitValido, cuiValido, normalizarId, normalizarReceptor };
+// La SAT no acepta facturas a consumidor final de Q2,500.00 o más: piden NIT o CUI.
+const LIMITE_CF = 2500;
+
+const revisarLimiteCf = (receptor, total) => {
+  if (receptor?.id === 'CF' && Number(total) >= LIMITE_CF) {
+    throw Object.assign(new Error(
+      `La SAT no acepta facturas a consumidor final de Q${LIMITE_CF.toLocaleString('en-US')}.00 o más: escribe el NIT o CUI del cliente`
+    ), { status: 400, expose: true });
+  }
+};
+
+module.exports = { nitValido, cuiValido, normalizarId, normalizarReceptor, LIMITE_CF, revisarLimiteCf };

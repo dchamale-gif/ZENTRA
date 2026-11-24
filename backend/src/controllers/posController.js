@@ -3,7 +3,7 @@ const { generateId } = require('../utils/helpers');
 const { registrarVenta, sendError, httpError } = require('./ventasController');
 const { FOTO_VERSION_COLUMN } = require('../utils/fotos');
 const { prepararFactura, emitirFactura, facturacionActiva } = require('./felController');
-const { normalizarReceptor } = require('../utils/fel/identificacion');
+const { normalizarReceptor, revisarLimiteCf } = require('../utils/fel/identificacion');
 const { cantidadPermitida, mensajeCantidad } = require('../utils/inventory');
 
 // El punto de venta cobra al momento; las ventas al crédito se registran en Ventas.
@@ -250,10 +250,14 @@ const cobrarCuenta = async (req, res) => {
     }
     // Factura: el NIT (y la configuración, si hay FEL) se revisan antes de cobrar, para no
     // registrar la venta con datos malos. Sin facturación activa la factura queda pendiente.
-    const conFactura = req.body.comprobante === 'factura';
-    const certificar = conFactura && await facturacionActiva(req.organization.felHabilitada);
-    const receptor = conFactura ? normalizarReceptor(req.body.receptor) : null;
-    if (certificar) await prepararFactura(req.body.receptor, req.organization.felHabilitada);
+    // Con facturación activa el ticket también se certifica: a consumidor final, sin pedir NIT.
+    const pideFactura = req.body.comprobante === 'factura';
+    const felActiva = await facturacionActiva(req.organization.felHabilitada);
+    const conFactura = pideFactura || felActiva;
+    const receptorInput = pideFactura ? req.body.receptor : { id: 'CF', nombre: 'Consumidor Final' };
+    const certificar = conFactura && felActiva;
+    const receptor = conFactura ? normalizarReceptor(receptorInput) : null;
+    if (certificar) await prepararFactura(receptorInput, req.organization.felHabilitada);
 
     client = await pool.connect();
     await client.query('BEGIN');
@@ -284,6 +288,8 @@ const cobrarCuenta = async (req, res) => {
         descuento: Number(linea.descuento)
       }))
     }, req.user.id, { puedeDescontar: true });
+    // Antes de guardar el cobro: la SAT rechazaría la factura a CF de Q2,500 o más.
+    if (certificar) revisarLimiteCf(receptor, venta.total);
 
     if (receptor) {
       await client.query(
@@ -305,7 +311,7 @@ const cobrarCuenta = async (req, res) => {
     let factura = null;
     if (certificar) {
       try {
-        factura = await emitirFactura(venta.id, req.body.receptor, req.user.id, req.organization.felHabilitada);
+        factura = await emitirFactura(venta.id, receptorInput, req.user.id, req.organization.felHabilitada);
       } catch (error) {
         factura = { estado: 'error', error: error.expose ? error.message : 'No se pudo emitir la factura' };
       }

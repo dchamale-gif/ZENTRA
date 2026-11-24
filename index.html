@@ -396,9 +396,6 @@
                     <div class="page-header">
                         <h1>Caja Integrada</h1>
                         <div class="button-group">
-                            <button class="btn btn-primary" id="addMovimientoCajaBtn">
-                                <i class="fas fa-plus"></i> Nuevo Movimiento
-                            </button>
                             <button class="btn btn-success" id="addMicrofacturaBtn">
                                 <i class="fas fa-receipt"></i> Generar Microfactura
                             </button>
@@ -1276,9 +1273,6 @@
                         <div class="button-group">
                             <button class="btn btn-secondary" type="button" id="cajaDepositoBtn" onclick="CajaModule.openDepositoModal()">
                                 <i class="fas fa-building-columns" aria-hidden="true"></i> Registrar depósito
-                            </button>
-                            <button class="btn btn-primary" onclick="CajaModule.openMovementModal()">
-                                <i class="fas fa-plus"></i> Nuevo movimiento
                             </button>
                         </div>
                     </div>
@@ -2256,6 +2250,7 @@
                         <legend>Comprobante</legend>
                         <label><input type="radio" name="posComprobante" value="ticket" checked> <i class="fas fa-receipt" aria-hidden="true"></i> Ticket</label>
                         <label><input type="radio" name="posComprobante" value="factura"> <i class="fas fa-file-invoice" aria-hidden="true"></i> Factura</label>
+                        <small class="pos-comprobante-hint" id="posComprobanteHint" hidden>El ticket se factura a consumidor final (CF).</small>
                     </fieldset>
                     <div class="fel-receptor" id="posReceptor" hidden>
                         <p class="inline-notice" id="posReceptorPendiente" hidden><span>La facturación electrónica no está activa: la venta queda con <strong>factura pendiente</strong> y estos datos, para emitirla por fuera y registrar su número en Ventas.</span></p>

@@ -22,6 +22,14 @@ const FelModule = {
         return Boolean(this.state.estado?.activa);
     },
 
+    // La SAT no acepta facturas a consumidor final de Q2,500.00 o más (el servidor también lo revisa).
+    LIMITE_CF: 2500,
+
+    errorLimiteCf(receptorId, total) {
+        if ((receptorId || 'CF') !== 'CF' || Number(total) < this.LIMITE_CF) return '';
+        return 'La SAT no acepta facturas a consumidor final de Q2,500.00 o más: escribe el NIT o CUI del cliente.';
+    },
+
     async request(path, options = {}) {
         let response;
         try {
@@ -300,6 +308,7 @@ const FelModule = {
                     <div><dt>Autorización</dt><dd class="fel-uuid">${esc(factura.uuid || '—')}</dd></div>
                     <div><dt>Cliente</dt><dd>${esc(factura.receptor_nombre)} · ${esc(factura.receptor_id)}</dd></div>
                     <div><dt>Total</dt><dd>${formatQ(Number(venta.total))}</dd></div>
+                    ${anulada && factura.anulacion_motivo ? `<div><dt>Motivo de la anulación</dt><dd>${esc(factura.anulacion_motivo)}</dd></div>` : ''}
                 </dl>
                 ${factura.ambiente !== 'produccion' ? '<p class="inline-notice"><span>Emitida en ambiente de pruebas: no tiene validez fiscal.</span></p>' : ''}
                 ${!anulada && factura.estado === 'certificado' ? `
@@ -312,9 +321,14 @@ const FelModule = {
                 ${factura.certificador === 'infile' && factura.estado !== 'pendiente' ? `<a class="btn btn-secondary" href="${authManager.apiBaseUrl}/api/fel/documentos/${encodeURIComponent(factura.id)}/pdf" target="_blank" rel="noopener"><i class="fas fa-file-pdf" aria-hidden="true"></i> PDF</a>` : ''}
                 <a class="btn btn-secondary" href="${authManager.apiBaseUrl}/api/fel/documentos/${encodeURIComponent(factura.id)}/xml" download><i class="fas fa-download" aria-hidden="true"></i> XML</a>
                 ${anulada ? `<a class="btn btn-secondary" href="${authManager.apiBaseUrl}/api/fel/documentos/${encodeURIComponent(factura.id)}/xml?tipo=anulacion" download>XML de anulación</a>` : ''}
+                ${anulada && typeof ComprobanteModule !== 'undefined' ? '<button type="button" class="btn btn-secondary" id="felImprimirAnulacionBtn"><i class="fas fa-print" aria-hidden="true"></i> Imprimir anulación</button>' : ''}
                 ${factura.estado === 'certificado' ? '<button type="button" class="btn btn-secondary btn-danger-text" id="felAnularBtn">Anular factura</button>' : ''}
                 <button type="button" class="btn btn-primary" onclick="FelModule.closeModal()">Cerrar</button>`;
             document.getElementById('felAnularBtn')?.addEventListener('click', () => this.anular());
+            document.getElementById('felImprimirAnulacionBtn')?.addEventListener('click', () => {
+                this.closeModal();
+                ComprobanteModule.abrir(ComprobanteModule.deVenta(venta, { anulada: true }));
+            });
         } else if (!this.activa() && (venta.factura_solicitada || venta.factura_externa)) {
             this.openExterna(venta);
         } else {
@@ -367,6 +381,12 @@ const FelModule = {
             focus?.focus();
             return;
         }
+        const limite = this.errorLimiteCf(receptor.id, venta.total);
+        if (limite) {
+            this.showModalError(limite);
+            document.getElementById('felReceptorId')?.focus();
+            return;
+        }
         const button = document.getElementById('felEmitirBtn');
         button.disabled = true;
         this.showModalError('');
@@ -408,9 +428,13 @@ const FelModule = {
             await this.request(`/api/fel/documentos/${encodeURIComponent(this.state.venta.factura.id)}/anular`, {
                 method: 'POST', body: JSON.stringify({ motivo: motivo.value.trim() })
             });
+            const ventaId = this.state.venta.id;
             this.closeModal();
-            showNotification('Factura anulada. Ahora puedes modificar la venta o emitir otra factura.', 'success');
+            showNotification('Factura anulada. Puedes imprimir la anulación, modificar la venta o emitir otra factura.', 'success');
             await VentasModule.loadData();
+            // Se vuelve a abrir ya anulada, con el botón «Imprimir anulación».
+            const actualizada = VentasModule.state.ventas.find(entry => String(entry.id) === String(ventaId));
+            if (actualizada?.factura?.estado === 'anulado') this.open(actualizada);
         } catch (error) {
             this.showModalError(error.message);
             button.disabled = false;

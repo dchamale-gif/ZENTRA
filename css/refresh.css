@@ -958,6 +958,7 @@ tr.is-inactive td { color: var(--text-gray); }
 
 /* ---------- Facturación electrónica ---------- */
 .pos-comprobante { grid-template-columns: repeat(2, 1fr); }
+.pos-comprobante-hint { grid-column: 1 / -1; color: var(--text-muted, #6b7280); }
 .fel-receptor { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 0 12px; }
 .fel-receptor-id { display: flex; gap: 6px; }
 .fel-receptor-id .form-input { flex: 1; min-width: 0; text-transform: uppercase; }

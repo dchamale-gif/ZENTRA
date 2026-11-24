@@ -759,7 +759,8 @@ const PosModule = {
         const fel = typeof FelModule !== 'undefined' && FelModule.activa();
         document.getElementById('posComprobante').hidden = typeof FelModule === 'undefined';
         document.getElementById('posReceptorPendiente').hidden = fel;
-        if (fel && FelModule.state.estado.comprobantePorDefecto === 'factura') {
+        // De Q2,500 en adelante no se puede facturar a CF: va marcada la factura para pedir el NIT.
+        if (fel && (FelModule.state.estado.comprobantePorDefecto === 'factura' || this.totalACobrar() >= FelModule.LIMITE_CF)) {
             document.querySelector('input[name="posComprobante"][value="factura"]').checked = true;
         }
         document.getElementById('posPrintPaper').value = this.readPaper();
@@ -813,6 +814,9 @@ const PosModule = {
         const cashGroup = document.getElementById('posCashGroup');
         cashGroup.hidden = efectivo <= 0;
         document.getElementById('posReceptor').hidden = this.comprobante() !== 'factura';
+        // Con facturación activa el ticket se certifica a consumidor final (lo hace el servidor).
+        document.getElementById('posComprobanteHint').hidden = this.comprobante() !== 'ticket' ||
+            !(typeof FelModule !== 'undefined' && FelModule.activa());
         const received = Number(document.getElementById('posChargeReceived').value);
         const change = document.getElementById('posChargeChange');
         if (efectivo <= 0 || !received) {
@@ -868,6 +872,20 @@ const PosModule = {
                 return;
             }
             receptor = leido.receptor;
+        }
+        // Con facturación activa el ticket va a CF, y la SAT no acepta CF de Q2,500 o más.
+        const limite = typeof FelModule !== 'undefined' && FelModule.activa()
+            ? FelModule.errorLimiteCf(receptor?.id, this.totalACobrar()) : '';
+        if (limite) {
+            if (comprobante !== 'factura') {
+                document.querySelector('input[name="posComprobante"][value="factura"]').checked = true;
+                this.renderChange();
+            }
+            error.textContent = comprobante === 'factura' ? limite
+                : 'La SAT no acepta facturas a consumidor final de Q2,500.00 o más: escribe el NIT o CUI del cliente en la factura.';
+            error.hidden = false;
+            document.getElementById('posReceptorId').focus();
+            return;
         }
         const button = document.getElementById('posChargeSubmit');
         button.disabled = true;

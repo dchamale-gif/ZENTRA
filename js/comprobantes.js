@@ -47,8 +47,10 @@ const ComprobanteModule = {
     },
 
     // Comprobante de una venta guardada (lista de Ventas).
-    deVenta(venta) {
-        const factura = venta.factura?.estado === 'certificado' ? venta.factura : null;
+    // { anulada: true }: constancia de una factura anulada (se abre desde la ventana de la factura).
+    deVenta(venta, { anulada = false } = {}) {
+        const estado = venta.factura?.estado;
+        const factura = estado === 'certificado' || (anulada && estado === 'anulado') ? venta.factura : null;
         let cuentaNombre = venta.cuenta_nombre || '';
         let observaciones = venta.observaciones || '';
         // El punto de venta anota de qué cuenta salió la venta; eso no es una nota para el cliente.
@@ -159,8 +161,22 @@ const ComprobanteModule = {
 
     titulo(c, hoja) {
         if (c.tipo === 'cuenta') return 'Cuenta (no es comprobante de pago)';
+        if (this.anulada(c)) return 'Factura anulada';
         if (c.factura) return 'Factura electrónica';
         return hoja ? 'Comprobante de venta' : 'Ticket de venta';
+    },
+
+    anulada(c) {
+        return c?.factura?.estado === 'anulado';
+    },
+
+    // Fecha y motivo de la anulación; vienen de la venta o de los datos certificados.
+    datosAnulacion(c) {
+        const factura = c.factura || {};
+        return {
+            fecha: c.felDatos?.anulacion?.fecha || factura.anulado_at || '',
+            motivo: c.felDatos?.anulacion?.motivo || factura.anulacion_motivo || ''
+        };
     },
 
     // ---------- Factura oficial del certificador ----------
@@ -212,7 +228,9 @@ const ComprobanteModule = {
     },
 
     nombreArchivo(c) {
-        const base = c.factura ? `Factura-${c.factura.serie}-${c.factura.numero}` : `Venta-${c.numero || 'cuenta'}`;
+        const base = c.factura
+            ? `${this.anulada(c) ? 'Anulacion' : 'Factura'}-${c.factura.serie}-${c.factura.numero}`
+            : `Venta-${c.numero || 'cuenta'}`;
         return `${base.replace(/[^\w.-]+/g, '_')}.pdf`;
     },
 
@@ -303,14 +321,16 @@ const ComprobanteModule = {
         const id = c?.factura?.id;
         if (!id || c.felDatos !== undefined) return c;
         this.state.felDatos ||= new Map();
-        if (!this.state.felDatos.has(id)) {
-            this.state.felDatos.set(id, fetch(`${authManager.apiBaseUrl}/api/fel/documentos/${encodeURIComponent(id)}/impresion`)
+        // Por factura y estado: al anularla se vuelven a pedir los datos (fecha y motivo).
+        const clave = `${id}|${c.factura.estado || ''}`;
+        if (!this.state.felDatos.has(clave)) {
+            this.state.felDatos.set(clave, fetch(`${authManager.apiBaseUrl}/api/fel/documentos/${encodeURIComponent(id)}/impresion`)
                 .then(response => (response.ok ? response.json() : null))
                 .then(data => data?.factura || null)
                 .catch(() => null));
         }
-        c.felDatos = await this.state.felDatos.get(id);
-        if (!c.felDatos) this.state.felDatos.delete(id);
+        c.felDatos = await this.state.felDatos.get(clave);
+        if (!c.felDatos) this.state.felDatos.delete(clave);
         return c;
     },
 
@@ -382,7 +402,7 @@ const ComprobanteModule = {
             ${igual}
             <p class="cpb-fel-titulo">Documento Tributario Electrónico</p>
             <p><strong>${e(f.tipoNombre)}</strong></p>
-            ${f.estado === 'anulado' ? '<p class="cpb-anulada">ANULADA</p>' : ''}
+            ${f.estado === 'anulado' || this.anulada(c) ? this.bloqueAnulacionTicket(c) : ''}
             <p>Autorización</p>
             <p class="cpb-fel-dato">${e(f.autorizacion.uuid || '')}</p>
             <p>Fecha de emisión:</p>
@@ -428,6 +448,16 @@ const ComprobanteModule = {
         </div>`;
     },
 
+    // Constancia de anulación en el ticket: se ve arriba, antes de los datos de la factura.
+    bloqueAnulacionTicket(c) {
+        const e = (value) => this.escape(value);
+        const { fecha, motivo } = this.datosAnulacion(c);
+        return `<p class="cpb-anulada">*** FACTURA ANULADA ***</p>
+            ${fecha ? `<p>Fecha de anulación:</p><p class="cpb-fel-dato">${e(this.fechaFel(fecha))}</p>` : ''}
+            ${motivo ? `<p>Motivo:</p><p class="cpb-fel-dato">${e(motivo)}</p>` : ''}
+            <p class="cpb-chico">Este documento no tiene validez fiscal.</p>`;
+    },
+
     cuerpoTicket(c, formato, empresa, pdf) {
         const e = (value) => this.escape(value);
         const fila = (label, value, cls = '') => `<div class="cpb-fila ${cls}"><span>${label}</span><span>${value}</span></div>`;
@@ -442,6 +472,7 @@ const ComprobanteModule = {
             ${empresa.telefono ? `<p class="cpb-chico">Tel. ${e(empresa.telefono)}</p>` : ''}
             <p class="cpb-titulo">${e(this.titulo(c, false))}</p>
             ${factura ? `<p>Serie ${e(factura.serie)} · No. ${e(factura.numero)}</p>` : ''}
+            ${this.anulada(c) ? this.bloqueAnulacionTicket(c) : ''}
             ${c.facturaExterna ? `<p>Factura ${e(c.facturaExterna)}</p>` : ''}
             <hr>
             ${c.numero ? fila('Venta', e(c.numero)) : ''}
@@ -544,8 +575,17 @@ const ComprobanteModule = {
                 ${factura.fecha_certificacion ? `<p>Fecha de certificación: ${e(new Date(factura.fecha_certificacion).toLocaleString('es-GT'))}</p>` : ''}
                 ${factura.ambiente && factura.ambiente !== 'produccion' ? '<p><strong>Emitida en ambiente de pruebas: sin validez fiscal.</strong></p>' : ''}
             </div>` : ''}
+            ${this.anulada(c) ? (() => {
+                const { fecha, motivo } = this.datosAnulacion(c);
+                return `<div class="cpb-caja cpb-anulacion">
+                    <div class="cpb-caja-titulo">Factura anulada</div>
+                    <p>Esta factura fue anulada ante la SAT y no tiene validez fiscal.</p>
+                    ${fecha ? `<p>Fecha de anulación: ${e(this.fechaFel(fecha))}</p>` : ''}
+                    ${motivo ? `<p>Motivo: ${e(motivo)}</p>` : ''}
+                </div>`;
+            })() : ''}
             ${c.facturaPendiente ? '<div class="cpb-caja"><p>Su factura se emite por separado.</p></div>' : ''}
-            ${c.tipo === 'venta' ? `<div class="cpb-firmas">
+            ${c.tipo === 'venta' && !this.anulada(c) ? `<div class="cpb-firmas">
                 <div class="cpb-firma">Entregado por</div>
                 <div class="cpb-firma">Recibido por (nombre, firma y fecha)</div>
             </div>` : ''}
@@ -664,6 +704,9 @@ const ComprobanteModule = {
 
     mensaje(c, empresa) {
         const cliente = c.cliente && !c.cliente.consumidorFinal ? ` ${c.cliente.nombre}` : '';
+        if (this.anulada(c)) {
+            return `Hola${cliente}, te enviamos la constancia de anulación de la factura serie ${c.factura.serie} número ${c.factura.numero} por ${formatQ(c.total)}${empresa.nombre ? ` de ${empresa.nombre}` : ''}.`;
+        }
         const documento = c.factura
             ? `tu factura serie ${c.factura.serie} número ${c.factura.numero}`
             : `el comprobante de tu compra ${c.numero}`;
@@ -707,7 +750,9 @@ const ComprobanteModule = {
         this.init();
         this.state.actual = c;
         this.state.pdf = null;
-        document.getElementById('comprobanteTitulo').textContent = c.numero ? `Comprobante · venta ${c.numero}` : 'Comprobante';
+        document.getElementById('comprobanteTitulo').textContent = this.anulada(c)
+            ? `Anulación · factura ${c.factura.serie}-${c.factura.numero}`
+            : (c.numero ? `Comprobante · venta ${c.numero}` : 'Comprobante');
         const oficial = Boolean(this.urlOficial(c));
         document.getElementById('comprobanteFormatoOficial').hidden = !oficial;
         // Factura electrónica: el formato que eligió la empresa (ticket de 80 mm o PDF del certificador).

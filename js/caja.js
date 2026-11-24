@@ -239,8 +239,7 @@ const CajaModule = {
         }
         if (this.state.movimientos.length === 0) {
             tbody.innerHTML = `<tr><td colspan="9" class="text-center" style="padding: 24px;">
-                Aún no hay movimientos de caja.
-                <button class="btn btn-primary btn-sm" onclick="CajaModule.openMovementModal()"><i class="fas fa-plus"></i> Registrar el primero</button>
+                Aún no hay movimientos de caja. Las ventas en efectivo y los cobros aparecen aquí solos.
             </td></tr>`;
             return;
         }

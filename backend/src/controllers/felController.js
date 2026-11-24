@@ -3,12 +3,13 @@ const { getTenantId } = require('../db/tenantContext');
 const { generateId } = require('../utils/helpers');
 const { encrypt, decrypt } = require('../utils/secretBox');
 const { generarFactura, generarAnulacion, FRASES_POR_DEFECTO, unidadSat } = require('../utils/fel/dte');
-const { nitValido, normalizarReceptor } = require('../utils/fel/identificacion');
+const { nitValido, normalizarReceptor, revisarLimiteCf } = require('../utils/fel/identificacion');
 const { CATALOGO, obtenerConector, pdfDelCertificador } = require('../utils/fel/certificadores');
 const { leerFactura } = require('../utils/fel/lectura');
 
 // Facturación electrónica (FEL). Cada empresa configura su emisor, su régimen de IVA y su
-// certificador; al cobrar se elige ticket (sin FEL) o factura (se certifica en ese momento).
+// certificador. En el punto de venta, con facturación activa, el ticket se certifica a consumidor
+// final y la factura con el NIT que se escribe.
 const TIPO = 'fel';
 const AFILIACIONES = new Set(['GEN', 'PEQ']);
 const AMBIENTES = new Set(['pruebas', 'produccion']);
@@ -224,6 +225,7 @@ const emitirFactura = async (ventaId, receptorInput, userId, felHabilitada) => {
 
   const venta = await pool.query('SELECT id, total, estado, observaciones FROM ventas WHERE id = $1', [ventaId]);
   if (!venta.rows[0]) throw httpError(404, 'Venta no encontrada');
+  revisarLimiteCf(receptor, venta.rows[0].total);
   const lineas = await pool.query(
     `SELECT vi.cantidad, vi.precio_unitario, COALESCE(a.nombre_articulo, m.nombre, 'Producto') AS descripcion,
             -- Descuento de la línea más su parte del descuento al total.
@@ -413,7 +415,8 @@ const getImpresion = async (req, res) => {
   try {
     const [result, row] = await Promise.all([
       pool.query(
-        `SELECT estado, ambiente, uuid, serie, numero, fecha_certificacion, xml_certificado, xml_enviado
+        `SELECT estado, ambiente, uuid, serie, numero, fecha_certificacion, xml_certificado, xml_enviado,
+                anulacion_motivo, anulado_at
          FROM fel_documentos WHERE id = $1`,
         [req.params.id]
       ),
@@ -436,6 +439,9 @@ const getImpresion = async (req, res) => {
       factura: {
         ...datos,
         estado: documento.estado,
+        anulacion: documento.estado === 'anulado'
+          ? { motivo: documento.anulacion_motivo || '', fecha: documento.anulado_at }
+          : null,
         ambiente: documento.ambiente,
         sucursal: impresion.sucursal || null,
         logo: impresion.logo || null
